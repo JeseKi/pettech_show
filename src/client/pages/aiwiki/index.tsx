@@ -22,7 +22,7 @@ export default function AiwikiPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedTerm, setSelectedTerm] = useState<string | null>(null)
+  const [selectedTerms, setSelectedTerms] = useState<string[]>([])
   const [entryFilter, setEntryFilter] = useState<string>('全部')
   const [activeEntrySlug, setActiveEntrySlug] = useState<string | null>(null)
   const [keywordModalOpen, setKeywordModalOpen] = useState(false)
@@ -88,7 +88,7 @@ export default function AiwikiPage() {
     setRefreshing(true)
     setError(null)
     setResult(null)
-    setSelectedTerm(null)
+    setSelectedTerms([])
     setActiveEntrySlug(null)
     try {
       const latest = await getAiwikiJob(jobId)
@@ -125,7 +125,7 @@ export default function AiwikiPage() {
     setSubmitting(true)
     setError(null)
     setResult(null)
-    setSelectedTerm(null)
+    setSelectedTerms([])
     setActiveEntrySlug(null)
     try {
       const created = await createAiwikiJob(files)
@@ -151,20 +151,18 @@ export default function AiwikiPage() {
     return entriesBySlug.get(activeEntrySlug) ?? null
   }, [activeEntrySlug, entriesBySlug])
 
+  const availableTerms = useMemo(() => result?.highlight_terms ?? [], [result])
+
   const filteredEntries = useMemo(() => {
     if (!result) return []
-    const entries = entryFilter === '全部'
+    return entryFilter === '全部'
       ? result.wiki_entries
       : result.wiki_entries.filter((entry) => entryTypeLabel(entry.type) === entryFilter)
-    if (!selectedTerm) return entries
-    return entries.filter((entry) => JSON.stringify(entry).includes(selectedTerm))
-  }, [entryFilter, result, selectedTerm])
+  }, [entryFilter, result])
 
-  const filteredTerms = useMemo(() => {
-    const terms = result?.highlight_terms ?? []
-    if (!keywordSearch.trim()) return terms
-    return terms.filter((term) => term.includes(keywordSearch.trim()))
-  }, [keywordSearch, result?.highlight_terms])
+  useEffect(() => {
+    setSelectedTerms([])
+  }, [availableTerms])
 
   return (
     <>
@@ -183,13 +181,12 @@ export default function AiwikiPage() {
           {result ? (
             <ResultView
               result={result}
-              selectedTerm={selectedTerm}
+              selectedTerms={selectedTerms}
               entryFilter={entryFilter}
               filteredEntries={filteredEntries}
               entriesBySlug={entriesBySlug}
               activeEntry={activeEntry}
               onOpenKeywordModal={() => setKeywordModalOpen(true)}
-              onClearTerm={() => setSelectedTerm(null)}
               onEntryFilterChange={setEntryFilter}
               onOpenEntry={setActiveEntrySlug}
               onCloseEntry={() => setActiveEntrySlug(null)}
@@ -219,16 +216,12 @@ export default function AiwikiPage() {
 
       <KeywordModal
         open={keywordModalOpen}
-        terms={filteredTerms}
-        selectedTerm={selectedTerm}
+        terms={availableTerms}
+        selectedTerms={selectedTerms}
         keywordSearch={keywordSearch}
         onSearch={setKeywordSearch}
-        onSelect={(term) => {
-          setSelectedTerm(term)
-          setKeywordModalOpen(false)
-        }}
-        onClear={() => {
-          setSelectedTerm(null)
+        onApply={(terms) => {
+          setSelectedTerms(terms)
           setKeywordModalOpen(false)
         }}
         onClose={() => setKeywordModalOpen(false)}

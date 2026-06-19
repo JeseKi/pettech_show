@@ -1,18 +1,21 @@
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Typography, theme } from 'antd'
-import type { MouseEvent } from 'react'
+import { Children, cloneElement, isValidElement, type MouseEvent, type ReactElement, type ReactNode } from 'react'
 import type { AiwikiWikiEntry } from '../../lib/aiwiki'
+import { highlight } from './helpers'
 
 interface MarkdownContentProps {
   markdown: string
   entriesBySlug: Map<string, AiwikiWikiEntry>
+  highlightTerms: string[]
   onOpenEntry: (slug: string) => void
 }
 
 export default function MarkdownContent({
   markdown,
   entriesBySlug,
+  highlightTerms,
   onOpenEntry,
 }: MarkdownContentProps) {
   const { token } = theme.useToken()
@@ -29,34 +32,34 @@ export default function MarkdownContent({
         }
         return (
           <Typography.Link href={href} onClick={handleClick}>
-            {children}
+            {renderHighlightedChildren(children, highlightTerms)}
           </Typography.Link>
         )
       }
       return (
         <Typography.Link href={href} target="_blank" rel="noreferrer">
-          {children}
+          {renderHighlightedChildren(children, highlightTerms)}
         </Typography.Link>
       )
     },
     h1: ({ children }) => (
       <Typography.Title id={nextHeadingId()} level={3} style={{ marginTop: 0 }}>
-        {children}
+        {renderHighlightedChildren(children, highlightTerms)}
       </Typography.Title>
     ),
     h2: ({ children }) => (
       <Typography.Title id={nextHeadingId()} level={4} style={{ marginTop: 22 }}>
-        {children}
+        {renderHighlightedChildren(children, highlightTerms)}
       </Typography.Title>
     ),
     h3: ({ children }) => (
       <Typography.Title id={nextHeadingId()} level={5} style={{ marginTop: 18 }}>
-        {children}
+        {renderHighlightedChildren(children, highlightTerms)}
       </Typography.Title>
     ),
     p: ({ children }) => (
       <Typography.Paragraph style={{ lineHeight: 1.8 }}>
-        {children}
+        {renderHighlightedChildren(children, highlightTerms)}
       </Typography.Paragraph>
     ),
     table: ({ children }) => (
@@ -68,12 +71,12 @@ export default function MarkdownContent({
     ),
     th: ({ children }) => (
       <th style={{ border: `1px solid ${token.colorBorderSecondary}`, padding: 8, background: token.colorFillAlter, textAlign: 'left' }}>
-        {children}
+        {renderHighlightedChildren(children, highlightTerms)}
       </th>
     ),
     td: ({ children }) => (
       <td style={{ border: `1px solid ${token.colorBorderSecondary}`, padding: 8, verticalAlign: 'top' }}>
-        {children}
+        {renderHighlightedChildren(children, highlightTerms)}
       </td>
     ),
   }
@@ -104,4 +107,15 @@ function splitWikiLink(raw: string): [string, string | null] {
 
 function escapeMarkdownLabel(label: string) {
   return label.replaceAll('[', '\\[').replaceAll(']', '\\]')
+}
+
+function renderHighlightedChildren(children: ReactNode, terms: string[]): ReactNode {
+  return Children.map(children, (child) => {
+    if (typeof child === 'string') return highlight(child, terms)
+    if (!isValidElement(child)) return child
+    const element = child as ReactElement<{ children?: ReactNode }>
+    return cloneElement(element, {
+      children: renderHighlightedChildren(element.props.children, terms),
+    })
+  })
 }

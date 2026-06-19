@@ -1,19 +1,20 @@
+import { useState } from 'react'
 import { Button, Col, Divider, Empty, Flex, List, Row, Segmented, Space, Statistic, Tag, Typography, theme } from 'antd'
 import { FileTextOutlined, FilterOutlined, LinkOutlined } from '@ant-design/icons'
 import type { AiwikiResult, AiwikiWikiEntry } from '../../lib/aiwiki'
 import EntryDrawer from './EntryDrawer'
 import { entryTypeLabel, highlight } from './helpers'
+import KnowledgeGraph from './KnowledgeGraph'
 import MarkdownContent from './MarkdownContent'
 
 interface ResultViewProps {
   result: AiwikiResult
-  selectedTerm: string | null
+  selectedTerms: string[]
   entryFilter: string
   filteredEntries: AiwikiWikiEntry[]
   entriesBySlug: Map<string, AiwikiWikiEntry>
   activeEntry: AiwikiWikiEntry | null
   onOpenKeywordModal: () => void
-  onClearTerm: () => void
   onEntryFilterChange: (value: string) => void
   onOpenEntry: (slug: string) => void
   onCloseEntry: () => void
@@ -21,18 +22,18 @@ interface ResultViewProps {
 
 export default function ResultView({
   result,
-  selectedTerm,
+  selectedTerms,
   entryFilter,
   filteredEntries,
   entriesBySlug,
   activeEntry,
   onOpenKeywordModal,
-  onClearTerm,
   onEntryFilterChange,
   onOpenEntry,
   onCloseEntry,
 }: ResultViewProps) {
   const { token } = theme.useToken()
+  const [mainView, setMainView] = useState<'index' | 'graph'>('index')
   const sectionStyle = {
     background: token.colorBgContainer,
     border: `1px solid ${token.colorBorderSecondary}`,
@@ -49,10 +50,24 @@ export default function ResultView({
               {result.wiki_home?.title ?? 'AI Wiki'}
             </Typography.Title>
             <Space wrap>
-              {selectedTerm && <Tag closable onClose={onClearTerm}>筛选：{selectedTerm}</Tag>}
+              <Tag>
+                {selectedTerms.length === result.highlight_terms.length
+                  ? '高亮：全部关键词'
+                  : selectedTerms.length
+                    ? `高亮：${selectedTerms.length} 个关键词`
+                    : '高亮：未启用'}
+              </Tag>
               <Button icon={<FilterOutlined />} onClick={onOpenKeywordModal}>
                 关键词高亮筛选
               </Button>
+              <Segmented
+                value={mainView}
+                onChange={(value) => setMainView(value as 'index' | 'graph')}
+                options={[
+                  { label: '索引', value: 'index' },
+                  { label: '知识图谱', value: 'graph' },
+                ]}
+              />
             </Space>
           </Flex>
           <Divider />
@@ -62,10 +77,13 @@ export default function ResultView({
             <Col xs={12} md={6}><Statistic title="关键词" value={Number(result.summary.search_intent_count ?? 0)} /></Col>
             <Col xs={12} md={6}><Statistic title="选题" value={Number(result.summary.topic_count ?? 0)} /></Col>
           </Row>
-          {result.wiki_home?.body_markdown ? (
+          {mainView === 'graph' ? (
+            <KnowledgeGraph result={result} onOpenEntry={onOpenEntry} />
+          ) : result.wiki_home?.body_markdown ? (
             <MarkdownContent
               markdown={result.wiki_home.body_markdown}
               entriesBySlug={entriesBySlug}
+              highlightTerms={selectedTerms}
               onOpenEntry={onOpenEntry}
             />
           ) : (
@@ -91,7 +109,7 @@ export default function ResultView({
               <List.Item>
                 <EntryCard
                   entry={entry}
-                  selectedTerm={selectedTerm}
+                  selectedTerms={selectedTerms}
                   onOpenEntry={onOpenEntry}
                 />
               </List.Item>
@@ -103,6 +121,7 @@ export default function ResultView({
       <EntryDrawer
         entry={activeEntry}
         entriesBySlug={entriesBySlug}
+        highlightTerms={selectedTerms}
         onClose={onCloseEntry}
         onOpenEntry={onOpenEntry}
       />
@@ -112,11 +131,11 @@ export default function ResultView({
 
 function EntryCard({
   entry,
-  selectedTerm,
+  selectedTerms,
   onOpenEntry,
 }: {
   entry: AiwikiWikiEntry
-  selectedTerm: string | null
+  selectedTerms: string[]
   onOpenEntry: (slug: string) => void
 }) {
   const { token } = theme.useToken()
@@ -143,9 +162,9 @@ function EntryCard({
           {entry.created && <Tag>创建：{entry.created}</Tag>}
           {entry.updated && <Tag>更新：{entry.updated}</Tag>}
         </Space>
-        <Typography.Text strong>{highlight(entry.title, selectedTerm)}</Typography.Text>
+        <Typography.Text strong>{highlight(entry.title, selectedTerms)}</Typography.Text>
         <Typography.Paragraph type="secondary" ellipsis={{ rows: 3 }} style={{ margin: 0 }}>
-          {highlight(entry.excerpt || entry.sections[0]?.content || '', selectedTerm)}
+          {highlight(entry.excerpt || entry.sections[0]?.content || '', selectedTerms)}
         </Typography.Paragraph>
         <Space wrap>
           <Typography.Text type="secondary"><FileTextOutlined /> {entry.path}</Typography.Text>

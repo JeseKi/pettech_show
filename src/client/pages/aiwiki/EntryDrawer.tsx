@@ -7,6 +7,7 @@ import MarkdownContent from './MarkdownContent'
 interface EntryDrawerProps {
   entry: AiwikiWikiEntry | null
   entriesBySlug: Map<string, AiwikiWikiEntry>
+  highlightTerms: string[]
   onClose: () => void
   onOpenEntry: (slug: string) => void
 }
@@ -14,6 +15,7 @@ interface EntryDrawerProps {
 export default function EntryDrawer({
   entry,
   entriesBySlug,
+  highlightTerms,
   onClose,
   onOpenEntry,
 }: EntryDrawerProps) {
@@ -45,6 +47,7 @@ export default function EntryDrawer({
           <MarkdownContent
             markdown={entry.body_markdown}
             entriesBySlug={entriesBySlug}
+            highlightTerms={highlightTerms}
             onOpenEntry={onOpenEntry}
           />
 

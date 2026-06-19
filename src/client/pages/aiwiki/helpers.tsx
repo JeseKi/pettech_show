@@ -63,13 +63,21 @@ export function progressEventColor(event: string): string {
   return 'default'
 }
 
-export function highlight(text: string, term: string | null): ReactNode {
-  if (!term || !text.includes(term)) return text
-  const parts = text.split(term)
-  return parts.map((part, index) => (
-    <span key={`${part}-${index}`}>
-      {part}
-      {index < parts.length - 1 && <mark>{term}</mark>}
-    </span>
+export function highlight(text: string, terms: string[] | string | null): ReactNode {
+  const normalizedTerms = Array.isArray(terms) ? terms : terms ? [terms] : []
+  const activeTerms = normalizedTerms
+    .filter((term) => term && text.includes(term))
+    .sort((left, right) => right.length - left.length)
+  if (!activeTerms.length) return text
+
+  const pattern = new RegExp(`(${activeTerms.map(escapeRegExp).join('|')})`, 'g')
+  return text.split(pattern).map((part, index) => (
+    activeTerms.includes(part)
+      ? <mark key={`${part}-${index}`}>{part}</mark>
+      : <span key={`${part}-${index}`}>{part}</span>
   ))
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
