@@ -15,9 +15,9 @@ from pathlib import Path
 
 
 def is_in_venv_dir(file_path: Path) -> bool:
-    """判断文件是否在 .venv 或 venv 目录中"""
+    """判断文件是否在 .venv 或 venv , data 目录中"""
     for parent in file_path.parents:
-        if parent.name in (".venv", "venv"):
+        if parent.name in (".venv", "venv", "data"):
             return True
     return False
 
