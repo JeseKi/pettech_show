@@ -25,8 +25,7 @@ export default function App() {
         <AuthProvider>
           <>
             <Routes>
-            <Route path="/" element={<AiwikiPage />} />
-            <Route path="/aiwiki" element={<AiwikiPage />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/landing" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
@@ -57,6 +56,7 @@ export default function App() {
             >
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/example" element={<ExamplePage />} />
+              <Route path="/aiwiki" element={<AiwikiPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/profile/security" element={<SecurityPage />} />
               <Route path="/profile/devices" element={<DevicesPage />} />

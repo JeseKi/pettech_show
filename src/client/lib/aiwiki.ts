@@ -22,6 +22,8 @@ export interface AiwikiProgress {
 
 export interface AiwikiJob {
   id: string
+  owner_user_id: number | null
+  owner_username: string | null
   status: AiwikiJobStatus
   queue_position: number | null
   message: string | null
@@ -35,6 +37,8 @@ export interface AiwikiJob {
 
 export interface AiwikiJobSummary {
   id: string
+  owner_user_id: number | null
+  owner_username: string | null
   status: AiwikiJobStatus
   message: string | null
   created_at: string

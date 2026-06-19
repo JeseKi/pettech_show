@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.server.database import Base
@@ -15,6 +15,9 @@ class AiwikiJob(Base):
     __tablename__ = "aiwiki_jobs"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    owner_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
     message: Mapped[str | None] = mapped_column(Text, default=None)
     workdir: Mapped[str] = mapped_column(Text, nullable=False)
@@ -37,4 +40,3 @@ class AiwikiJob(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
-

@@ -12,6 +12,8 @@ from loguru import logger
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.server.config import global_config
+from src.server.auth.models import User
+from src.server.auth.schemas import UserRole
 
 from ..dao import AiwikiJobDAO
 from ..parser import parse_aiwiki_result
@@ -36,7 +38,7 @@ from .queue_state import get_queue
 from .serializers import job_out_from_manifest, job_summary_from_model
 
 
-async def create_job(db: Session, files: list[UploadFile]) -> JobOut:
+async def create_job(db: Session, files: list[UploadFile], current_user: User) -> JobOut:
     if not files:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -91,6 +93,7 @@ async def create_job(db: Session, files: list[UploadFile]) -> JobOut:
 
     manifest = {
         "id": job_id,
+        "owner_user_id": current_user.id,
         "status": "queued",
         "message": "任务已进入队列",
         "created_at": now.isoformat(),
@@ -105,35 +108,54 @@ async def create_job(db: Session, files: list[UploadFile]) -> JobOut:
     upsert_job_from_manifest(db, workdir, manifest)
     session_factory = build_session_factory(db)
     get_queue().enqueue(job_id, lambda: _run_job(job_id, workdir, session_factory))
-    return job_out_from_manifest(workdir, manifest)
+    return job_out_from_manifest(workdir, manifest, current_user.username)
 
 
-def list_jobs(db: Session, *, limit: int, offset: int) -> JobListOut:
+def list_jobs(
+    db: Session, *, limit: int, offset: int, current_user: User
+) -> JobListOut:
     normalized_limit = max(1, min(limit, 100))
     normalized_offset = max(0, offset)
     dao = AiwikiJobDAO(db)
+    owner_filter = None if _is_admin(current_user) else current_user.id
     items = [
-        job_summary_from_model(job)
-        for job in dao.list(limit=normalized_limit, offset=normalized_offset)
+        job_summary_from_model(job, dao.owner_username(job.owner_user_id))
+        for job in dao.list(
+            limit=normalized_limit,
+            offset=normalized_offset,
+            owner_user_id=owner_filter,
+        )
     ]
     return JobListOut(
         items=items,
-        total=dao.count(),
+        total=dao.count(owner_user_id=owner_filter),
         limit=normalized_limit,
         offset=normalized_offset,
     )
 
 
-def get_job(db: Session, job_id: str) -> JobOut:
+def get_job(db: Session, job_id: str, current_user: User) -> JobOut:
     workdir = existing_job_workdir(job_id, db)
     manifest = read_manifest(workdir)
-    if AiwikiJobDAO(db).get(job_id) is None:
+    dao = AiwikiJobDAO(db)
+    job = dao.get(job_id)
+    if job is None:
+        if not _is_admin(current_user):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+        manifest.setdefault("owner_user_id", _default_admin_user_id(db))
         upsert_job_from_manifest(db, workdir, manifest)
-    return job_out_from_manifest(workdir, manifest)
+        job = dao.get(job_id)
+    if job is None or not _can_access_job(current_user, job.owner_user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    manifest["owner_user_id"] = job.owner_user_id
+    return job_out_from_manifest(workdir, manifest, dao.owner_username(job.owner_user_id))
 
 
-def get_result(db: Session, job_id: str) -> AiwikiResultOut:
+def get_result(db: Session, job_id: str, current_user: User) -> AiwikiResultOut:
     workdir = existing_job_workdir(job_id, db)
+    job = AiwikiJobDAO(db).get(job_id)
+    if job is None or not _can_access_job(current_user, job.owner_user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     manifest = read_manifest(workdir)
     if manifest.get("status") != "completed":
         raise HTTPException(
@@ -169,6 +191,7 @@ def sync_job_records(db: Session) -> None:
             write_manifest(workdir, manifest)
 
         if dao.get(str(manifest.get("id"))) is None:
+            manifest.setdefault("owner_user_id", _default_admin_user_id(db))
             dao.upsert_from_payload(manifest_db_payload(workdir, manifest))
         elif status_value in {"queued", "running"}:
             dao.upsert_from_payload(manifest_db_payload(workdir, manifest))
@@ -243,3 +266,15 @@ def _recover_interrupted_manifest(
         }
     )
     return recovered
+
+
+def _is_admin(user: User) -> bool:
+    return user.role == UserRole.ADMIN
+
+
+def _can_access_job(user: User, owner_user_id: int | None) -> bool:
+    return _is_admin(user) or owner_user_id == user.id
+
+
+def _default_admin_user_id(db: Session) -> int | None:
+    return AiwikiJobDAO(db).default_admin_user_id()

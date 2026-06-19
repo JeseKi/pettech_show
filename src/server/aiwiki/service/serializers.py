@@ -14,17 +14,24 @@ from .progress import read_progress
 from .queue_state import get_queue
 
 
-def job_out_from_manifest(workdir: Path, manifest: dict[str, Any]) -> JobOut:
+def job_out_from_manifest(
+    workdir: Path, manifest: dict[str, Any], owner_username: str | None = None
+) -> JobOut:
     payload = dict(manifest)
+    payload["owner_username"] = owner_username
     payload["queue_position"] = get_queue().queue_position(manifest["id"])
     payload["progress"] = read_progress(workdir)
     payload["log_tail"] = read_log_tail(workdir)
     return JobOut.model_validate(payload)
 
 
-def job_summary_from_model(job: AiwikiJob) -> JobSummaryOut:
+def job_summary_from_model(
+    job: AiwikiJob, owner_username: str | None = None
+) -> JobSummaryOut:
     return JobSummaryOut(
         id=job.id,
+        owner_user_id=job.owner_user_id,
+        owner_username=owner_username,
         status=coerce_job_status(job.status),
         message=job.message,
         created_at=job.created_at,

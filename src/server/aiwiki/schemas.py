@@ -19,6 +19,8 @@ class UploadedFileOut(BaseModel):
 
 class JobOut(BaseModel):
     id: str
+    owner_user_id: int | None = None
+    owner_username: str | None = None
     status: JobStatus
     queue_position: int | None = None
     message: str | None = None
@@ -32,6 +34,8 @@ class JobOut(BaseModel):
 
 class JobSummaryOut(BaseModel):
     id: str
+    owner_user_id: int | None = None
+    owner_username: str | None = None
     status: JobStatus
     message: str | None = None
     created_at: datetime

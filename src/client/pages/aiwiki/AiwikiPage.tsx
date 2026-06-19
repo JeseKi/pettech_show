@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { App, Alert, Badge, Button, Col, Divider, Empty, Flex, List, Progress, Row, Segmented, Space, Statistic, Table, Tag, Typography, Upload, theme } from 'antd'
+import { App, Alert, Button, Col, Divider, Empty, Flex, Input, List, Modal, Progress, Row, Segmented, Space, Statistic, Table, Tag, Typography, Upload, theme } from 'antd'
 import type { UploadFile, UploadProps } from 'antd'
-import { CloudUploadOutlined, FileTextOutlined, LinkOutlined, PlayCircleOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
+import { CloudUploadOutlined, FileTextOutlined, FilterOutlined, LinkOutlined, PlayCircleOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
+import { useAuth } from '../../hooks/useAuth'
 import { createAiwikiJob, getAiwikiJob, getAiwikiResult, listAiwikiJobs, type AiwikiJob, type AiwikiJobSummary, type AiwikiProgressEvent, type AiwikiResult, type AiwikiWikiEntry } from '../../lib/aiwiki'
 import { resolveErrorMessage } from '../dashboard/ExamplePage/utils'
 
@@ -45,7 +46,7 @@ function statusMeta(status?: string) {
   if (status === 'running') return { label: '生成中', percent: 55, status: 'active' as const }
   if (status === 'completed') return { label: '已完成', percent: 100, status: 'success' as const }
   if (status === 'failed') return { label: '失败', percent: 100, status: 'exception' as const }
-  return { label: '待上传', percent: 0, status: 'normal' as const }
+  return { label: '未选择', percent: 0, status: 'normal' as const }
 }
 
 function formatDateTime(value?: string | null): string {
@@ -71,6 +72,7 @@ function progressEventColor(event: string): string {
 export default function AiwikiPage() {
   const { message } = App.useApp()
   const { token } = theme.useToken()
+  const { user } = useAuth()
   const [fileList, setFileList] = useState<UploadFile[]>([])
   const [job, setJob] = useState<AiwikiJob | null>(null)
   const [history, setHistory] = useState<AiwikiJobSummary[]>([])
@@ -81,7 +83,10 @@ export default function AiwikiPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedTerm, setSelectedTerm] = useState<string | null>(null)
   const [entryFilter, setEntryFilter] = useState<string>('全部')
+  const [keywordModalOpen, setKeywordModalOpen] = useState(false)
+  const [keywordSearch, setKeywordSearch] = useState('')
 
+  const isAdmin = user?.role === 'admin'
   const meta = statusMeta(job?.status)
 
   const files = useMemo(
@@ -106,7 +111,7 @@ export default function AiwikiPage() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
     try {
-      const list = await listAiwikiJobs({ limit: 30, offset: 0 })
+      const list = await listAiwikiJobs({ limit: 50, offset: 0 })
       setHistory(list.items)
     } catch (err) {
       setError(resolveErrorMessage(err))
@@ -122,8 +127,7 @@ export default function AiwikiPage() {
       setJob(latest)
       setError(null)
       if (latest.status === 'completed') {
-        const generated = await getAiwikiResult(jobId)
-        setResult(generated)
+        setResult(await getAiwikiResult(jobId))
         void loadHistory()
       } else if (latest.status === 'failed') {
         setResult(null)
@@ -142,6 +146,7 @@ export default function AiwikiPage() {
     setRefreshing(true)
     setError(null)
     setResult(null)
+    setSelectedTerm(null)
     try {
       const latest = await getAiwikiJob(jobId)
       setJob(latest)
@@ -196,9 +201,7 @@ export default function AiwikiPage() {
   const filteredSearchIntents = useMemo(() => {
     if (!result) return []
     if (!selectedTerm) return result.search_intents
-    return result.search_intents.filter((item) => {
-      return JSON.stringify(item).includes(selectedTerm)
-    })
+    return result.search_intents.filter((item) => JSON.stringify(item).includes(selectedTerm))
   }, [result, selectedTerm])
 
   const filteredEntries = useMemo(() => {
@@ -207,200 +210,271 @@ export default function AiwikiPage() {
     return result.wiki_entries.filter((entry) => entryTypeLabel(entry.type) === entryFilter)
   }, [entryFilter, result])
 
+  const filteredTerms = useMemo(() => {
+    const terms = result?.highlight_terms ?? []
+    if (!keywordSearch.trim()) return terms
+    return terms.filter((term) => term.includes(keywordSearch.trim()))
+  }, [keywordSearch, result?.highlight_terms])
+
   return (
-    <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
-      <header
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 20,
-          background: token.colorBgContainer,
-          borderBottom: `1px solid ${token.colorBorderSecondary}`,
+    <>
+      <Row gutter={[16, 16]} align="stretch">
+        <Col xs={24} xl={5}>
+          <HistorySidebar
+            history={history}
+            activeJobId={job?.id}
+            loading={historyLoading}
+            isAdmin={isAdmin}
+            onRefresh={loadHistory}
+            onSelect={selectHistoryJob}
+          />
+        </Col>
+        <Col xs={24} xl={13}>
+          {result ? (
+            <ResultView
+              result={result}
+              selectedTerm={selectedTerm}
+              entryFilter={entryFilter}
+              filteredSearchIntents={filteredSearchIntents}
+              filteredEntries={filteredEntries}
+              onOpenKeywordModal={() => setKeywordModalOpen(true)}
+              onClearTerm={() => setSelectedTerm(null)}
+              onEntryFilterChange={setEntryFilter}
+            />
+          ) : (
+            <UploadPanel
+              error={error}
+              fileList={fileList}
+              job={job}
+              meta={meta}
+              submitting={submitting}
+              token={token}
+              uploadProps={uploadProps}
+              onSubmit={handleSubmit}
+            />
+          )}
+        </Col>
+        <Col xs={24} xl={6}>
+          <TaskSidebar
+            job={job}
+            meta={meta}
+            refreshing={refreshing}
+            onRefresh={() => job && void refreshJob(job.id)}
+          />
+        </Col>
+      </Row>
+
+      <KeywordModal
+        open={keywordModalOpen}
+        terms={filteredTerms}
+        selectedTerm={selectedTerm}
+        keywordSearch={keywordSearch}
+        onSearch={setKeywordSearch}
+        onSelect={(term) => {
+          setSelectedTerm(term)
+          setKeywordModalOpen(false)
         }}
-      >
-        <Flex align="center" justify="space-between" wrap="wrap" gap={16} style={{ maxWidth: 1360, margin: '0 auto', padding: '14px 24px' }}>
-          <Space size={12}>
-            <Badge color={token.colorPrimary} />
-            <Typography.Title level={4} style={{ margin: 0 }}>AI Wiki</Typography.Title>
-          </Space>
-          <Space wrap>
-            {result?.navigation.map((item) => (
-              <Button key={item.key} type="text" size="small" href={`#${item.key}`}>
-                {item.label} {item.count}
-              </Button>
-            ))}
-          </Space>
+        onClear={() => {
+          setSelectedTerm(null)
+          setKeywordModalOpen(false)
+        }}
+        onClose={() => setKeywordModalOpen(false)}
+      />
+    </>
+  )
+}
+
+function HistorySidebar({
+  history,
+  activeJobId,
+  loading,
+  isAdmin,
+  onRefresh,
+  onSelect,
+}: {
+  history: AiwikiJobSummary[]
+  activeJobId?: string
+  loading: boolean
+  isAdmin: boolean
+  onRefresh: () => void
+  onSelect: (jobId: string) => void
+}) {
+  const { token } = theme.useToken()
+  return (
+    <aside style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 14, height: '100%' }}>
+      <Flex align="center" justify="space-between" gap={12} style={{ marginBottom: 12 }}>
+        <Typography.Title level={5} style={{ margin: 0 }}>历史任务</Typography.Title>
+        <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => void onRefresh()} />
+      </Flex>
+      <List
+        size="small"
+        loading={loading}
+        dataSource={history}
+        locale={{ emptyText: '暂无历史任务' }}
+        style={{ maxHeight: 'calc(100vh - 190px)', overflow: 'auto' }}
+        renderItem={(item) => {
+          const itemMeta = statusMeta(item.status)
+          const active = item.id === activeJobId
+          return (
+            <List.Item
+              style={{
+                cursor: 'pointer',
+                background: active ? token.colorFillSecondary : undefined,
+                borderRadius: 6,
+                paddingInline: 8,
+              }}
+              onClick={() => onSelect(item.id)}
+            >
+              <Flex vertical gap={4} style={{ width: '100%' }}>
+                <Flex align="center" justify="space-between" gap={8}>
+                  <Typography.Text strong ellipsis style={{ maxWidth: 160 }}>
+                    {firstFileName(item)}
+                  </Typography.Text>
+                  <Tag color={item.status === 'completed' ? 'green' : item.status === 'failed' ? 'red' : 'blue'}>
+                    {itemMeta.label}
+                  </Tag>
+                </Flex>
+                {isAdmin && item.owner_username && <Typography.Text type="secondary">归属：{item.owner_username}</Typography.Text>}
+                <Typography.Text type="secondary" ellipsis>{item.id}</Typography.Text>
+                <Typography.Text type="secondary">{formatDateTime(item.created_at)}</Typography.Text>
+              </Flex>
+            </List.Item>
+          )
+        }}
+      />
+    </aside>
+  )
+}
+
+function UploadPanel({
+  error,
+  job,
+  meta,
+  submitting,
+  token,
+  uploadProps,
+  onSubmit,
+}: {
+  error: string | null
+  fileList: UploadFile[]
+  job: AiwikiJob | null
+  meta: ReturnType<typeof statusMeta>
+  submitting: boolean
+  token: ReturnType<typeof theme.useToken>['token']
+  uploadProps: UploadProps
+  onSubmit: () => void
+}) {
+  return (
+    <section style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, minHeight: 560, padding: 24 }}>
+      <Flex vertical gap={18}>
+        <div>
+          <Typography.Title level={2} style={{ marginTop: 0 }}>对标文章生文材料整理</Typography.Title>
+          <Typography.Paragraph type="secondary" style={{ maxWidth: 720 }}>
+            选择 DOCX、Markdown 或 TXT 文件，生成热点、痛点、解决方案、关键词池、选题和可跳转 AI Wiki。
+          </Typography.Paragraph>
+        </div>
+        <Upload.Dragger {...uploadProps} style={{ background: token.colorFillQuaternary }}>
+          <p className="ant-upload-drag-icon">
+            <CloudUploadOutlined />
+          </p>
+          <Typography.Text strong>选择文件，支持 DOCX、Markdown、TXT</Typography.Text>
+          <Typography.Paragraph type="secondary" style={{ margin: '8px auto 0', maxWidth: 420 }}>
+            可一次上传多个文件，系统会统一整理成同一份 AI Wiki 资产。
+          </Typography.Paragraph>
+        </Upload.Dragger>
+        <Button
+          type="primary"
+          size="large"
+          icon={<PlayCircleOutlined />}
+          loading={submitting}
+          disabled={!uploadProps.fileList?.length}
+          onClick={onSubmit}
+          style={{ alignSelf: 'flex-start' }}
+        >
+          开始生成
+        </Button>
+        {error && <Alert type="error" showIcon message={error} />}
+        {job && !error && (
+          <Alert
+            type={job.status === 'failed' ? 'error' : 'info'}
+            showIcon
+            message={job.message || meta.label}
+            description={job.status === 'completed' ? '任务已完成，结果正在加载。' : '任务状态和 OpenCode 日志可在右侧查看。'}
+          />
+        )}
+      </Flex>
+    </section>
+  )
+}
+
+function TaskSidebar({
+  job,
+  meta,
+  refreshing,
+  onRefresh,
+}: {
+  job: AiwikiJob | null
+  meta: ReturnType<typeof statusMeta>
+  refreshing: boolean
+  onRefresh: () => void
+}) {
+  const { token } = theme.useToken()
+  return (
+    <aside style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 14, height: '100%' }}>
+      <Flex vertical gap={14}>
+        <Flex align="center" justify="space-between" gap={12}>
+          <Typography.Title level={5} style={{ margin: 0 }}>任务状态</Typography.Title>
+          <Button size="small" icon={<ReloadOutlined />} disabled={!job} loading={refreshing} onClick={onRefresh} />
         </Flex>
-      </header>
-
-      <main style={{ maxWidth: 1360, margin: '0 auto', padding: '28px 24px 56px' }}>
-        <Row gutter={[20, 20]}>
-          <Col xs={24} lg={8} xl={7}>
-            <Flex vertical gap={16}>
-              <section style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 18 }}>
-                <Flex vertical gap={16}>
-                  <Typography.Title level={2} style={{ margin: 0 }}>对标文章生文材料整理</Typography.Title>
-                  <Upload.Dragger {...uploadProps} style={{ background: token.colorFillQuaternary }}>
-                    <p className="ant-upload-drag-icon">
-                      <CloudUploadOutlined />
-                    </p>
-                    <Typography.Text strong>上传 DOCX、Markdown 或 TXT</Typography.Text>
-                    <Typography.Paragraph type="secondary" style={{ margin: '8px auto 0', maxWidth: 360 }}>
-                      系统会生成热点、痛点、解决方案、关键词池、选题和可跳转的 AI Wiki。
-                    </Typography.Paragraph>
-                  </Upload.Dragger>
-                  <Button
-                    type="primary"
-                    size="large"
-                    icon={<PlayCircleOutlined />}
-                    block
-                    loading={submitting}
-                    disabled={!files.length}
-                    onClick={handleSubmit}
-                  >
-                    开始生成
-                  </Button>
-                  {error && <Alert type="error" showIcon message={error} />}
-                </Flex>
-              </section>
-
-              <section style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 18 }}>
-                <Flex align="center" justify="space-between" gap={12} style={{ marginBottom: 12 }}>
-                  <Typography.Title level={5} style={{ margin: 0 }}>历史任务</Typography.Title>
-                  <Button size="small" icon={<ReloadOutlined />} loading={historyLoading} onClick={() => void loadHistory()}>
-                    刷新
-                  </Button>
-                </Flex>
-                <List
-                  size="small"
-                  loading={historyLoading}
-                  dataSource={history}
-                  locale={{ emptyText: '暂无历史任务' }}
-                  style={{ maxHeight: 360, overflow: 'auto' }}
-                  renderItem={(item) => {
-                    const itemMeta = statusMeta(item.status)
-                    const active = item.id === job?.id
-                    return (
-                      <List.Item
-                        style={{
-                          cursor: 'pointer',
-                          background: active ? token.colorFillSecondary : undefined,
-                          borderRadius: 6,
-                          paddingInline: 8,
-                        }}
-                        onClick={() => void selectHistoryJob(item.id)}
-                      >
-                        <Flex vertical gap={4} style={{ width: '100%' }}>
-                          <Flex align="center" justify="space-between" gap={8}>
-                            <Typography.Text strong ellipsis style={{ maxWidth: 180 }}>
-                              {firstFileName(item)}
-                            </Typography.Text>
-                            <Tag color={item.status === 'completed' ? 'green' : item.status === 'failed' ? 'red' : 'blue'}>
-                              {itemMeta.label}
-                            </Tag>
-                          </Flex>
-                          <Typography.Text type="secondary" ellipsis>{item.id}</Typography.Text>
-                          <Typography.Text type="secondary">{formatDateTime(item.created_at)}</Typography.Text>
-                        </Flex>
-                      </List.Item>
-                    )
-                  }}
-                />
-              </section>
-
-              <section style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 18 }}>
-                <Flex vertical gap={14}>
-                  <Flex align="center" justify="space-between" gap={12}>
-                    <Typography.Title level={5} style={{ margin: 0 }}>任务状态</Typography.Title>
-                    <Button
-                      size="small"
-                      icon={<ReloadOutlined />}
-                      disabled={!job}
-                      loading={refreshing}
-                      onClick={() => job && void refreshJob(job.id)}
-                    >
-                      刷新
-                    </Button>
-                  </Flex>
-                  <Progress percent={meta.percent} status={meta.status} />
-                  <Row gutter={[12, 12]}>
-                    <Col span={12}>
-                      <Statistic title="状态" value={meta.label} />
-                    </Col>
-                    <Col span={12}>
-                      <Statistic title="队列位置" value={job?.queue_position ?? '-'} />
-                    </Col>
-                  </Row>
-                  {job?.message && <Alert type={job.status === 'failed' ? 'error' : 'info'} showIcon message={job.message} />}
-                  {job?.files.length ? (
-                    <List
-                      size="small"
-                      dataSource={job.files}
-                      renderItem={(item) => (
-                        <List.Item>
-                          <Space direction="vertical" size={0}>
-                            <Typography.Text strong>{item.filename}</Typography.Text>
-                            <Typography.Text type="secondary">{item.raw_path}</Typography.Text>
-                          </Space>
-                        </List.Item>
-                      )}
-                    />
-                  ) : null}
-                </Flex>
-              </section>
-
-              <section style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 18 }}>
-                <Typography.Title level={5} style={{ marginTop: 0 }}>日志</Typography.Title>
-                <Flex align="center" justify="space-between" wrap="wrap" gap={8}>
-                  <Typography.Text type="secondary">progress.json 进度事件</Typography.Text>
-                  {job?.progress?.current_step && <Tag color="blue">{job.progress.current_step}</Tag>}
-                </Flex>
-                <List
-                  size="small"
-                  dataSource={progressEvents(job)}
-                  locale={{ emptyText: '暂无进度事件' }}
-                  style={{ marginTop: 8, marginBottom: 16 }}
-                  renderItem={(item) => (
-                    <List.Item>
-                      <Flex vertical gap={4} style={{ width: '100%' }}>
-                        <Space wrap>
-                          <Tag color={progressEventColor(item.event)}>{item.event}</Tag>
-                          <Typography.Text strong={item.summary === '任务完成'}>{item.step}</Typography.Text>
-                        </Space>
-                        <Typography.Text type="secondary">{item.summary}</Typography.Text>
-                      </Flex>
-                    </List.Item>
-                  )}
-                />
-                <Divider style={{ margin: '12px 0' }} />
-                <Typography.Text type="secondary">OpenCode 原始日志</Typography.Text>
-                <pre style={{ margin: 0, minHeight: 160, maxHeight: 320, overflow: 'auto', whiteSpace: 'pre-wrap', color: token.colorTextSecondary }}>
-                  {job?.log_tail.length ? job.log_tail.join('\n') : '暂无日志'}
-                </pre>
-              </section>
-            </Flex>
-          </Col>
-
-          <Col xs={24} lg={16} xl={17}>
-            {result ? (
-              <ResultView
-                result={result}
-                selectedTerm={selectedTerm}
-                entryFilter={entryFilter}
-                filteredSearchIntents={filteredSearchIntents}
-                filteredEntries={filteredEntries}
-                onSelectTerm={setSelectedTerm}
-                onEntryFilterChange={setEntryFilter}
-              />
-            ) : (
-              <section style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, minHeight: 520, display: 'grid', placeItems: 'center' }}>
-                <Empty description="上传文件后生成 AI Wiki" />
-              </section>
-            )}
-          </Col>
+        <Progress percent={meta.percent} status={meta.status} />
+        <Row gutter={[12, 12]}>
+          <Col span={12}><Statistic title="状态" value={meta.label} /></Col>
+          <Col span={12}><Statistic title="队列位置" value={job?.queue_position ?? '-'} /></Col>
         </Row>
-      </main>
-    </div>
+        {job?.message && <Alert type={job.status === 'failed' ? 'error' : 'info'} showIcon message={job.message} />}
+        {job?.files.length ? (
+          <List
+            size="small"
+            dataSource={job.files}
+            renderItem={(item) => (
+              <List.Item>
+                <Space direction="vertical" size={0}>
+                  <Typography.Text strong>{item.filename}</Typography.Text>
+                  <Typography.Text type="secondary">{item.raw_path}</Typography.Text>
+                </Space>
+              </List.Item>
+            )}
+          />
+        ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未选择任务" />}
+        <Divider style={{ margin: '8px 0' }} />
+        <Flex align="center" justify="space-between" wrap="wrap" gap={8}>
+          <Typography.Text type="secondary">progress.json 进度事件</Typography.Text>
+          {job?.progress?.current_step && <Tag color="blue">{job.progress.current_step}</Tag>}
+        </Flex>
+        <List
+          size="small"
+          dataSource={progressEvents(job)}
+          locale={{ emptyText: '暂无进度事件' }}
+          style={{ maxHeight: 260, overflow: 'auto' }}
+          renderItem={(item) => (
+            <List.Item>
+              <Flex vertical gap={4} style={{ width: '100%' }}>
+                <Space wrap>
+                  <Tag color={progressEventColor(item.event)}>{item.event}</Tag>
+                  <Typography.Text strong={item.summary === '任务完成'}>{item.step}</Typography.Text>
+                </Space>
+                <Typography.Text type="secondary">{item.summary}</Typography.Text>
+              </Flex>
+            </List.Item>
+          )}
+        />
+        <Divider style={{ margin: '8px 0' }} />
+        <Typography.Text type="secondary">OpenCode 原始日志</Typography.Text>
+        <pre style={{ margin: 0, minHeight: 160, maxHeight: 320, overflow: 'auto', whiteSpace: 'pre-wrap', color: token.colorTextSecondary }}>
+          {job?.log_tail.length ? job.log_tail.join('\n') : '暂无日志'}
+        </pre>
+      </Flex>
+    </aside>
   )
 }
 
@@ -410,7 +484,8 @@ interface ResultViewProps {
   entryFilter: string
   filteredSearchIntents: Array<Record<string, unknown>>
   filteredEntries: AiwikiWikiEntry[]
-  onSelectTerm: (term: string | null) => void
+  onOpenKeywordModal: () => void
+  onClearTerm: () => void
   onEntryFilterChange: (value: string) => void
 }
 
@@ -420,7 +495,8 @@ function ResultView({
   entryFilter,
   filteredSearchIntents,
   filteredEntries,
-  onSelectTerm,
+  onOpenKeywordModal,
+  onClearTerm,
   onEntryFilterChange,
 }: ResultViewProps) {
   const { token } = theme.useToken()
@@ -432,30 +508,24 @@ function ResultView({
   }
 
   return (
-    <Flex vertical gap={18}>
+    <Flex vertical gap={16}>
       <section id="materials" style={sectionStyle}>
+        <Flex align="center" justify="space-between" wrap="wrap" gap={12}>
+          <Typography.Title level={3} style={{ margin: 0 }}>AI Wiki 资产</Typography.Title>
+          <Space wrap>
+            {selectedTerm && <Tag closable onClose={onClearTerm}>筛选：{selectedTerm}</Tag>}
+            <Button icon={<FilterOutlined />} onClick={onOpenKeywordModal}>
+              关键词高亮筛选
+            </Button>
+          </Space>
+        </Flex>
+        <Divider />
         <Row gutter={[16, 16]}>
           <Col xs={12} md={6}><Statistic title="素材" value={Number(result.summary.material_count ?? 0)} /></Col>
           <Col xs={12} md={6}><Statistic title="词条" value={Number(result.summary.wiki_entry_count ?? 0)} /></Col>
           <Col xs={12} md={6}><Statistic title="关键词" value={Number(result.summary.search_intent_count ?? 0)} /></Col>
           <Col xs={12} md={6}><Statistic title="选题" value={Number(result.summary.topic_count ?? 0)} /></Col>
         </Row>
-        <Divider />
-        <Space wrap>
-          <Button size="small" type={selectedTerm ? 'default' : 'primary'} onClick={() => onSelectTerm(null)}>
-            全部关键词
-          </Button>
-          {result.highlight_terms.slice(0, 36).map((term) => (
-            <Tag
-              key={term}
-              color={selectedTerm === term ? 'blue' : 'default'}
-              style={{ cursor: 'pointer', padding: '4px 8px' }}
-              onClick={() => onSelectTerm(selectedTerm === term ? null : term)}
-            >
-              {term}
-            </Tag>
-          ))}
-        </Space>
       </section>
 
       <AssetSection id="hotspot" title="热点" items={result.hotspots} selectedTerm={selectedTerm} />
@@ -559,6 +629,60 @@ function ResultView({
         />
       </section>
     </Flex>
+  )
+}
+
+function KeywordModal({
+  open,
+  terms,
+  selectedTerm,
+  keywordSearch,
+  onSearch,
+  onSelect,
+  onClear,
+  onClose,
+}: {
+  open: boolean
+  terms: string[]
+  selectedTerm: string | null
+  keywordSearch: string
+  onSearch: (value: string) => void
+  onSelect: (term: string) => void
+  onClear: () => void
+  onClose: () => void
+}) {
+  return (
+    <Modal
+      title="关键词高亮筛选"
+      open={open}
+      onCancel={onClose}
+      footer={[
+        <Button key="clear" onClick={onClear}>清除筛选</Button>,
+        <Button key="close" type="primary" onClick={onClose}>完成</Button>,
+      ]}
+    >
+      <Input
+        allowClear
+        prefix={<SearchOutlined />}
+        placeholder="搜索关键词"
+        value={keywordSearch}
+        onChange={(event) => onSearch(event.target.value)}
+        style={{ marginBottom: 16 }}
+      />
+      <Space wrap>
+        {terms.map((term) => (
+          <Tag
+            key={term}
+            color={selectedTerm === term ? 'blue' : 'default'}
+            style={{ cursor: 'pointer', padding: '4px 8px' }}
+            onClick={() => onSelect(term)}
+          >
+            {term}
+          </Tag>
+        ))}
+      </Space>
+      {!terms.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无匹配关键词" />}
+    </Modal>
   )
 }
 

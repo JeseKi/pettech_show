@@ -10,7 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from src.server.aiwiki import service
+from src.server.aiwiki import service as aiwiki_service
+from src.server.auth import service as auth_service
+from src.server.auth.models import User
+from src.server.auth.schemas import UserRole
 from src.server.config import global_config
 
 
@@ -104,16 +107,36 @@ write_progress("completed", "任务完成")
         f"{sys.executable} {fake_opencode}",
     )
     monkeypatch.setattr(global_config, "aiwiki_task_timeout_seconds", 30)
-    service.reset_queue_for_tests()
+    aiwiki_service.reset_queue_for_tests()
     yield
-    service.reset_queue_for_tests()
+    aiwiki_service.reset_queue_for_tests()
 
 
-def _wait_for_terminal_status(test_client, job_id: str) -> dict:
+def _create_user(test_db_session, username: str, role: UserRole = UserRole.USER) -> User:
+    user = User(
+        username=username,
+        email=f"{username}@example.com",
+        role=role,
+    )
+    user.set_password("Password123")
+    test_db_session.add(user)
+    test_db_session.commit()
+    test_db_session.refresh(user)
+    return user
+
+
+def _auth_headers(user: User) -> dict[str, str]:
+    token = auth_service.create_access_token(
+        {"sub": user.username, "tv": user.token_version}
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _wait_for_terminal_status(test_client, job_id: str, headers: dict[str, str]) -> dict:
     deadline = time.time() + 5
     latest = None
     while time.time() < deadline:
-        resp = test_client.get(f"/api/aiwiki/jobs/{job_id}")
+        resp = test_client.get(f"/api/aiwiki/jobs/{job_id}", headers=headers)
         assert resp.status_code == HTTPStatus.OK, resp.text
         latest = resp.json()
         if latest["status"] in {"completed", "failed"}:
@@ -122,9 +145,19 @@ def _wait_for_terminal_status(test_client, job_id: str) -> dict:
     raise AssertionError(f"job did not finish: {latest}")
 
 
-def test_create_aiwiki_job_and_get_result(test_client, fake_aiwiki_runtime):
+def test_aiwiki_requires_authentication(test_client, fake_aiwiki_runtime):
+    resp = test_client.get("/api/aiwiki/jobs")
+    assert resp.status_code == HTTPStatus.UNAUTHORIZED
+
+
+def test_create_aiwiki_job_and_get_result(
+    test_client, test_db_session, fake_aiwiki_runtime
+):
+    user = _create_user(test_db_session, "aiwiki_owner")
+    headers = _auth_headers(user)
     create_resp = test_client.post(
         "/api/aiwiki/jobs",
+        headers=headers,
         files=[
             (
                 "files",
@@ -135,17 +168,21 @@ def test_create_aiwiki_job_and_get_result(test_client, fake_aiwiki_runtime):
     assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
     created = create_resp.json()
     assert created["status"] == "queued"
+    assert created["owner_user_id"] == user.id
+    assert created["owner_username"] == user.username
     assert created["files"][0]["raw_path"].endswith("_1_sample.md")
     assert created["progress"]["status"] == "queued"
     assert created["progress"]["current_step"] == "任务排队中"
 
-    finished = _wait_for_terminal_status(test_client, created["id"])
+    finished = _wait_for_terminal_status(test_client, created["id"], headers)
     assert finished["status"] == "completed", finished
     assert finished["progress"]["status"] == "completed"
     assert finished["progress"]["events"][-1]["summary"] == "任务完成"
     assert any("fake_opencode.py" in line for line in finished["log_tail"])
 
-    result_resp = test_client.get(f"/api/aiwiki/jobs/{created['id']}/result")
+    result_resp = test_client.get(
+        f"/api/aiwiki/jobs/{created['id']}/result", headers=headers
+    )
     assert result_resp.status_code == HTTPStatus.OK, result_resp.text
     result = result_resp.json()
     assert result["summary"]["material_count"] == 1
@@ -154,7 +191,7 @@ def test_create_aiwiki_job_and_get_result(test_client, fake_aiwiki_runtime):
     assert result["topics"][0]["title"] == "公众号运营者如何用 AI Wiki 沉淀选题资产？"
     assert "AI Wiki 怎么做" in result["highlight_terms"]
 
-    list_resp = test_client.get("/api/aiwiki/jobs")
+    list_resp = test_client.get("/api/aiwiki/jobs", headers=headers)
     assert list_resp.status_code == HTTPStatus.OK, list_resp.text
     listed = list_resp.json()
     assert listed["total"] >= 1
@@ -162,9 +199,43 @@ def test_create_aiwiki_job_and_get_result(test_client, fake_aiwiki_runtime):
     assert listed["items"][0]["status"] == "completed"
 
 
-def test_rejects_unsupported_upload_type(test_client, fake_aiwiki_runtime):
+def test_aiwiki_jobs_are_scoped_to_owner_and_visible_to_admin(
+    test_client, test_db_session, fake_aiwiki_runtime
+):
+    owner = _create_user(test_db_session, "aiwiki_owner_scope")
+    other = _create_user(test_db_session, "aiwiki_other_scope")
+    admin = _create_user(test_db_session, "aiwiki_admin_scope", UserRole.ADMIN)
+    owner_headers = _auth_headers(owner)
+    other_headers = _auth_headers(other)
+    admin_headers = _auth_headers(admin)
+
+    create_resp = test_client.post(
+        "/api/aiwiki/jobs",
+        headers=owner_headers,
+        files=[("files", ("sample.md", b"# Sample", "text/markdown"))],
+    )
+    assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
+    job_id = create_resp.json()["id"]
+
+    other_detail = test_client.get(f"/api/aiwiki/jobs/{job_id}", headers=other_headers)
+    assert other_detail.status_code == HTTPStatus.NOT_FOUND
+
+    other_list = test_client.get("/api/aiwiki/jobs", headers=other_headers)
+    assert other_list.status_code == HTTPStatus.OK, other_list.text
+    assert all(item["id"] != job_id for item in other_list.json()["items"])
+
+    admin_detail = test_client.get(f"/api/aiwiki/jobs/{job_id}", headers=admin_headers)
+    assert admin_detail.status_code == HTTPStatus.OK, admin_detail.text
+    assert admin_detail.json()["owner_username"] == owner.username
+
+
+def test_rejects_unsupported_upload_type(
+    test_client, test_db_session, fake_aiwiki_runtime
+):
+    headers = _auth_headers(_create_user(test_db_session, "aiwiki_upload_type"))
     resp = test_client.post(
         "/api/aiwiki/jobs",
+        headers=headers,
         files=[("files", ("sample.pdf", b"%PDF", "application/pdf"))],
     )
 
@@ -172,15 +243,17 @@ def test_rejects_unsupported_upload_type(test_client, fake_aiwiki_runtime):
     assert "不支持" in resp.json()["detail"]
 
 
-def test_result_requires_completed_job(test_client, fake_aiwiki_runtime):
+def test_result_requires_completed_job(test_client, test_db_session, fake_aiwiki_runtime):
+    headers = _auth_headers(_create_user(test_db_session, "aiwiki_pending"))
     create_resp = test_client.post(
         "/api/aiwiki/jobs",
+        headers=headers,
         files=[("files", ("sample.txt", b"plain text", "text/plain"))],
     )
     assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
 
     job_id = create_resp.json()["id"]
-    first_result = test_client.get(f"/api/aiwiki/jobs/{job_id}/result")
+    first_result = test_client.get(f"/api/aiwiki/jobs/{job_id}/result", headers=headers)
     if first_result.status_code == HTTPStatus.CONFLICT:
         assert first_result.json()["detail"] == "任务尚未完成"
     else:
@@ -189,6 +262,7 @@ def test_result_requires_completed_job(test_client, fake_aiwiki_runtime):
 
 def test_job_fails_without_progress_completion_marker(
     test_client,
+    test_db_session,
     fake_aiwiki_runtime,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -224,15 +298,17 @@ root = Path.cwd()
         "aiwiki_opencode_command",
         f"{sys.executable} {fake_incomplete_opencode}",
     )
-    service.reset_queue_for_tests()
+    aiwiki_service.reset_queue_for_tests()
+    headers = _auth_headers(_create_user(test_db_session, "aiwiki_failed"))
 
     create_resp = test_client.post(
         "/api/aiwiki/jobs",
+        headers=headers,
         files=[("files", ("sample.md", b"# Sample", "text/markdown"))],
     )
     assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
 
-    finished = _wait_for_terminal_status(test_client, create_resp.json()["id"])
+    finished = _wait_for_terminal_status(test_client, create_resp.json()["id"], headers)
     assert finished["status"] == "failed"
     assert "progress.json" in finished["message"]
 
@@ -240,6 +316,7 @@ root = Path.cwd()
 def test_sync_job_records_backfills_existing_manifest(
     test_db_session, fake_aiwiki_runtime, tmp_path: Path
 ):
+    admin = _create_user(test_db_session, "admin", UserRole.ADMIN)
     job_id = "20260619090000_aaaaaaaa_aiwiki"
     workdir = tmp_path / "data" / job_id
     workdir.mkdir(parents=True)
@@ -279,7 +356,10 @@ def test_sync_job_records_backfills_existing_manifest(
         json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
     )
 
-    service.sync_job_records(test_db_session)
+    aiwiki_service.sync_job_records(test_db_session)
 
-    listed = service.list_jobs(test_db_session, limit=10, offset=0)
+    listed = aiwiki_service.list_jobs(
+        test_db_session, limit=10, offset=0, current_user=admin
+    )
     assert any(item.id == job_id for item in listed.items)
+    assert all(item.owner_user_id == admin.id for item in listed.items)

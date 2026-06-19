@@ -227,6 +227,16 @@ export default function MainLayout() {
     setCollapsed(!collapsed)
   }
 
+  const pageTitle = selectedKeys[0] === 'admin'
+    ? '管理员面板'
+    : selectedKeys[0] === 'dashboard'
+      ? '工作台'
+      : selectedKeys[0] === 'example'
+        ? '示例模块'
+        : selectedKeys[0] === 'aiwiki'
+          ? 'AI Wiki'
+          : ''
+
   return (
     <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>
       <Sider
@@ -461,20 +471,14 @@ export default function MainLayout() {
             level={5}
             style={{ margin: 0, flex: 1, marginLeft: isMobile ? 8 : 0 }}
           >
-            {selectedKeys[0] === 'admin'
-              ? '管理员面板'
-              : selectedKeys[0] === 'dashboard'
-                ? '工作台'
-                : selectedKeys[0] === 'example'
-                  ? '示例模块'
-                  : ''}
+            {pageTitle}
           </Typography.Title>
         </Header>
         <Content style={{ padding: '24px 16px 48px' }}>
           <div
             style={{
               margin: '0 auto',
-              maxWidth: 1120,
+              maxWidth: selectedKeys[0] === 'aiwiki' ? 1600 : 1120,
               width: '100%',
             }}
           >

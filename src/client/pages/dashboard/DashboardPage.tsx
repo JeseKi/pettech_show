@@ -1,16 +1,33 @@
-import { Flex, Typography } from 'antd'
-import { DashboardOutlined } from '@ant-design/icons'
+import { Button, Card, Col, Flex, Row, Typography } from 'antd'
+import { FileSearchOutlined, RightOutlined } from '@ant-design/icons'
+import { Link } from 'react-router-dom'
 
 export default function DashboardPage() {
   return (
-    <Flex vertical gap={16}>
+    <Flex vertical gap={20}>
       <Typography.Title level={2} style={{ margin: 0 }}>
-        <DashboardOutlined /> 欢迎使用 Fullstack Template
+        工作台
       </Typography.Title>
-      <Typography.Paragraph type="secondary">
-        这是一个全栈模板项目，前端使用 React + Ant Design，后端使用 FastAPI。
-        请从左侧菜单选择功能模块。
-      </Typography.Paragraph>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={12} xl={8}>
+          <Card
+            title={(
+              <Flex align="center" gap={8}>
+                <FileSearchOutlined />
+                <span>AI Wiki</span>
+              </Flex>
+            )}
+            extra={<Button type="link" icon={<RightOutlined />} iconPosition="end"><Link to="/aiwiki">进入</Link></Button>}
+          >
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+              上传 DOCX、Markdown 或 TXT，生成热点、痛点、解决方案、关键词池、选题和可跳转的内容资产。
+            </Typography.Paragraph>
+            <Button type="primary" icon={<FileSearchOutlined />}>
+              <Link to="/aiwiki">创建 AI Wiki</Link>
+            </Button>
+          </Card>
+        </Col>
+      </Row>
     </Flex>
   )
 }

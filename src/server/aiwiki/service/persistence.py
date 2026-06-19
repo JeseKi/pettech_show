@@ -106,6 +106,7 @@ def build_session_factory(db: Session) -> sessionmaker[Session]:
 def manifest_db_payload(workdir: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": manifest.get("id") or workdir.name,
+        "owner_user_id": manifest.get("owner_user_id"),
         "status": manifest.get("status") or "queued",
         "message": manifest.get("message"),
         "workdir": manifest.get("workdir") or workdir.as_posix(),

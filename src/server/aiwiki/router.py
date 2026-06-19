@@ -8,6 +8,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
+from src.server.auth.dependencies import get_current_user
+from src.server.auth.models import User
 from src.server.database import get_db
 from . import service
 from .schemas import AiwikiResultOut, JobListOut, JobOut
@@ -24,8 +26,9 @@ router = APIRouter(prefix="/api/aiwiki", tags=["AI Wiki"])
 async def create_aiwiki_job(
     files: Annotated[list[UploadFile], File(description="支持 .docx、.md、.txt")],
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    return await service.create_job(db, files)
+    return await service.create_job(db, files, current_user)
 
 
 @router.get(
@@ -37,8 +40,9 @@ async def list_aiwiki_jobs(
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     offset: Annotated[int, Query(ge=0)] = 0,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    return service.list_jobs(db, limit=limit, offset=offset)
+    return service.list_jobs(db, limit=limit, offset=offset, current_user=current_user)
 
 
 @router.get(
@@ -49,8 +53,9 @@ async def list_aiwiki_jobs(
 async def get_aiwiki_job(
     job_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    return service.get_job(db, job_id)
+    return service.get_job(db, job_id, current_user)
 
 
 @router.get(
@@ -61,5 +66,6 @@ async def get_aiwiki_job(
 async def get_aiwiki_result(
     job_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    return service.get_result(db, job_id)
+    return service.get_result(db, job_id, current_user)
