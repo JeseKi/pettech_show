@@ -11,15 +11,29 @@ from pathlib import Path
 
 from src.server.config import global_config
 
-from .constants import SKILL_SOURCES
+from .constants import SKILL_NAMES
 from .logs import append_log
 from .progress import progress_marked_complete
 
 
+def _skill_source_root() -> Path:
+    configured_root = global_config.project_root / ".agents" / "skills"
+    if all((configured_root / skill_name).exists() for skill_name in SKILL_NAMES):
+        return configured_root
+
+    bundled_root = Path(__file__).resolve().parents[4] / ".agents" / "skills"
+    if all((bundled_root / skill_name).exists() for skill_name in SKILL_NAMES):
+        return bundled_root
+
+    return configured_root
+
+
 def prepare_skills(workdir: Path) -> None:
     target_root = workdir / ".agents" / "skills"
+    source_root = _skill_source_root()
     target_root.mkdir(parents=True, exist_ok=True)
-    for source in SKILL_SOURCES:
+    for skill_name in SKILL_NAMES:
+        source = source_root / skill_name
         if not source.exists():
             raise RuntimeError(f"Skill 不存在：{source}")
         target = target_root / source.name

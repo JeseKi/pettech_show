@@ -1,0 +1,4 @@
+interface:
+  display_name: "Raw Materializer"
+  short_description: "把新增 raw Markdown 转成 material JSON"
+  default_prompt: "Use $wechat-raw-materializer to convert newly added raw Markdown files into structured material JSON."

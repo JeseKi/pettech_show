@@ -1,0 +1,4 @@
+interface:
+  display_name: "WeChat Topic Wiki"
+  short_description: "Maintain reusable topic assets"
+  default_prompt: "Use $wechat-topic-wiki to update the topic wiki for this article."
