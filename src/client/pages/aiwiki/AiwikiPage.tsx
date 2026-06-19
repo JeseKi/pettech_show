@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { App, Alert, Badge, Button, Col, Divider, Empty, Flex, List, Progress, Row, Segmented, Space, Statistic, Table, Tag, Typography, Upload, theme } from 'antd'
 import type { UploadFile, UploadProps } from 'antd'
@@ -103,7 +103,7 @@ export default function AiwikiPage() {
     },
   }
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
     try {
       const list = await listAiwikiJobs({ limit: 30, offset: 0 })
@@ -113,9 +113,9 @@ export default function AiwikiPage() {
     } finally {
       setHistoryLoading(false)
     }
-  }
+  }, [])
 
-  const refreshJob = async (jobId: string, silent = false) => {
+  const refreshJob = useCallback(async (jobId: string, silent = false) => {
     if (!silent) setRefreshing(true)
     try {
       const latest = await getAiwikiJob(jobId)
@@ -136,9 +136,9 @@ export default function AiwikiPage() {
     } finally {
       if (!silent) setRefreshing(false)
     }
-  }
+  }, [loadHistory, message])
 
-  const selectHistoryJob = async (jobId: string) => {
+  const selectHistoryJob = useCallback(async (jobId: string) => {
     setRefreshing(true)
     setError(null)
     setResult(null)
@@ -155,11 +155,11 @@ export default function AiwikiPage() {
     } finally {
       setRefreshing(false)
     }
-  }
+  }, [message])
 
   useEffect(() => {
     void loadHistory()
-  }, [])
+  }, [loadHistory])
 
   useEffect(() => {
     if (!job?.id || !ACTIVE_STATUSES.has(job.status)) return
@@ -167,7 +167,7 @@ export default function AiwikiPage() {
       void refreshJob(job.id, true)
     }, 2000)
     return () => window.clearInterval(timer)
-  }, [job?.id, job?.status])
+  }, [job?.id, job?.status, refreshJob])
 
   const handleSubmit = async () => {
     if (!files.length) {
