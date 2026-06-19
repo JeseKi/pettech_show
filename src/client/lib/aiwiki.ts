@@ -73,8 +73,28 @@ export interface AiwikiWikiEntry {
   type: string
   title: string
   frontmatter: Record<string, unknown>
+  body_markdown: string
+  excerpt: string
+  created: string | null
+  updated: string | null
   sections: Array<{ title: string; content: string }>
   references: string[]
+  reference_links: AiwikiWikiReference[]
+}
+
+export interface AiwikiWikiReference {
+  slug: string
+  title: string
+  path: string | null
+  type: string | null
+}
+
+export interface AiwikiWikiHome {
+  path: string
+  title: string
+  body_markdown: string
+  references: string[]
+  headings: Array<{ id: string; title: string; level?: number }>
 }
 
 export interface AiwikiResult {
@@ -86,6 +106,7 @@ export interface AiwikiResult {
   solutions: Array<Record<string, unknown>>
   topics: Array<Record<string, unknown>>
   search_intents: Array<Record<string, unknown>>
+  wiki_home: AiwikiWikiHome | null
   wiki_entries: AiwikiWikiEntry[]
   highlight_terms: string[]
   navigation: Array<{ key: string; label: string; count: number }>

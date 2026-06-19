@@ -64,14 +64,34 @@ class MaterialOut(BaseModel):
     summary: dict[str, Any] = Field(default_factory=dict)
 
 
+class WikiReferenceOut(BaseModel):
+    slug: str
+    title: str
+    path: str | None = None
+    type: str | None = None
+
+
+class WikiHomeOut(BaseModel):
+    path: str
+    title: str
+    body_markdown: str
+    references: list[str] = Field(default_factory=list)
+    headings: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class WikiEntryOut(BaseModel):
     path: str
     slug: str
     type: str
     title: str
     frontmatter: dict[str, Any] = Field(default_factory=dict)
+    body_markdown: str = ""
+    excerpt: str = ""
+    created: str | None = None
+    updated: str | None = None
     sections: list[dict[str, str]] = Field(default_factory=list)
     references: list[str] = Field(default_factory=list)
+    reference_links: list[WikiReferenceOut] = Field(default_factory=list)
 
 
 class AiwikiResultOut(BaseModel):
@@ -83,6 +103,7 @@ class AiwikiResultOut(BaseModel):
     solutions: list[dict[str, Any]] = Field(default_factory=list)
     topics: list[dict[str, Any]] = Field(default_factory=list)
     search_intents: list[dict[str, Any]] = Field(default_factory=list)
+    wiki_home: WikiHomeOut | None = None
     wiki_entries: list[WikiEntryOut] = Field(default_factory=list)
     highlight_terms: list[str] = Field(default_factory=list)
     navigation: list[dict[str, Any]] = Field(default_factory=list)

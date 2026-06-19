@@ -85,13 +85,25 @@ material = {
 (material_dir / f"{date}_1_sample.json").write_text(json.dumps(material, ensure_ascii=False), encoding="utf-8")
 events.append({"event": "completed", "step": "material", "summary": "已生成 1 份生文材料"})
 write_progress("running", "正在生成 wiki")
-(wiki_root / "index.md").write_text("# WeChat Topic Wiki\\n", encoding="utf-8")
+(wiki_root / "index.md").write_text(
+    "# WeChat Topic Wiki\\n\\n"
+    "> 更新时间：2026-06-19\\n"
+    "> 素材来源：raw/260619/ → material/260619/\\n\\n"
+    "## 活跃热点\\n\\n"
+    "| 热点 | 状态 |\\n"
+    "| --- | --- |\\n"
+    "| [[hotspots/ai-content-pipeline\\\\|AI 内容流水线]] | active |\\n\\n"
+    "## 选题（按状态分类）\\n\\n"
+    "### 💡 待写作 (idea)\\n\\n"
+    "- [[topics/ai-wiki-topic-assets|公众号运营者如何用 AI Wiki 沉淀选题资产？]]\\n",
+    encoding="utf-8",
+)
 (wiki_root / "hotspots" / "ai-content-pipeline.md").write_text(
-    "---\\ntitle: AI 内容流水线\\ntype: hotspot\\nstatus: active\\ntags: [ai-wiki]\\n---\\n\\n## 发生了什么\\n\\nAI 内容流水线进入实用阶段。\\n",
+    "---\\ntitle: AI 内容流水线\\ntype: hotspot\\nstatus: active\\ncreated: 2026-06-19\\nupdated: 2026-06-19\\ntags: [ai-wiki]\\n---\\n\\n## 发生了什么\\n\\nAI 内容流水线进入实用阶段。\\n",
     encoding="utf-8",
 )
 (wiki_root / "topics" / "ai-wiki-topic-assets.md").write_text(
-    "---\\ntitle: 公众号运营者如何用 AI Wiki 沉淀选题资产？\\ntype: topic\\nstatus: idea\\ntags: [ai-wiki]\\n---\\n\\n## 核心判断\\n\\n用 [[hotspots/ai-content-pipeline]] 承接自动化内容生产。\\n",
+    "---\\ntitle: 公众号运营者如何用 AI Wiki 沉淀选题资产？\\ntype: topic\\nstatus: idea\\ncreated: 2026-06-19\\nupdated: 2026-06-19\\ntags: [ai-wiki]\\n---\\n\\n## 核心判断\\n\\n用 [[hotspots/ai-content-pipeline]] 承接自动化内容生产。\\n",
     encoding="utf-8",
 )
 events.append({"event": "completed", "step": "wiki", "summary": "已生成 wiki 索引和词条"})
@@ -190,6 +202,25 @@ def test_create_aiwiki_job_and_get_result(
     assert result["search_intents"][0]["关键词"] == "AI Wiki 怎么做"
     assert result["topics"][0]["title"] == "公众号运营者如何用 AI Wiki 沉淀选题资产？"
     assert "AI Wiki 怎么做" in result["highlight_terms"]
+    assert result["wiki_home"]["title"] == "WeChat Topic Wiki"
+    assert result["wiki_home"]["path"] == "wiki/index.md"
+    assert "素材来源" not in result["wiki_home"]["body_markdown"]
+    assert "选题（按状态分类）" not in result["wiki_home"]["body_markdown"]
+    assert "## 选题" in result["wiki_home"]["body_markdown"]
+    assert "待写作 (idea)" not in result["wiki_home"]["body_markdown"]
+    assert "hotspots/ai-content-pipeline" in result["wiki_home"]["references"]
+    assert "wiki/index.md" not in {entry["path"] for entry in result["wiki_entries"]}
+    hotspot = next(
+        entry for entry in result["wiki_entries"] if entry["slug"] == "hotspots/ai-content-pipeline"
+    )
+    assert hotspot["created"] == "2026-06-19"
+    assert hotspot["updated"] == "2026-06-19"
+    assert hotspot["body_markdown"].startswith("## 发生了什么")
+    assert hotspot["excerpt"] == "AI 内容流水线进入实用阶段。"
+    topic = next(
+        entry for entry in result["wiki_entries"] if entry["slug"] == "topics/ai-wiki-topic-assets"
+    )
+    assert topic["reference_links"][0]["title"] == "AI 内容流水线"
 
     list_resp = test_client.get("/api/aiwiki/jobs", headers=headers)
     assert list_resp.status_code == HTTPStatus.OK, list_resp.text

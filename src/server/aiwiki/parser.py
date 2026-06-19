@@ -9,14 +9,22 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from .schemas import AiwikiResultOut, MaterialOut, WikiEntryOut
+from .schemas import (
+    AiwikiResultOut,
+    MaterialOut,
+    WikiEntryOut,
+    WikiHomeOut,
+    WikiReferenceOut,
+)
 
 WIKILINK_PATTERN = re.compile(r"\[\[([^\]]+)\]\]")
 
 
 def parse_aiwiki_result(job_id: str, workdir: Path) -> AiwikiResultOut:
     materials = _parse_materials(workdir)
+    wiki_home = _parse_wiki_home(workdir)
     wiki_entries = _parse_wiki_entries(workdir)
+    _attach_reference_links(wiki_entries)
     search_intents = _collect_search_intents(materials, wiki_entries)
 
     return AiwikiResultOut(
@@ -30,6 +38,7 @@ def parse_aiwiki_result(job_id: str, workdir: Path) -> AiwikiResultOut:
         solutions=_collect_named_assets(materials, wiki_entries, "solution", "solutions"),
         topics=_collect_topics(materials, wiki_entries),
         search_intents=search_intents,
+        wiki_home=wiki_home,
         wiki_entries=wiki_entries,
         highlight_terms=_collect_highlight_terms(materials, wiki_entries),
         navigation=_build_navigation(wiki_entries, materials),
@@ -74,12 +83,13 @@ def _parse_wiki_entries(workdir: Path) -> list[WikiEntryOut]:
 
     entries: list[WikiEntryOut] = []
     for path in sorted(wiki_root.glob("**/*.md"), key=lambda item: item.as_posix()):
-        if path.name.upper() == "SCHEMA.md":
+        if path.name in {"index.md", "log.md"} or path.name.upper() == "SCHEMA.md":
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         frontmatter, body = _split_frontmatter(text)
         title = _string(frontmatter.get("title")) or _first_heading(body) or path.stem
         rel = _relative(path, workdir)
+        sections = _parse_sections(body)
         entries.append(
             WikiEntryOut(
                 path=rel,
@@ -87,11 +97,65 @@ def _parse_wiki_entries(workdir: Path) -> list[WikiEntryOut]:
                 type=_entry_type(path, frontmatter, wiki_root),
                 title=title,
                 frontmatter=frontmatter,
-                sections=_parse_sections(body),
-                references=sorted(set(WIKILINK_PATTERN.findall(body))),
+                body_markdown=body,
+                excerpt=_body_excerpt(body, sections),
+                created=_string(frontmatter.get("created")) or None,
+                updated=_string(frontmatter.get("updated")) or None,
+                sections=sections,
+                references=sorted(set(_extract_wikilinks(body))),
             )
         )
     return entries
+
+
+def _parse_wiki_home(workdir: Path) -> WikiHomeOut | None:
+    path = workdir / "wiki" / "index.md"
+    if not path.exists():
+        return None
+
+    text = path.read_text(encoding="utf-8", errors="replace")
+    frontmatter, body = _split_frontmatter(text)
+    body = _clean_wiki_home_body(body)
+    title = _string(frontmatter.get("title")) or _first_heading(body) or "AI Wiki"
+    return WikiHomeOut(
+        path=_relative(path, workdir),
+        title=title,
+        body_markdown=body,
+        references=sorted(set(_extract_wikilinks(body))),
+        headings=_extract_headings(body),
+    )
+
+
+def _attach_reference_links(entries: list[WikiEntryOut]) -> None:
+    by_slug = {entry.slug: entry for entry in entries}
+    for entry in entries:
+        links: list[WikiReferenceOut] = []
+        for slug in entry.references:
+            target = by_slug.get(slug)
+            links.append(
+                WikiReferenceOut(
+                    slug=slug,
+                    title=target.title if target else slug,
+                    path=target.path if target else None,
+                    type=target.type if target else None,
+                )
+            )
+        entry.reference_links = links
+
+
+def _clean_wiki_home_body(body: str) -> str:
+    cleaned_lines: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("> 素材来源"):
+            continue
+        if stripped == "## 选题（按状态分类）":
+            cleaned_lines.append("## 选题")
+            continue
+        if re.match(r"^###\s+.+\((idea|draft|published|archived|done)\)\s*$", stripped):
+            continue
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines).strip() + "\n"
 
 
 def _split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
@@ -125,7 +189,28 @@ def _parse_sections(body: str) -> list[dict[str, str]]:
 
 
 def _render_wikilinks(text: str) -> str:
-    return WIKILINK_PATTERN.sub(lambda match: match.group(1), text)
+    return WIKILINK_PATTERN.sub(lambda match: _wikilink_label(match.group(1)), text)
+
+
+def _extract_wikilinks(text: str) -> list[str]:
+    return [_wikilink_slug(match) for match in WIKILINK_PATTERN.findall(text)]
+
+
+def _wikilink_slug(raw: str) -> str:
+    return _split_wikilink(raw)[0]
+
+
+def _wikilink_label(raw: str) -> str:
+    slug, label = _split_wikilink(raw)
+    return label or slug
+
+
+def _split_wikilink(raw: str) -> tuple[str, str | None]:
+    normalized = raw.replace("\\|", "|")
+    if "|" not in normalized:
+        return normalized.strip(), None
+    slug, label = normalized.split("|", 1)
+    return slug.strip(), label.strip() or None
 
 
 def _parse_simple_frontmatter(raw: str) -> dict[str, Any]:
@@ -330,7 +415,8 @@ def _build_navigation(
     wiki_entries: list[WikiEntryOut], materials: list[MaterialOut]
 ) -> list[dict[str, Any]]:
     groups = [
-        ("materials", "生文材料", len(materials)),
+        ("overview", "概览", 1),
+        ("entries", "词条预览", len(wiki_entries)),
         ("hotspot", "热点", sum(1 for item in wiki_entries if item.type == "hotspot")),
         (
             "pain_point",
@@ -372,6 +458,35 @@ def _section_excerpt(entry: WikiEntryOut) -> str:
         if content:
             return content[:240]
     return ""
+
+
+def _body_excerpt(body: str, sections: list[dict[str, str]]) -> str:
+    for section in sections:
+        content = section.get("content", "").strip()
+        if content:
+            return content[:240]
+    stripped_lines = [
+        _render_wikilinks(line).strip()
+        for line in body.splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    return "\n".join(stripped_lines)[:240]
+
+
+def _extract_headings(body: str) -> list[dict[str, Any]]:
+    headings: list[dict[str, Any]] = []
+    for line in body.splitlines():
+        match = re.match(r"^(#{1,6})\s+(.+)$", line)
+        if not match:
+            continue
+        headings.append(
+            {
+                "id": f"heading-{len(headings) + 1}",
+                "level": len(match.group(1)),
+                "title": match.group(2).strip(),
+            }
+        )
+    return headings
 
 
 def _extract_terms(text: str) -> list[str]:

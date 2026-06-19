@@ -24,6 +24,7 @@ export default function AiwikiPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedTerm, setSelectedTerm] = useState<string | null>(null)
   const [entryFilter, setEntryFilter] = useState<string>('全部')
+  const [activeEntrySlug, setActiveEntrySlug] = useState<string | null>(null)
   const [keywordModalOpen, setKeywordModalOpen] = useState(false)
   const [keywordSearch, setKeywordSearch] = useState('')
 
@@ -88,6 +89,7 @@ export default function AiwikiPage() {
     setError(null)
     setResult(null)
     setSelectedTerm(null)
+    setActiveEntrySlug(null)
     try {
       const latest = await getAiwikiJob(jobId)
       setJob(latest)
@@ -124,6 +126,7 @@ export default function AiwikiPage() {
     setError(null)
     setResult(null)
     setSelectedTerm(null)
+    setActiveEntrySlug(null)
     try {
       const created = await createAiwikiJob(files)
       setJob(created)
@@ -139,17 +142,23 @@ export default function AiwikiPage() {
     }
   }
 
-  const filteredSearchIntents = useMemo(() => {
-    if (!result) return []
-    if (!selectedTerm) return result.search_intents
-    return result.search_intents.filter((item) => JSON.stringify(item).includes(selectedTerm))
-  }, [result, selectedTerm])
+  const entriesBySlug = useMemo(() => {
+    return new Map((result?.wiki_entries ?? []).map((entry) => [entry.slug, entry]))
+  }, [result?.wiki_entries])
+
+  const activeEntry = useMemo(() => {
+    if (!activeEntrySlug) return null
+    return entriesBySlug.get(activeEntrySlug) ?? null
+  }, [activeEntrySlug, entriesBySlug])
 
   const filteredEntries = useMemo(() => {
     if (!result) return []
-    if (entryFilter === '全部') return result.wiki_entries
-    return result.wiki_entries.filter((entry) => entryTypeLabel(entry.type) === entryFilter)
-  }, [entryFilter, result])
+    const entries = entryFilter === '全部'
+      ? result.wiki_entries
+      : result.wiki_entries.filter((entry) => entryTypeLabel(entry.type) === entryFilter)
+    if (!selectedTerm) return entries
+    return entries.filter((entry) => JSON.stringify(entry).includes(selectedTerm))
+  }, [entryFilter, result, selectedTerm])
 
   const filteredTerms = useMemo(() => {
     const terms = result?.highlight_terms ?? []
@@ -176,11 +185,14 @@ export default function AiwikiPage() {
               result={result}
               selectedTerm={selectedTerm}
               entryFilter={entryFilter}
-              filteredSearchIntents={filteredSearchIntents}
               filteredEntries={filteredEntries}
+              entriesBySlug={entriesBySlug}
+              activeEntry={activeEntry}
               onOpenKeywordModal={() => setKeywordModalOpen(true)}
               onClearTerm={() => setSelectedTerm(null)}
               onEntryFilterChange={setEntryFilter}
+              onOpenEntry={setActiveEntrySlug}
+              onCloseEntry={() => setActiveEntrySlug(null)}
             />
           ) : (
             <UploadPanel
@@ -197,6 +209,7 @@ export default function AiwikiPage() {
         <Col xs={24} xl={6}>
           <TaskSidebar
             job={job}
+            result={result}
             meta={meta}
             refreshing={refreshing}
             onRefresh={() => job && void refreshJob(job.id)}

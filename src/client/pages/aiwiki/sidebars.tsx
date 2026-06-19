@@ -1,6 +1,6 @@
 import { Alert, Button, Col, Divider, Empty, Flex, List, Progress, Row, Space, Statistic, Tag, Typography, theme } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
-import type { AiwikiJob, AiwikiJobSummary } from '../../lib/aiwiki'
+import type { AiwikiJob, AiwikiJobSummary, AiwikiResult } from '../../lib/aiwiki'
 import { firstFileName, formatDateTime, progressEventColor, progressEvents, statusMeta } from './helpers'
 
 export function HistorySidebar({
@@ -67,16 +67,60 @@ export function HistorySidebar({
 
 export function TaskSidebar({
   job,
+  result,
   meta,
   refreshing,
   onRefresh,
 }: {
   job: AiwikiJob | null
+  result: AiwikiResult | null
   meta: ReturnType<typeof statusMeta>
   refreshing: boolean
   onRefresh: () => void
 }) {
   const { token } = theme.useToken()
+
+  if (job?.status === 'completed' && result) {
+    const directory = [
+      { key: 'overview', label: '概览', count: null as number | null, indent: 0 },
+      ...(result.wiki_home?.headings.map((item) => ({
+        key: item.id,
+        label: item.title,
+        count: null as number | null,
+        indent: Math.max(0, Number(item.level ?? 2) - 1),
+      })) ?? []),
+      { key: 'entries', label: '词条预览', count: result.wiki_entries.length, indent: 0 },
+    ]
+    return (
+      <aside style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 14, height: '100%' }}>
+        <Flex vertical gap={14}>
+          <Typography.Title level={5} style={{ margin: 0 }}>目录</Typography.Title>
+          <List
+            size="small"
+            dataSource={directory}
+            renderItem={(item) => (
+              <List.Item>
+                <a href={`#${item.key}`}>
+                  <Flex align="center" justify="space-between" style={{ width: '100%', paddingLeft: item.indent * 10 }} gap={8}>
+                    <Typography.Text>{item.label}</Typography.Text>
+                    {item.count !== null && <Tag>{item.count}</Tag>}
+                  </Flex>
+                </a>
+              </List.Item>
+            )}
+          />
+          <Divider style={{ margin: '8px 0' }} />
+          <Typography.Title level={5} style={{ margin: 0 }}>素材</Typography.Title>
+          {job.files.length ? (
+            <SourceFileList files={job.files} />
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无素材" />
+          )}
+        </Flex>
+      </aside>
+    )
+  }
+
   return (
     <aside style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 14, height: '100%' }}>
       <Flex vertical gap={14}>
@@ -91,18 +135,7 @@ export function TaskSidebar({
         </Row>
         {job?.message && <Alert type={job.status === 'failed' ? 'error' : 'info'} showIcon message={job.message} />}
         {job?.files.length ? (
-          <List
-            size="small"
-            dataSource={job.files}
-            renderItem={(item) => (
-              <List.Item>
-                <Space direction="vertical" size={0}>
-                  <Typography.Text strong>{item.filename}</Typography.Text>
-                  <Typography.Text type="secondary">{item.raw_path}</Typography.Text>
-                </Space>
-              </List.Item>
-            )}
-          />
+          <SourceFileList files={job.files} />
         ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未选择任务" />}
         <Divider style={{ margin: '8px 0' }} />
         <Flex align="center" justify="space-between" wrap="wrap" gap={8}>
@@ -133,5 +166,23 @@ export function TaskSidebar({
         </pre>
       </Flex>
     </aside>
+  )
+}
+
+function SourceFileList({ files }: { files: AiwikiJob['files'] }) {
+  return (
+    <List
+      size="small"
+      dataSource={files}
+      renderItem={(item) => (
+        <List.Item>
+          <Space direction="vertical" size={0}>
+            <Typography.Text type="secondary">素材</Typography.Text>
+            <Typography.Text strong>{item.filename}</Typography.Text>
+            <Typography.Text type="secondary">{item.raw_path}</Typography.Text>
+          </Space>
+        </List.Item>
+      )}
+    />
   )
 }
