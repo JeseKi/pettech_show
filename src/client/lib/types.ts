@@ -167,8 +167,8 @@ export interface BackupCodesResponse extends MessageResponse {
 
 export interface RegisterPayload {
   username: string
-  email: string
   password: string
+  turnstile_token?: string
 }
 
 export interface VerificationCodePayload {

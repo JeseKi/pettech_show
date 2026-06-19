@@ -13,6 +13,7 @@ import type {
   PasswordChangeConfirmPayload,
   PasswordResetLinkPayload,
   PasswordResetWithTokenPayload,
+  RegisterPayload,
   RegisterWithCodePayload,
   TokenResponse,
   TwoFactorDisablePayload,
@@ -78,7 +79,7 @@ export async function verifyTwoFactorLogin(payload: TwoFactorVerifyPayload): Pro
   return data
 }
 
-export async function register(payload: RegisterWithCodePayload): Promise<UserProfile> {
+export async function register(payload: RegisterPayload): Promise<UserProfile> {
   const { data } = await api.post<UserProfile>('/auth/register', payload)
   return data
 }

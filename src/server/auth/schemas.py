@@ -55,6 +55,12 @@ class UserCreate(BaseModel):
     turnstile_token: str | None = Field(default=None, min_length=1, max_length=2048)
 
 
+class UserRegister(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=8)
+    turnstile_token: str | None = Field(default=None, min_length=1, max_length=2048)
+
+
 class UserUpdate(BaseModel):
     username: Optional[str] = Field(default=None, min_length=3, max_length=50)
     name: Optional[str] = Field(default=None, max_length=100)

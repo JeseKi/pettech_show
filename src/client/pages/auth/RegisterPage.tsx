@@ -12,8 +12,6 @@ import {
 } from 'antd'
 import {
   LockOutlined,
-  MailOutlined,
-  SendOutlined,
   UserAddOutlined,
   UserOutlined,
 } from '@ant-design/icons'
@@ -26,18 +24,16 @@ import { resolveApiErrorMessage } from '../../lib/error'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
-  const { registerWithCode, sendVerificationCode, loading, isAuthenticated } = useAuth()
+  const { register, loading, isAuthenticated } = useAuth()
   const { turnstile } = useRuntimeConfig()
   const { message } = App.useApp()
   const turnstileSiteKey = turnstile.siteKey
   const turnstileEnabled = turnstile.enabled
 
-  const [form] = Form.useForm<{ username: string; email: string; password: string; confirmPassword: string; code: string }>()
+  const [form] = Form.useForm<{ username: string; password: string; confirmPassword: string }>()
   const [submitting, setSubmitting] = useState(false)
-  const [sendingCode, setSendingCode] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const [codeCountdown, setCodeCountdown] = useState(0)
   const [registerTurnstileToken, setRegisterTurnstileToken] = useState<string | null>(null)
 
   useEffect(() => {
@@ -46,41 +42,7 @@ export default function RegisterPage() {
     }
   }, [isAuthenticated, loading, navigate])
 
-  const handleSendCode = async (email: string) => {
-    if (turnstileEnabled && !registerTurnstileToken) {
-      const noTokenError = '请先完成机器人校验'
-      setError(noTokenError)
-      message.error(noTokenError)
-      return
-    }
-    setSendingCode(true)
-    setError(null)
-    try {
-      await sendVerificationCode({ email, turnstile_token: registerTurnstileToken ?? undefined })
-      setCodeCountdown(60)
-      message.success('验证码已发送，请查看您的邮箱')
-    } catch (err) {
-      const text = resolveApiErrorMessage(err, '注册失败，请稍后再试。')
-      setError(text)
-      message.error(text)
-    } finally {
-      setSendingCode(false)
-    }
-  }
-
-  useEffect(() => {
-    if (codeCountdown <= 0) {
-      return
-    }
-
-    const timer = window.setInterval(() => {
-      setCodeCountdown((prev) => (prev <= 1 ? 0 : prev - 1))
-    }, 1000)
-
-    return () => window.clearInterval(timer)
-  }, [codeCountdown])
-
-  const handleSubmit = async (values: { username: string; email: string; password: string; confirmPassword: string; code: string }) => {
+  const handleSubmit = async (values: { username: string; password: string; confirmPassword: string }) => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { confirmPassword: _confirmPassword, ...payload } = values
     if (turnstileEnabled && !registerTurnstileToken) {
@@ -93,12 +55,11 @@ export default function RegisterPage() {
     setError(null)
     setSuccessMessage(null)
     try {
-      await registerWithCode({ ...payload, turnstile_token: registerTurnstileToken ?? undefined })
+      await register({ ...payload, turnstile_token: registerTurnstileToken ?? undefined })
       setSuccessMessage('注册成功，请使用新账号登录。')
       message.success('注册成功')
       navigate('/login', { state: { registerSuccess: true } })
       form.resetFields()
-      setCodeCountdown(0)
     } catch (err) {
       const text = resolveApiErrorMessage(err, '注册失败，请稍后再试。')
       setError(text)
@@ -137,7 +98,7 @@ export default function RegisterPage() {
               创建新账号
             </Typography.Title>
             <Typography.Text type="secondary">
-              需要完成邮箱验证码验证后才能注册。
+              使用用户名和密码创建账号。
             </Typography.Text>
           </div>
           {error && <Alert type="error" showIcon message={error} />}
@@ -164,59 +125,6 @@ export default function RegisterPage() {
                 autoComplete="username"
                 allowClear
               />
-            </Form.Item>
-            <Form.Item
-              label="邮箱"
-              name="email"
-              rules={[
-                { required: true, message: '请输入邮箱地址' },
-                { type: 'email', message: '请输入正确的邮箱格式' },
-              ]}
-            >
-              <Input
-                size="large"
-                prefix={<MailOutlined />}
-                placeholder="请输入邮箱地址"
-                autoComplete="email"
-                allowClear
-              />
-            </Form.Item>
-            <Form.Item label="验证码">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <Form.Item
-                    name="code"
-                    noStyle
-                    rules={[
-                      { required: true, message: '请输入验证码' },
-                      { len: 6, message: '验证码为6位数字' },
-                    ]}
-                  >
-                    <Input
-                      size="large"
-                      style={{ width: '100%' }}
-                      placeholder="请输入验证码"
-                    />
-                  </Form.Item>
-                </div>
-                <Button
-                  size="large"
-                  icon={<SendOutlined />}
-                  onClick={async () => {
-                    try {
-                      const values = await form.validateFields(['email'])
-                      await handleSendCode(values.email)
-                    } catch {
-                      // 表单会自行展示错误信息
-                    }
-                  }}
-                  loading={sendingCode}
-                  disabled={sendingCode || codeCountdown > 0}
-                  style={{ width: 112, flex: '0 0 112px' }}
-                >
-                  {codeCountdown > 0 ? `${codeCountdown}s` : '发送'}
-                </Button>
-              </div>
             </Form.Item>
             <Form.Item
               label="密码"

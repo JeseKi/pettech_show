@@ -10,6 +10,7 @@ import type {
   PasswordChangeConfirmPayload,
   PasswordResetLinkPayload,
   PasswordResetWithTokenPayload,
+  RegisterPayload,
   RegisterWithCodePayload,
   TwoFactorDisablePayload,
   TwoFactorRegenerateBackupCodesPayload,
@@ -28,7 +29,7 @@ export interface AuthContextValue {
   login: (payload: LoginPayload) => Promise<LoginResponse>
   exchangeOAuthTicket: (payload: OAuthTicketExchangePayload) => Promise<LoginResponse>
   verifyTwoFactorLogin: (payload: TwoFactorVerifyPayload) => Promise<UserProfile>
-  register: (payload: RegisterWithCodePayload) => Promise<UserProfile>
+  register: (payload: RegisterPayload) => Promise<UserProfile>
   registerWithCode: (payload: RegisterWithCodePayload) => Promise<UserProfile>
   sendVerificationCode: (payload: VerificationCodePayload) => Promise<{ message: string }>
   sendPasswordResetLink: (payload: PasswordResetLinkPayload) => Promise<{ message: string }>

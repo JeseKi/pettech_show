@@ -16,6 +16,7 @@ import type {
   PasswordChangeConfirmPayload,
   PasswordResetLinkPayload,
   PasswordResetWithTokenPayload,
+  RegisterPayload,
   RegisterWithCodePayload,
   TwoFactorDisablePayload,
   TwoFactorRegenerateBackupCodesPayload,
@@ -106,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return profile
   }, [])
 
-  const register = useCallback(async (payload: RegisterWithCodePayload) => {
+  const register = useCallback(async (payload: RegisterPayload) => {
     const profile = await registerRequest(payload)
     return profile
   }, [])

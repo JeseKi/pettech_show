@@ -9,22 +9,17 @@ from src.server.auth.schemas import UserRole
 
 
 def test_register_and_login_flow(test_client, test_db_session: Session):
-    email = "alice@example.com"
     # 注册
-    resp = test_client.post("/api/auth/send-verification-code", json={"email": email})
-    assert resp.status_code == 200, resp.text
-    code = service.verification_codes[email]["code"]
-
     resp = test_client.post(
-        "/api/auth/register-with-code",
+        "/api/auth/register",
         json={
             "username": "alice",
-            "email": email,
             "password": "Password123",
-            "code": code,
         },
     )
     assert resp.status_code == 201, resp.text
+    assert resp.json()["email"].endswith("@mail.kispace.cc")
+    assert resp.json()["email"] == "alice@mail.kispace.cc"
 
     # 登录
     resp = test_client.post(
@@ -45,6 +40,22 @@ def test_register_and_login_flow(test_client, test_db_session: Session):
         algorithms=[auth_config.jwt_algorithm],
     )
     assert RefreshTokenDAO(test_db_session).get_by_jti(payload["jti"]) is not None
+
+def test_register_generates_unique_internal_email(test_client):
+    first = test_client.post(
+        "/api/auth/register",
+        json={"username": "internal-mail", "password": "Password123"},
+    )
+    assert first.status_code == 201, first.text
+    assert first.json()["email"] == "internal-mail@mail.kispace.cc"
+
+    second = test_client.post(
+        "/api/auth/register",
+        json={"username": "internal_mail", "password": "Password123"},
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["email"].endswith("@mail.kispace.cc")
+    assert second.json()["email"] != first.json()["email"]
 
 def test_login_wrong_password(test_client, init_test_database):
     resp = test_client.post(
