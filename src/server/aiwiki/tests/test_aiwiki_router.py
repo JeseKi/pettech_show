@@ -25,10 +25,14 @@ def fake_aiwiki_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 root = Path.cwd()
 manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+config_path = Path(os.environ["OPENCODE_CONFIG"])
+assert config_path.name == "config.json"
+assert config_path.read_text(encoding="utf-8").strip() == '{"model":"test/model"}'
 date = manifest["raw_date"]
 events = []
 
@@ -112,6 +116,9 @@ write_progress("completed", "任务完成")
 """.strip(),
         encoding="utf-8",
     )
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text('{"model":"test/model"}', encoding="utf-8")
     monkeypatch.setattr(global_config, "project_root", tmp_path)
     monkeypatch.setattr(
         global_config,

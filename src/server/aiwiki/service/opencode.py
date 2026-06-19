@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import shlex
 import shutil
 import subprocess
@@ -16,16 +17,36 @@ from .logs import append_log
 from .progress import progress_marked_complete
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
 def _skill_source_root() -> Path:
     configured_root = global_config.project_root / ".agents" / "skills"
     if all((configured_root / skill_name).exists() for skill_name in SKILL_NAMES):
         return configured_root
 
-    bundled_root = Path(__file__).resolve().parents[4] / ".agents" / "skills"
+    bundled_root = _repo_root() / ".agents" / "skills"
     if all((bundled_root / skill_name).exists() for skill_name in SKILL_NAMES):
         return bundled_root
 
     return configured_root
+
+
+def _opencode_config_source() -> Path | None:
+    config_path = global_config.aiwiki_opencode_config_path.strip()
+    if not config_path:
+        return None
+
+    raw_path = Path(config_path)
+    candidates = [raw_path] if raw_path.is_absolute() else [
+        global_config.project_root / raw_path,
+        _repo_root() / raw_path,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def prepare_skills(workdir: Path) -> None:
@@ -40,6 +61,18 @@ def prepare_skills(workdir: Path) -> None:
         if target.exists():
             shutil.rmtree(target)
         shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
+
+
+def prepare_opencode_config(workdir: Path) -> Path | None:
+    source = _opencode_config_source()
+    if source is None:
+        append_log(workdir, "未找到 OpenCode 配置文件，使用 OpenCode 默认配置。")
+        return None
+
+    target = workdir / "config.json"
+    shutil.copyfile(source, target)
+    append_log(workdir, f"已加载 OpenCode 配置文件：{source}")
+    return target
 
 
 def run_opencode(workdir: Path) -> None:
@@ -65,12 +98,17 @@ def run_opencode(workdir: Path) -> None:
 
     log_path = workdir / "logs" / "opencode.log"
     append_log(workdir, "$ " + " ".join(shlex.quote(arg) for arg in args[:-1]) + " <prompt>")
+    env = os.environ.copy()
+    config_path = workdir / "config.json"
+    if config_path.exists():
+        env["OPENCODE_CONFIG"] = config_path.as_posix()
     with log_path.open("ab") as log_file:
         process = subprocess.Popen(
             args,
             cwd=workdir,
             stdout=log_file,
             stderr=subprocess.STDOUT,
+            env=env,
         )
 
         deadline = datetime.now(timezone.utc).timestamp() + global_config.aiwiki_task_timeout_seconds

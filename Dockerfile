@@ -96,6 +96,7 @@ RUN set -eux; \
 
 COPY src/server/ ./src/server/
 COPY .agents ./.agents
+COPY config ./config
 COPY --from=opencode_cli /usr/local/lib/node_modules/opencode-ai/bin/opencode.exe /usr/local/bin/opencode
 COPY --from=builder /app/dist ./dist
 COPY run.py .

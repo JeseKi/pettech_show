@@ -21,7 +21,7 @@ from ..schemas import AiwikiResultOut, JobListOut, JobOut
 from .constants import ALLOWED_EXTENSIONS
 from .files import convert_to_markdown, safe_filename
 from .logs import append_log
-from .opencode import prepare_skills, run_opencode
+from .opencode import prepare_opencode_config, prepare_skills, run_opencode
 from .persistence import (
     build_session_factory,
     existing_job_workdir,
@@ -210,6 +210,7 @@ def _run_job(
     )
     try:
         prepare_skills(workdir)
+        prepare_opencode_config(workdir)
         run_opencode(workdir)
         if not progress_marked_complete(workdir):
             raise RuntimeError("progress.json 未写入任务完成标记")

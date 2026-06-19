@@ -163,6 +163,11 @@ class GlobalConfig(BaseSettings):
         title="AI Wiki OpenCode 额外参数",
     )
 
+    aiwiki_opencode_config_path: str = Field(
+        default="config/config.json",
+        title="AI Wiki OpenCode 配置文件路径",
+    )
+
     aiwiki_max_concurrent: int = Field(
         default=5,
         ge=1,
