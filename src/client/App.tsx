@@ -13,6 +13,7 @@ import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import OAuthAuthorizePage from './pages/auth/OAuthAuthorizePage'
 import OAuthDeviceAuthorizePage from './pages/auth/OAuthDeviceAuthorizePage'
 import LandingPage from './pages/landing/LandingPage'
+import AiwikiPage from './pages/aiwiki/AiwikiPage'
 import { AuthProvider, RequireAdmin, RequireAuth } from './providers/AuthProvider'
 import { RuntimeConfigProvider } from './providers/RuntimeConfigProvider'
 import ThemeToggle from './components/theme/ThemeToggle'
@@ -24,7 +25,9 @@ export default function App() {
         <AuthProvider>
           <>
             <Routes>
-            <Route path="/" element={<LandingPage />} />
+            <Route path="/" element={<AiwikiPage />} />
+            <Route path="/aiwiki" element={<AiwikiPage />} />
+            <Route path="/landing" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/reset-password/:token" element={<ResetPasswordPage />} />

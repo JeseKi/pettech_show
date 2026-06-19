@@ -143,6 +143,45 @@ class GlobalConfig(BaseSettings):
         title="示例外部 API Base URL",
     )
 
+    aiwiki_opencode_command: str = Field(
+        default="opencode",
+        title="AI Wiki OpenCode 命令",
+    )
+
+    aiwiki_opencode_model: str = Field(
+        default="",
+        title="AI Wiki OpenCode 模型",
+    )
+
+    aiwiki_opencode_agent: str = Field(
+        default="",
+        title="AI Wiki OpenCode Agent",
+    )
+
+    aiwiki_opencode_extra_args: str = Field(
+        default="",
+        title="AI Wiki OpenCode 额外参数",
+    )
+
+    aiwiki_max_concurrent: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        title="AI Wiki 最大并发任务数",
+    )
+
+    aiwiki_task_timeout_seconds: int = Field(
+        default=1800,
+        ge=30,
+        title="AI Wiki 任务超时时间",
+    )
+
+    aiwiki_max_upload_mb: int = Field(
+        default=25,
+        ge=1,
+        title="AI Wiki 单任务最大上传大小",
+    )
+
     model_config = SettingsConfigDict(
         env_file=None, env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )

@@ -22,6 +22,7 @@ import {
   SettingOutlined,
   SafetyOutlined,
   TabletOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
@@ -91,6 +92,9 @@ export default function MainLayout() {
     if (location.pathname === '/example') {
       return ['example']
     }
+    if (location.pathname === '/aiwiki') {
+      return ['aiwiki']
+    }
     if (location.pathname.startsWith('/')) {
       return ['dashboard']
     }
@@ -111,6 +115,11 @@ export default function MainLayout() {
           {
             key: 'example',
             label: <Link to="/example">示例模块</Link>,
+          },
+          {
+            key: 'aiwiki',
+            icon: <FileSearchOutlined />,
+            label: <Link to="/aiwiki">AI Wiki</Link>,
           },
         ],
       },

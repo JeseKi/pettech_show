@@ -82,6 +82,8 @@ python-dotenv==1.0.1
     #   pydantic-settings
 python-jose==3.3.0
     # via -r requirements.in
+python-multipart==0.0.20
+    # via -r requirements.in
 rsa==4.9.1
     # via python-jose
 ruff==0.13.0
