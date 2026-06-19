@@ -222,7 +222,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="py-8 px-4 sm:px-6 lg:px-8 border-t border-[var(--app-border-color)]">
         <div className="max-w-7xl mx-auto text-center text-sm text-[var(--app-text-secondary)]">
-          <p>© 2026 FullStack Template. 开源项目，MIT 许可证。</p>
+          <p>© 2026 新媒体前沿在线试用. 开源项目，MIT 许可证。</p>
         </div>
       </footer>
     </div>

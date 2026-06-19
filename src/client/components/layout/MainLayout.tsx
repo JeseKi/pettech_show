@@ -282,7 +282,7 @@ export default function MainLayout() {
                   className="text-base font-semibold"
                   style={{ color: token.colorTextHeading, whiteSpace: 'nowrap' }}
                 >
-                  Fullstack Template
+                  新媒体前沿在线试用
                 </Link>
               )}
               <Button

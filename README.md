@@ -1,4 +1,4 @@
-# Fullstack Template
+# 新媒体前沿在线试用
 
 基于 FastAPI + React + Vite 的全栈模板，内置认证、管理员用户管理、示例业务模块、SQLite、本地日志、前端打包产物托管，以及一套可直接运行的测试样例。
 
@@ -182,7 +182,7 @@ GOOGLE_SCOPE=openid email profile
 EXAMPLE_EXTERNAL_API_BASE_URL=
 TWO_FACTOR_CHALLENGE_TTL_MINUTES=5
 TWO_FACTOR_SETUP_TTL_MINUTES=10
-TWO_FACTOR_ISSUER_NAME=Fullstack Template
+TWO_FACTOR_ISSUER_NAME=新媒体前沿在线试用
 TWO_FACTOR_ENCRYPTION_KEY=change-me-in-production
 TWO_FACTOR_BACKUP_CODE_COUNT=8
 TWO_FACTOR_MAX_VERIFY_ATTEMPTS=5

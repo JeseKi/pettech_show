@@ -21,7 +21,7 @@ from src.server.logging_config import setup_logging
 if __name__ == "__main__":
     load_dotenv(Path.cwd() / ".env")
     setup_logging()
-    logger.info("Fullstack Template 启动！")
+    logger.info("新媒体前沿在线试用 启动！")
     logger.info(f"当前应用环境：{os.getenv('APP_ENV')}")
 
     uvicorn.run(
