@@ -23,6 +23,7 @@ import {
   SafetyOutlined,
   TabletOutlined,
   FileSearchOutlined,
+  FileTextOutlined,
   TableOutlined,
 } from '@ant-design/icons'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -99,6 +100,9 @@ export default function MainLayout() {
     if (location.pathname === '/seed-matrices') {
       return ['seed-matrices']
     }
+    if (location.pathname === '/daily-writer') {
+      return ['daily-writer']
+    }
     if (location.pathname.startsWith('/')) {
       return ['dashboard']
     }
@@ -129,6 +133,11 @@ export default function MainLayout() {
             key: 'seed-matrices',
             icon: <TableOutlined />,
             label: <Link to="/seed-matrices">选题矩阵</Link>,
+          },
+          {
+            key: 'daily-writer',
+            icon: <FileTextOutlined />,
+            label: <Link to="/daily-writer">生成长文</Link>,
           },
         ],
       },
@@ -246,6 +255,8 @@ export default function MainLayout() {
           ? 'AI Wiki'
           : selectedKeys[0] === 'seed-matrices'
             ? '选题矩阵'
+            : selectedKeys[0] === 'daily-writer'
+              ? '生成长文'
             : ''
 
   return (

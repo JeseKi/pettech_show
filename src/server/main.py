@@ -33,6 +33,7 @@ from src.server.oauth_provider.router import router as oauth_provider_router
 from src.server.providers.router import router as provider_dev_router
 from src.server.aiwiki.router import router as aiwiki_router
 from src.server.seed_matrix.router import router as seed_matrix_router
+from src.server.daily_writer.router import router as daily_writer_router
 
 # --- 配置与常量 ---
 PROJECT_ROOT = Path(global_config.project_root)
@@ -70,6 +71,9 @@ async def lifespan(_: FastAPI):
         from src.server.seed_matrix.service import sync_job_records as sync_seed_matrix_records
 
         sync_seed_matrix_records(db)
+        from src.server.daily_writer.service import sync_job_records as sync_daily_writer_records
+
+        sync_daily_writer_records(db)
     finally:
         db.close()
 
@@ -190,6 +194,7 @@ app.include_router(oauth_provider_router)
 app.include_router(example_router)
 app.include_router(aiwiki_router)
 app.include_router(seed_matrix_router)
+app.include_router(daily_writer_router)
 app.include_router(admin_router)
 app.include_router(scope_management_router)
 if global_config.app_env == "dev":

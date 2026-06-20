@@ -1,5 +1,5 @@
 import { Button, Card, Col, Flex, Row, Typography } from 'antd'
-import { FileSearchOutlined, RightOutlined, TableOutlined } from '@ant-design/icons'
+import { FileSearchOutlined, FileTextOutlined, RightOutlined, TableOutlined } from '@ant-design/icons'
 import { Link } from 'react-router-dom'
 
 export default function DashboardPage() {
@@ -42,6 +42,24 @@ export default function DashboardPage() {
             </Typography.Paragraph>
             <Button type="primary" icon={<TableOutlined />}>
               <Link to="/seed-matrices">生成矩阵</Link>
+            </Button>
+          </Card>
+        </Col>
+        <Col xs={24} md={12} xl={8}>
+          <Card
+            title={(
+              <Flex align="center" gap={8}>
+                <FileTextOutlined />
+                <span>生成长文</span>
+              </Flex>
+            )}
+            extra={<Button type="link" icon={<RightOutlined />} iconPosition="end"><Link to="/daily-writer">进入</Link></Button>}
+          >
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+              从已完成的选题矩阵中选择 seed，结合关联 AI Wiki 的素材资产生成长文和 metadata。
+            </Typography.Paragraph>
+            <Button type="primary" icon={<FileTextOutlined />}>
+              <Link to="/daily-writer">生成长文</Link>
             </Button>
           </Card>
         </Col>

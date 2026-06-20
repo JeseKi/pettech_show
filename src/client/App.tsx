@@ -15,6 +15,7 @@ import OAuthDeviceAuthorizePage from './pages/auth/OAuthDeviceAuthorizePage'
 import LandingPage from './pages/landing/LandingPage'
 import AiwikiPage from './pages/aiwiki'
 import SeedMatrixPage from './pages/seedMatrix'
+import DailyWriterPage from './pages/dailyWriter'
 import { AuthProvider, RequireAdmin, RequireAuth } from './providers/AuthProvider'
 import { RuntimeConfigProvider } from './providers/RuntimeConfigProvider'
 import ThemeToggle from './components/theme/ThemeToggle'
@@ -59,6 +60,7 @@ export default function App() {
               <Route path="/example" element={<ExamplePage />} />
               <Route path="/aiwiki" element={<AiwikiPage />} />
               <Route path="/seed-matrices" element={<SeedMatrixPage />} />
+              <Route path="/daily-writer" element={<DailyWriterPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/profile/security" element={<SecurityPage />} />
               <Route path="/profile/devices" element={<DevicesPage />} />

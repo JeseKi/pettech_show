@@ -154,6 +154,9 @@ def delete_job(db: Session, job_id: str, current_user: User) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="任务正在执行，完成或失败后才能删除",
         )
+    from src.server.daily_writer.service import delete_child_jobs_for_seed_matrix
+
+    delete_child_jobs_for_seed_matrix(db, job.id)
     workdir = Path(job.workdir)
     SeedMatrixJobDAO(db).delete(job)
     shutil.rmtree(workdir, ignore_errors=True)

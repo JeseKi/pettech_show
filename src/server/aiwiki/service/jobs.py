@@ -219,6 +219,9 @@ def _delete_child_seed_matrices(db: Session, source_aiwiki_job_id: str) -> None:
             detail="该 AI Wiki 仍有关联的选题矩阵任务正在执行",
         )
     for child in children:
+        from src.server.daily_writer.service import delete_child_jobs_for_seed_matrix
+
+        delete_child_jobs_for_seed_matrix(db, child.id)
         child_workdir = Path(child.workdir)
         dao.delete(child)
         shutil.rmtree(child_workdir, ignore_errors=True)
