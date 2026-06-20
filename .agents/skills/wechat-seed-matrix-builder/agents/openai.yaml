@@ -1,0 +1,4 @@
+interface:
+  display_name: "WeChat Seed Matrix Builder"
+  short_description: "从 material/wiki 生成公众号批量写作 seed CSV"
+  default_prompt: "Use $wechat-seed-matrix-builder to generate a seed matrix CSV from DailyWriting material and wiki assets."

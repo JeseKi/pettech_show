@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import Response
 from sqlalchemy.orm import Session
 
 from src.server.auth.dependencies import get_current_user
@@ -39,10 +40,17 @@ async def create_aiwiki_job(
 async def list_aiwiki_jobs(
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     offset: Annotated[int, Query(ge=0)] = 0,
+    status: Annotated[str | None, Query(pattern="^(queued|running|completed|failed)$")] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return service.list_jobs(db, limit=limit, offset=offset, current_user=current_user)
+    return service.list_jobs(
+        db,
+        limit=limit,
+        offset=offset,
+        status=status,
+        current_user=current_user,
+    )
 
 
 @router.get(
@@ -69,3 +77,17 @@ async def get_aiwiki_result(
     current_user: User = Depends(get_current_user),
 ):
     return service.get_result(db, job_id, current_user)
+
+
+@router.delete(
+    "/jobs/{job_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="删除 AI Wiki 任务",
+)
+async def delete_aiwiki_job(
+    job_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    service.delete_job(db, job_id, current_user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

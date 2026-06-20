@@ -1,5 +1,5 @@
 import { Button, Card, Col, Flex, Row, Typography } from 'antd'
-import { FileSearchOutlined, RightOutlined } from '@ant-design/icons'
+import { FileSearchOutlined, RightOutlined, TableOutlined } from '@ant-design/icons'
 import { Link } from 'react-router-dom'
 
 export default function DashboardPage() {
@@ -24,6 +24,24 @@ export default function DashboardPage() {
             </Typography.Paragraph>
             <Button type="primary" icon={<FileSearchOutlined />}>
               <Link to="/aiwiki">创建 AI Wiki</Link>
+            </Button>
+          </Card>
+        </Col>
+        <Col xs={24} md={12} xl={8}>
+          <Card
+            title={(
+              <Flex align="center" gap={8}>
+                <TableOutlined />
+                <span>选题矩阵</span>
+              </Flex>
+            )}
+            extra={<Button type="link" icon={<RightOutlined />} iconPosition="end"><Link to="/seed-matrices">进入</Link></Button>}
+          >
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+              从已完成的 AI Wiki 任务中选择素材资产，批量生成选题 seed、账号矩阵和发布规划 CSV。
+            </Typography.Paragraph>
+            <Button type="primary" icon={<TableOutlined />}>
+              <Link to="/seed-matrices">生成矩阵</Link>
             </Button>
           </Card>
         </Col>

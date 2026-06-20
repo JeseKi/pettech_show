@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import shutil
 from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
@@ -112,7 +113,12 @@ async def create_job(db: Session, files: list[UploadFile], current_user: User) -
 
 
 def list_jobs(
-    db: Session, *, limit: int, offset: int, current_user: User
+    db: Session,
+    *,
+    limit: int,
+    offset: int,
+    current_user: User,
+    status: str | None = None,
 ) -> JobListOut:
     normalized_limit = max(1, min(limit, 100))
     normalized_offset = max(0, offset)
@@ -124,11 +130,12 @@ def list_jobs(
             limit=normalized_limit,
             offset=normalized_offset,
             owner_user_id=owner_filter,
+            status=status,
         )
     ]
     return JobListOut(
         items=items,
-        total=dao.count(owner_user_id=owner_filter),
+        total=dao.count(owner_user_id=owner_filter, status=status),
         limit=normalized_limit,
         offset=normalized_offset,
     )
@@ -169,6 +176,43 @@ def get_result(db: Session, job_id: str, current_user: User) -> AiwikiResultOut:
             detail="任务未生成可展示结果",
         )
     return result
+
+
+def delete_job(db: Session, job_id: str, current_user: User) -> None:
+    workdir = existing_job_workdir(job_id, db)
+    dao = AiwikiJobDAO(db)
+    job = dao.get(job_id)
+    if job is None or not _can_access_job(current_user, job.owner_user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    if job.status in {"queued", "running"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="任务正在执行，完成或失败后才能删除",
+        )
+    _delete_child_seed_matrices(db, job_id)
+    dao.delete(job)
+    shutil.rmtree(workdir, ignore_errors=True)
+
+
+def _delete_child_seed_matrices(db: Session, source_aiwiki_job_id: str) -> None:
+    from src.server.seed_matrix.dao import SeedMatrixJobDAO
+
+    dao = SeedMatrixJobDAO(db)
+    children = dao.list(
+        limit=1000,
+        offset=0,
+        source_aiwiki_job_id=source_aiwiki_job_id,
+    )
+    active = [job for job in children if job.status in {"queued", "running"}]
+    if active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该 AI Wiki 仍有关联的选题矩阵任务正在执行",
+        )
+    for child in children:
+        child_workdir = Path(child.workdir)
+        dao.delete(child)
+        shutil.rmtree(child_workdir, ignore_errors=True)
 
 
 def sync_job_records(db: Session) -> None:

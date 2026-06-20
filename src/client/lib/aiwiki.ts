@@ -126,7 +126,7 @@ export async function getAiwikiJob(jobId: string): Promise<AiwikiJob> {
   return data
 }
 
-export async function listAiwikiJobs(params: { limit?: number; offset?: number } = {}): Promise<AiwikiJobList> {
+export async function listAiwikiJobs(params: { limit?: number; offset?: number; status?: AiwikiJobStatus } = {}): Promise<AiwikiJobList> {
   const { data } = await api.get<AiwikiJobList>('/aiwiki/jobs', { params })
   return data
 }
@@ -134,4 +134,8 @@ export async function listAiwikiJobs(params: { limit?: number; offset?: number }
 export async function getAiwikiResult(jobId: string): Promise<AiwikiResult> {
   const { data } = await api.get<AiwikiResult>(`/aiwiki/jobs/${jobId}/result`)
   return data
+}
+
+export async function deleteAiwikiJob(jobId: string): Promise<void> {
+  await api.delete(`/aiwiki/jobs/${jobId}`)
 }

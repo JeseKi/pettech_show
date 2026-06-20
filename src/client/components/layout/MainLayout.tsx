@@ -23,6 +23,7 @@ import {
   SafetyOutlined,
   TabletOutlined,
   FileSearchOutlined,
+  TableOutlined,
 } from '@ant-design/icons'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
@@ -95,6 +96,9 @@ export default function MainLayout() {
     if (location.pathname === '/aiwiki') {
       return ['aiwiki']
     }
+    if (location.pathname === '/seed-matrices') {
+      return ['seed-matrices']
+    }
     if (location.pathname.startsWith('/')) {
       return ['dashboard']
     }
@@ -120,6 +124,11 @@ export default function MainLayout() {
             key: 'aiwiki',
             icon: <FileSearchOutlined />,
             label: <Link to="/aiwiki">AI Wiki</Link>,
+          },
+          {
+            key: 'seed-matrices',
+            icon: <TableOutlined />,
+            label: <Link to="/seed-matrices">选题矩阵</Link>,
           },
         ],
       },
@@ -235,7 +244,9 @@ export default function MainLayout() {
         ? '示例模块'
         : selectedKeys[0] === 'aiwiki'
           ? 'AI Wiki'
-          : ''
+          : selectedKeys[0] === 'seed-matrices'
+            ? '选题矩阵'
+            : ''
 
   return (
     <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -478,7 +489,7 @@ export default function MainLayout() {
           <div
             style={{
               margin: '0 auto',
-              maxWidth: selectedKeys[0] === 'aiwiki' ? 1600 : 1120,
+              maxWidth: ['aiwiki', 'seed-matrices'].includes(selectedKeys[0]) ? 1600 : 1120,
               width: '100%',
             }}
           >

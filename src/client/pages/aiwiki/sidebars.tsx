@@ -1,5 +1,5 @@
-import { Alert, Button, Col, Divider, Empty, Flex, List, Progress, Row, Space, Statistic, Tag, Typography, theme } from 'antd'
-import { ReloadOutlined } from '@ant-design/icons'
+import { Alert, Button, Col, Divider, Empty, Flex, List, Popconfirm, Progress, Row, Space, Statistic, Tag, Typography, theme } from 'antd'
+import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { AiwikiJob, AiwikiJobSummary, AiwikiResult } from '../../lib/aiwiki'
 import { firstFileName, formatDateTime, progressEventColor, progressEvents, statusMeta } from './helpers'
 
@@ -10,6 +10,7 @@ export function HistorySidebar({
   isAdmin,
   onRefresh,
   onSelect,
+  onDelete,
 }: {
   history: AiwikiJobSummary[]
   activeJobId?: string
@@ -17,6 +18,7 @@ export function HistorySidebar({
   isAdmin: boolean
   onRefresh: () => void
   onSelect: (jobId: string) => void
+  onDelete: (jobId: string) => void
 }) {
   const { token } = theme.useToken()
   return (
@@ -49,9 +51,32 @@ export function HistorySidebar({
                   <Typography.Text strong ellipsis style={{ maxWidth: 160 }}>
                     {firstFileName(item)}
                   </Typography.Text>
-                  <Tag color={item.status === 'completed' ? 'green' : item.status === 'failed' ? 'red' : 'blue'}>
-                    {itemMeta.label}
-                  </Tag>
+                  <Space size={4}>
+                    <Tag color={item.status === 'completed' ? 'green' : item.status === 'failed' ? 'red' : 'blue'}>
+                      {itemMeta.label}
+                    </Tag>
+                    <Popconfirm
+                      title="删除任务"
+                      description="会删除该任务记录和生成文件。"
+                      okText="删除"
+                      cancelText="取消"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={(event) => {
+                        event?.stopPropagation()
+                        onDelete(item.id)
+                      }}
+                      onCancel={(event) => event?.stopPropagation()}
+                    >
+                      <Button
+                        size="small"
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        disabled={item.status === 'queued' || item.status === 'running'}
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                    </Popconfirm>
+                  </Space>
                 </Flex>
                 {isAdmin && item.owner_username && <Typography.Text type="secondary">归属：{item.owner_username}</Typography.Text>}
                 <Typography.Text type="secondary" ellipsis>{item.id}</Typography.Text>

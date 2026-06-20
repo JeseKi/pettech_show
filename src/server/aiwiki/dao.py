@@ -28,11 +28,18 @@ class AiwikiJobDAO(BaseDAO):
         )
 
     def list(
-        self, *, limit: int, offset: int, owner_user_id: int | None = None
+        self,
+        *,
+        limit: int,
+        offset: int,
+        owner_user_id: int | None = None,
+        status: str | None = None,
     ) -> list[AiwikiJob]:
         query = self.db_session.query(AiwikiJob)
         if owner_user_id is not None:
             query = query.filter(AiwikiJob.owner_user_id == owner_user_id)
+        if status is not None:
+            query = query.filter(AiwikiJob.status == status)
         return (
             query.order_by(AiwikiJob.created_at.desc(), AiwikiJob.id.desc())
             .offset(offset)
@@ -40,10 +47,12 @@ class AiwikiJobDAO(BaseDAO):
             .all()
         )
 
-    def count(self, *, owner_user_id: int | None = None) -> int:
+    def count(self, *, owner_user_id: int | None = None, status: str | None = None) -> int:
         query = self.db_session.query(AiwikiJob)
         if owner_user_id is not None:
             query = query.filter(AiwikiJob.owner_user_id == owner_user_id)
+        if status is not None:
+            query = query.filter(AiwikiJob.status == status)
         return query.count()
 
     def upsert_from_payload(self, payload: dict[str, Any]) -> AiwikiJob:
@@ -77,6 +86,10 @@ class AiwikiJobDAO(BaseDAO):
         self.db_session.commit()
         self.db_session.refresh(job)
         return job
+
+    def delete(self, job: AiwikiJob) -> None:
+        self.db_session.delete(job)
+        self.db_session.commit()
 
     def apply_payload(self, job: AiwikiJob, payload: dict[str, Any]) -> None:
         if "owner_user_id" in payload:

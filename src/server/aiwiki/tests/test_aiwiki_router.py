@@ -281,6 +281,29 @@ def test_rejects_unsupported_upload_type(
     assert "不支持" in resp.json()["detail"]
 
 
+def test_delete_completed_aiwiki_job(
+    test_client, test_db_session, fake_aiwiki_runtime, tmp_path: Path
+):
+    user = _create_user(test_db_session, "aiwiki_delete")
+    headers = _auth_headers(user)
+    create_resp = test_client.post(
+        "/api/aiwiki/jobs",
+        headers=headers,
+        files=[("files", ("sample.md", b"# Sample", "text/markdown"))],
+    )
+    assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
+    job_id = create_resp.json()["id"]
+    finished = _wait_for_terminal_status(test_client, job_id, headers)
+    assert finished["status"] == "completed"
+
+    delete_resp = test_client.delete(f"/api/aiwiki/jobs/{job_id}", headers=headers)
+    assert delete_resp.status_code == HTTPStatus.NO_CONTENT, delete_resp.text
+    assert not (tmp_path / "data" / job_id).exists()
+
+    detail_resp = test_client.get(f"/api/aiwiki/jobs/{job_id}", headers=headers)
+    assert detail_resp.status_code == HTTPStatus.NOT_FOUND
+
+
 def test_result_requires_completed_job(test_client, test_db_session, fake_aiwiki_runtime):
     headers = _auth_headers(_create_user(test_db_session, "aiwiki_pending"))
     create_resp = test_client.post(

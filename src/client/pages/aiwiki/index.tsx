@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { App, Col, Row, theme } from 'antd'
 import type { UploadFile, UploadProps } from 'antd'
 import { useAuth } from '../../hooks/useAuth'
-import { createAiwikiJob, getAiwikiJob, getAiwikiResult, listAiwikiJobs, type AiwikiJob, type AiwikiJobSummary, type AiwikiResult } from '../../lib/aiwiki'
+import { createAiwikiJob, deleteAiwikiJob, getAiwikiJob, getAiwikiResult, listAiwikiJobs, type AiwikiJob, type AiwikiJobSummary, type AiwikiResult } from '../../lib/aiwiki'
 import { resolveErrorMessage } from '../dashboard/ExamplePage/utils'
 import { ACTIVE_STATUSES, ACCEPTED_TYPES, entryTypeLabel, statusMeta } from './helpers'
 import KeywordModal from './KeywordModal'
@@ -105,6 +105,25 @@ export default function AiwikiPage() {
     }
   }, [message])
 
+  const handleDeleteJob = useCallback(async (jobId: string) => {
+    try {
+      await deleteAiwikiJob(jobId)
+      message.success('任务已删除')
+      setHistory((items) => items.filter((item) => item.id !== jobId))
+      if (job?.id === jobId) {
+        setJob(null)
+        setResult(null)
+        setSelectedTerms([])
+        setActiveEntrySlug(null)
+      }
+      void loadHistory()
+    } catch (err) {
+      const text = resolveErrorMessage(err)
+      setError(text)
+      message.error(text)
+    }
+  }, [job?.id, loadHistory, message])
+
   useEffect(() => {
     void loadHistory()
   }, [loadHistory])
@@ -175,6 +194,7 @@ export default function AiwikiPage() {
             isAdmin={isAdmin}
             onRefresh={loadHistory}
             onSelect={selectHistoryJob}
+            onDelete={handleDeleteJob}
           />
         </Col>
         <Col xs={24} xl={13}>
