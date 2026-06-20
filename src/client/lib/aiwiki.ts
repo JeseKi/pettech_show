@@ -112,9 +112,14 @@ export interface AiwikiResult {
   navigation: Array<{ key: string; label: string; count: number }>
 }
 
-export async function createAiwikiJob(files: File[]): Promise<AiwikiJob> {
+export interface CreateAiwikiJobOptions {
+  generate_search_assets?: boolean
+}
+
+export async function createAiwikiJob(files: File[], options: CreateAiwikiJobOptions = {}): Promise<AiwikiJob> {
   const formData = new FormData()
   files.forEach((file) => formData.append('files', file))
+  formData.append('generate_search_assets', String(options.generate_search_assets ?? true))
   const { data } = await api.post<AiwikiJob>('/aiwiki/jobs', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })

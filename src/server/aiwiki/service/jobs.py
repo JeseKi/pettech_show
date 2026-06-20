@@ -39,7 +39,13 @@ from .queue_state import get_queue
 from .serializers import job_out_from_manifest, job_summary_from_model
 
 
-async def create_job(db: Session, files: list[UploadFile], current_user: User) -> JobOut:
+async def create_job(
+    db: Session,
+    files: list[UploadFile],
+    current_user: User,
+    *,
+    generate_search_assets: bool = True,
+) -> JobOut:
     if not files:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -103,6 +109,9 @@ async def create_job(db: Session, files: list[UploadFile], current_user: User) -
         "workdir": workdir.as_posix(),
         "files": saved_files,
         "raw_date": raw_date,
+        "options": {
+            "generate_search_assets": generate_search_assets,
+        },
     }
     write_progress(workdir, initial_progress())
     write_manifest(workdir, manifest)
@@ -255,7 +264,10 @@ def _run_job(
     try:
         prepare_skills(workdir)
         prepare_opencode_config(workdir)
-        run_opencode(workdir)
+        run_opencode(
+            workdir,
+            generate_search_assets=_generate_search_assets(read_manifest(workdir)),
+        )
         if not progress_marked_complete(workdir):
             raise RuntimeError("progress.json 未写入任务完成标记")
         result = parse_aiwiki_result(job_id, workdir)
@@ -311,6 +323,13 @@ def _recover_interrupted_manifest(
         }
     )
     return recovered
+
+
+def _generate_search_assets(manifest: dict[str, Any]) -> bool:
+    options = manifest.get("options")
+    if not isinstance(options, dict):
+        return True
+    return bool(options.get("generate_search_assets", True))
 
 
 def _is_admin(user: User) -> bool:

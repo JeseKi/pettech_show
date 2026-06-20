@@ -27,6 +27,7 @@ export default function AiwikiPage() {
   const [activeEntrySlug, setActiveEntrySlug] = useState<string | null>(null)
   const [keywordModalOpen, setKeywordModalOpen] = useState(false)
   const [keywordSearch, setKeywordSearch] = useState('')
+  const [generateSearchAssets, setGenerateSearchAssets] = useState(true)
 
   const isAdmin = user?.role === 'admin'
   const meta = statusMeta(job?.status)
@@ -147,7 +148,9 @@ export default function AiwikiPage() {
     setSelectedTerms([])
     setActiveEntrySlug(null)
     try {
-      const created = await createAiwikiJob(files)
+      const created = await createAiwikiJob(files, {
+        generate_search_assets: generateSearchAssets,
+      })
       setJob(created)
       message.success('任务已提交')
       void loadHistory()
@@ -219,6 +222,8 @@ export default function AiwikiPage() {
               submitting={submitting}
               token={token}
               uploadProps={uploadProps}
+              generateSearchAssets={generateSearchAssets}
+              onGenerateSearchAssetsChange={setGenerateSearchAssets}
               onSubmit={handleSubmit}
             />
           )}

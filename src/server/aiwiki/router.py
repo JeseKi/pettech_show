@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from fastapi import Response
 from sqlalchemy.orm import Session
 
@@ -26,10 +26,18 @@ router = APIRouter(prefix="/api/aiwiki", tags=["AI Wiki"])
 )
 async def create_aiwiki_job(
     files: Annotated[list[UploadFile], File(description="支持 .docx、.md、.txt")],
+    generate_search_assets: Annotated[
+        bool, Form(description="是否生成搜索入口和 wiki/search-intents 关键词池")
+    ] = True,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return await service.create_job(db, files, current_user)
+    return await service.create_job(
+        db,
+        files,
+        current_user,
+        generate_search_assets=generate_search_assets,
+    )
 
 
 @router.get(

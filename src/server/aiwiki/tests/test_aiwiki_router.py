@@ -26,10 +26,18 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 root = Path.cwd()
 manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+generate_search_assets = manifest.get("options", {}).get("generate_search_assets", True)
+prompt = sys.argv[-1]
+if generate_search_assets:
+    assert "--strict-search-intents" in prompt
+else:
+    assert "--strict-search-intents" not in prompt
+    assert "不要创建 `wiki/search-intents/`" in prompt
 config_path = Path(os.environ["OPENCODE_CONFIG"])
 assert config_path.name == "config.json"
 assert config_path.read_text(encoding="utf-8").strip() == '{"model":"test/model"}'
@@ -54,7 +62,8 @@ material_dir.mkdir(parents=True, exist_ok=True)
 (wiki_root / "pain-points").mkdir(parents=True, exist_ok=True)
 (wiki_root / "solutions").mkdir(parents=True, exist_ok=True)
 (wiki_root / "topics").mkdir(parents=True, exist_ok=True)
-(wiki_root / "search-intents").mkdir(parents=True, exist_ok=True)
+if generate_search_assets:
+    (wiki_root / "search-intents").mkdir(parents=True, exist_ok=True)
 
 material = {
     "元数据": {
@@ -69,7 +78,14 @@ material = {
     "蹭到的热点": [{"热点": "AI 内容流水线", "说明": "自动化内容生产进入实用阶段。"}],
     "解决方案": [{"方案": "AI Wiki 资产沉淀", "说明": "把素材拆成可复用词条。"}],
     "选题": ["公众号运营者如何用 AI Wiki 沉淀选题资产？"],
-    "搜索入口": [
+    "总结": {
+        "核心痛点": "缺少可复用选题资产",
+        "核心热点": "AI 内容流水线",
+        "核心解决方案": "AI Wiki 资产沉淀",
+    },
+}
+if generate_search_assets:
+    material["搜索入口"] = [
         {
             "意图类型": "教程型",
             "关键词": "AI Wiki 怎么做",
@@ -79,13 +95,7 @@ material = {
             "优先级": "高",
             "来源依据": "由原文的 AI Wiki 主题延伸。",
         }
-    ],
-    "总结": {
-        "核心痛点": "缺少可复用选题资产",
-        "核心热点": "AI 内容流水线",
-        "核心解决方案": "AI Wiki 资产沉淀",
-    },
-}
+    ]
 (material_dir / f"{date}_1_sample.json").write_text(json.dumps(material, ensure_ascii=False), encoding="utf-8")
 events.append({"event": "completed", "step": "material", "summary": "已生成 1 份生文材料"})
 write_progress("running", "正在生成 wiki")
@@ -235,6 +245,44 @@ def test_create_aiwiki_job_and_get_result(
     assert listed["total"] >= 1
     assert listed["items"][0]["id"] == created["id"]
     assert listed["items"][0]["status"] == "completed"
+
+
+def test_create_aiwiki_job_can_skip_search_assets(
+    test_client, test_db_session, fake_aiwiki_runtime
+):
+    user = _create_user(test_db_session, "aiwiki_no_search")
+    headers = _auth_headers(user)
+    create_resp = test_client.post(
+        "/api/aiwiki/jobs",
+        headers=headers,
+        data={"generate_search_assets": "false"},
+        files=[
+            (
+                "files",
+                ("sample.md", b"# Sample\\n\\nAI Wiki source", "text/markdown"),
+            )
+        ],
+    )
+    assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
+    created = create_resp.json()
+
+    finished = _wait_for_terminal_status(test_client, created["id"], headers)
+    assert finished["status"] == "completed", finished
+
+    result_resp = test_client.get(
+        f"/api/aiwiki/jobs/{created['id']}/result", headers=headers
+    )
+    assert result_resp.status_code == HTTPStatus.OK, result_resp.text
+    result = result_resp.json()
+    assert result["summary"]["material_count"] == 1
+    assert result["summary"]["search_intent_count"] == 0
+    assert result["materials"][0]["search_intents"] == []
+    assert result["search_intents"] == []
+    assert not any(
+        entry["path"].startswith("wiki/search-intents/")
+        for entry in result["wiki_entries"]
+    )
+    assert "AI Wiki 怎么做" not in result["highlight_terms"]
 
 
 def test_aiwiki_jobs_are_scoped_to_owner_and_visible_to_admin(

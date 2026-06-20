@@ -1,4 +1,4 @@
-import { Alert, Button, Flex, Typography, Upload } from 'antd'
+import { Alert, Button, Checkbox, Collapse, Flex, Typography, Upload } from 'antd'
 import type { ThemeConfig } from 'antd'
 import type { UploadProps } from 'antd'
 import { CloudUploadOutlined, PlayCircleOutlined } from '@ant-design/icons'
@@ -12,6 +12,8 @@ export default function UploadPanel({
   submitting,
   token,
   uploadProps,
+  generateSearchAssets,
+  onGenerateSearchAssetsChange,
   onSubmit,
 }: {
   error: string | null
@@ -20,6 +22,8 @@ export default function UploadPanel({
   submitting: boolean
   token: NonNullable<ThemeConfig['token']>
   uploadProps: UploadProps
+  generateSearchAssets: boolean
+  onGenerateSearchAssetsChange: (checked: boolean) => void
   onSubmit: () => void
 }) {
   return (
@@ -40,6 +44,24 @@ export default function UploadPanel({
             可一次上传多个文件，系统会统一整理成同一份 AI Wiki 资产。
           </Typography.Paragraph>
         </Upload.Dragger>
+        <Collapse
+          size="small"
+          ghost
+          items={[
+            {
+              key: 'advanced',
+              label: '高级设置',
+              children: (
+                <Checkbox
+                  checked={generateSearchAssets}
+                  onChange={(event) => onGenerateSearchAssetsChange(event.target.checked)}
+                >
+                  生成搜索入口和关键词池
+                </Checkbox>
+              ),
+            },
+          ]}
+        />
         <Button
           type="primary"
           size="large"

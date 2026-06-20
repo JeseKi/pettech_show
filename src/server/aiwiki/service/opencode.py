@@ -75,7 +75,7 @@ def prepare_opencode_config(workdir: Path) -> Path | None:
     return target
 
 
-def run_opencode(workdir: Path) -> None:
+def run_opencode(workdir: Path, *, generate_search_assets: bool = True) -> None:
     command = shlex.split(global_config.aiwiki_opencode_command)
     if not command:
         raise RuntimeError("AIWIKI_OPENCODE_COMMAND 不能为空")
@@ -94,7 +94,7 @@ def run_opencode(workdir: Path) -> None:
         args.extend(["--agent", global_config.aiwiki_opencode_agent])
     if global_config.aiwiki_opencode_extra_args:
         args.extend(shlex.split(global_config.aiwiki_opencode_extra_args))
-    args.append(build_prompt(workdir))
+    args.append(build_prompt(workdir, generate_search_assets=generate_search_assets))
 
     log_path = workdir / "logs" / "opencode.log"
     append_log(workdir, "$ " + " ".join(shlex.quote(arg) for arg in args[:-1]) + " <prompt>")
@@ -143,7 +143,26 @@ def run_opencode(workdir: Path) -> None:
         raise RuntimeError(f"OpenCode 执行失败，退出码 {return_code}")
 
 
-def build_prompt(workdir: Path) -> str:
+def build_prompt(workdir: Path, *, generate_search_assets: bool = True) -> str:
+    if generate_search_assets:
+        search_asset_goal = """1. 使用 $wechat-raw-materializer 将 raw/<date>/*.md 转成 material/<date>/*.json，并生成 `搜索入口`。
+2. 使用 $wechat-topic-wiki 将 material/、raw/ 中的热点、痛点、解决方案、选题、搜索入口沉淀到 wiki/。
+3. 生成或更新 wiki/index.md、wiki/log.md，以及 wiki/search-intents/ 下的关键词池词条。
+4. 完成后运行：
+   python3 .agents/skills/wechat-raw-materializer/scripts/materialize_raw.py validate --strict-search-intents --strict-question-topics
+5. 所有内容生成完以后直接结束，不要等待用户继续输入。"""
+        search_asset_requirements = """- material JSON 必须包含 热点、痛点、解决方案、关键词/搜索入口、选题、总结。
+- 如果 material 包含 搜索入口，必须创建或更新 wiki/search-intents/ 下的关键词池词条。"""
+    else:
+        search_asset_goal = """1. 使用 $wechat-raw-materializer 将 raw/<date>/*.md 转成 material/<date>/*.json，但本次不要生成 `搜索入口` 字段，也不要扩展搜索关键词。
+2. 使用 $wechat-topic-wiki 将 material/、raw/ 中的热点、痛点、解决方案、选题沉淀到 wiki/；本次跳过搜索入口资产。
+3. 生成或更新 wiki/index.md 和 wiki/log.md；不要创建或更新 wiki/search-intents/ 关键词池词条。
+4. 完成后运行：
+   python3 .agents/skills/wechat-raw-materializer/scripts/materialize_raw.py validate --strict-question-topics
+5. 所有内容生成完以后直接结束，不要等待用户继续输入。"""
+        search_asset_requirements = """- material JSON 必须包含 热点、痛点、解决方案、选题、总结；不要生成 `搜索入口` 字段。
+- 不要创建 `wiki/search-intents/`，也不要生成关键词池、搜索入口词条或搜索入口页面。"""
+
     return f"""
 你在一个隔离的 AI Wiki 生成工作目录中工作：{workdir.as_posix()}
 
@@ -158,17 +177,11 @@ def build_prompt(workdir: Path) -> str:
 - 所有 material、wiki、校验都完成后，必须把 `status` 设为 `completed`，`current_step` 设为 `任务完成`，且最后一个事件必须精确为 `{{"event":"completed","step":"all","summary":"任务完成"}}`。
 
 目标：
-1. 使用 $wechat-raw-materializer 将 raw/<date>/*.md 转成 material/<date>/*.json。
-2. 使用 $wechat-topic-wiki 将 material/、raw/ 中的热点、痛点、解决方案、选题、搜索入口沉淀到 wiki/。
-3. 生成或更新 wiki/index.md 和 wiki/log.md。
-4. 完成后运行：
-   python3 .agents/skills/wechat-raw-materializer/scripts/materialize_raw.py validate --strict-search-intents --strict-question-topics
-5. 所有内容生成完以后直接结束，不要等待用户继续输入。
+{search_asset_goal}
 
 要求：
-- material JSON 必须包含 热点、痛点、解决方案、关键词/搜索入口、选题、总结。
+{search_asset_requirements}
 - wiki 不复制全文，只沉淀可复用资产。
 - wiki 相关输出必须落在当前目录的 wiki/ 下，不要写到裸的 topics/、solutions/ 等根目录。
-- 如果 material 包含 搜索入口，必须创建或更新 wiki/search-intents/ 下的关键词池词条。
 - 输出必须落在当前目录的 material/ 和 wiki/ 下。
 """.strip()
