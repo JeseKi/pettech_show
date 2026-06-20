@@ -6,15 +6,24 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-DailyWriterJobStatus = Literal["queued", "running", "completed", "failed"]
+MAX_VARIANT_COUNT = 5
+DailyWriterJobStatus = Literal["queued", "running", "completed", "failed", "partial_failed"]
 
 
 class DailyWriterCreate(BaseModel):
     source_seed_matrix_job_id: str = Field(..., min_length=1, max_length=80)
     seed_id: str = Field(..., min_length=1, max_length=128)
     output_date: str | None = Field(default=None, pattern=r"^\d{6}$")
+    generate_variants: bool = False
+    variant_count: int = 5
+
+    @model_validator(mode="after")
+    def validate_variant_count(self) -> "DailyWriterCreate":
+        if self.generate_variants and not 1 <= self.variant_count <= MAX_VARIANT_COUNT:
+            raise ValueError(f"variant_count 必须在 1 到 {MAX_VARIANT_COUNT} 之间")
+        return self
 
 
 class DailyWriterJobOut(BaseModel):
@@ -79,4 +88,13 @@ class DailyWriterResultOut(BaseModel):
     markdown: str
     metadata: dict[str, Any]
     summary: dict[str, Any] = Field(default_factory=dict)
+    variants: list["DailyWriterVariantOut"] = Field(default_factory=list)
 
+
+class DailyWriterVariantOut(BaseModel):
+    angle: str
+    directory: str
+    markdown_path: str
+    metadata_path: str
+    markdown: str
+    metadata: dict[str, Any]

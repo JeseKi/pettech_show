@@ -22,6 +22,7 @@ from src.server.config import global_config
 from src.server.database import get_database_info, init_database
 from src.server.logging_config import setup_logging
 from src.server.providers.service import sync_external_providers
+from src.server.tmux_cleanup import tmux_cleanup_service
 
 # 路由模块
 from src.server.auth.router import router as auth_router
@@ -77,9 +78,13 @@ async def lifespan(_: FastAPI):
     finally:
         db.close()
 
+    tmux_cleanup_service.start()
     logger.success("应用启动完成。")
-    yield
-    logger.info("应用已关闭。")
+    try:
+        yield
+    finally:
+        tmux_cleanup_service.stop()
+        logger.info("应用已关闭。")
 
 
 # --- 应用实例与中间件 ---

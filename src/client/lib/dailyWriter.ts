@@ -1,11 +1,13 @@
 import api from './api'
 
-export type DailyWriterJobStatus = 'queued' | 'running' | 'completed' | 'failed'
+export type DailyWriterJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'partial_failed'
 
 export interface DailyWriterCreatePayload {
   source_seed_matrix_job_id: string
   seed_id: string
   output_date?: string | null
+  generate_variants?: boolean
+  variant_count?: number
 }
 
 export interface DailyWriterJob {
@@ -70,6 +72,16 @@ export interface DailyWriterResult {
   markdown: string
   metadata: Record<string, unknown>
   summary: Record<string, unknown>
+  variants: DailyWriterVariant[]
+}
+
+export interface DailyWriterVariant {
+  angle: string
+  directory: string
+  markdown_path: string
+  metadata_path: string
+  markdown: string
+  metadata: Record<string, unknown>
 }
 
 export async function createDailyWriterJob(payload: DailyWriterCreatePayload): Promise<DailyWriterJob> {
@@ -109,4 +121,3 @@ export async function downloadDailyWriterResult(jobId: string): Promise<void> {
 export async function deleteDailyWriterJob(jobId: string): Promise<void> {
   await api.delete(`/daily-writer/jobs/${jobId}`)
 }
-

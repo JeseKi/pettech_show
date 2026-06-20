@@ -39,6 +39,7 @@ export function statusMeta(status?: string) {
   if (status === 'queued') return { label: '排队中', percent: 15, status: 'active' as const }
   if (status === 'running') return { label: '生成中', percent: 55, status: 'active' as const }
   if (status === 'completed') return { label: '已完成', percent: 100, status: 'success' as const }
+  if (status === 'partial_failed') return { label: '部分成功', percent: 100, status: 'exception' as const }
   if (status === 'failed') return { label: '失败', percent: 100, status: 'exception' as const }
   return { label: '未选择', percent: 0, status: 'normal' as const }
 }

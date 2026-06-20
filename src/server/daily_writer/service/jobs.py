@@ -28,7 +28,7 @@ from src.server.seed_matrix.parser import parse_seed_matrix_result
 from src.server.seed_matrix.service.permissions import can_access_job as can_access_source
 from src.server.seed_matrix.service.persistence import get_accessible_job as get_seed_matrix_job
 
-from ..dao import DailyWriterJobDAO, parse_json_str_dict
+from ..dao import DailyWriterJobDAO, parse_json_dict, parse_json_str_dict
 from ..models import DailyWriterJob
 from ..parser import parse_daily_writer_result
 from ..queue_state import get_queue
@@ -39,8 +39,8 @@ from ..schemas import (
     DailyWriterResultOut,
 )
 from .artifacts import copy_source_artifacts, prepare_skill
-from .constants import RESULT_ZIP_NAME, SELECTED_SEED_ROW_PATH
-from .opencode import run_opencode
+from .constants import MAX_VARIANT_COUNT, RESULT_ZIP_NAME, SELECTED_SEED_ROW_PATH
+from .opencode import run_opencode, run_variant_opencode
 from .permissions import is_admin
 from .persistence import (
     build_session_factory,
@@ -109,7 +109,12 @@ def create_job(
         json.dumps(row, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    params = {"output_date": payload.output_date or ""}
+    params = {
+        "output_date": payload.output_date or "",
+        "generate_variants": payload.generate_variants,
+        "variant_count": payload.variant_count if payload.generate_variants else 0,
+        "max_variant_count": MAX_VARIANT_COUNT,
+    }
     job = DailyWriterJobDAO(db).create(
         job_id=job_id,
         owner_user_id=current_user.id,
@@ -165,7 +170,7 @@ def get_result(
     db: Session, job_id: str, current_user: User
 ) -> DailyWriterResultOut:
     job = get_accessible_job(db, job_id, current_user)
-    if job.status != "completed":
+    if job.status not in {"completed", "partial_failed"}:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="任务尚未完成")
     try:
         return parse_daily_writer_result(
@@ -220,6 +225,11 @@ def result_zip_file(db: Session, job_id: str, current_user: User) -> Path:
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.write(workdir / result.article_path, arcname="main.md")
         archive.write(workdir / result.metadata_path, arcname="metadata.json")
+        variants_root = Path(result.metadata_path).parent / "variants"
+        if (workdir / variants_root).is_dir():
+            for path in sorted((workdir / variants_root).rglob("*")):
+                if path.is_file():
+                    archive.write(path, arcname=path.relative_to(workdir / variants_root.parent).as_posix())
     return zip_path
 
 
@@ -280,9 +290,10 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
         workdir = Path(job.workdir)
         write_manifest(workdir, job)
         prepare_opencode_config(workdir)
+        params = parse_json_dict(job.params_json)
         run_opencode(
             workdir,
-            parse_json_str_dict(job.params_json),
+            params,
             parse_json_str_dict(job.row_json),
         )
         if not progress_marked_complete(workdir):
@@ -297,6 +308,88 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
             article_path=None,
             metadata_path=None,
         )
+
+        generate_variants = bool(params.get("generate_variants"))
+        variant_count = _coerce_variant_count(params.get("variant_count"))
+        if generate_variants:
+            try:
+                update_job(
+                    session,
+                    job_id,
+                    status="running",
+                    message="OpenCode 正在生成长文变体",
+                    article_path=result.article_path,
+                    metadata_path=result.metadata_path,
+                    summary={
+                        **result.summary,
+                        "variant_requested_count": variant_count,
+                        "variant_failed_count": 0,
+                        "variant_status": "running",
+                    },
+                )
+                write_manifest(workdir, DailyWriterJobDAO(session).get(job_id))
+                write_progress(workdir, initial_progress())
+                run_variant_opencode(
+                    workdir,
+                    article_dir=Path(result.metadata_path).parent.as_posix(),
+                    variant_count=variant_count,
+                )
+                if not progress_marked_complete(workdir):
+                    raise RuntimeError("progress.json 未写入变体任务完成标记")
+                result = parse_daily_writer_result(
+                    job_id=job.id,
+                    source_seed_matrix_job_id=job.source_seed_matrix_job_id,
+                    source_aiwiki_job_id=job.source_aiwiki_job_id,
+                    seed_id=job.seed_id,
+                    workdir=workdir,
+                    article_path=result.article_path,
+                    metadata_path=result.metadata_path,
+                )
+                if len(result.variants) < variant_count:
+                    raise RuntimeError(
+                        f"变体生成数量不足：期望 {variant_count} 篇，实际 {len(result.variants)} 篇"
+                    )
+                result.summary.update(
+                    {
+                        "variant_requested_count": variant_count,
+                        "variant_success_count": len(result.variants),
+                        "variant_failed_count": 0,
+                        "variant_status": "completed",
+                    }
+                )
+            except Exception as variant_exc:
+                logger.exception("Daily writer variant generation failed: {}", job_id)
+                append_log(Path(job.workdir), f"VARIANT ERROR: {variant_exc}")
+                result.summary.update(
+                    {
+                        "variant_requested_count": variant_count,
+                        "variant_success_count": len(result.variants),
+                        "variant_failed_count": max(variant_count - len(result.variants), 1),
+                        "variant_status": "failed",
+                        "variant_error": str(variant_exc),
+                    }
+                )
+                update_job(
+                    session,
+                    job_id,
+                    status="partial_failed",
+                    message=f"长文已生成，变体生成失败：{variant_exc}",
+                    article_path=result.article_path,
+                    metadata_path=result.metadata_path,
+                    summary=result.summary,
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                write_manifest(workdir, DailyWriterJobDAO(session).get(job_id))
+                return
+        else:
+            result.summary.update(
+                {
+                    "variant_requested_count": 0,
+                    "variant_failed_count": 0,
+                    "variant_status": "not_requested",
+                }
+            )
+
         update_job(
             session,
             job_id,
@@ -337,3 +430,11 @@ def _find_seed_row(rows: list[dict[str, str]], seed_id: str) -> dict[str, str]:
         status_code=status.HTTP_404_NOT_FOUND,
         detail=f"选题矩阵中不存在 seed_id：{seed_id}",
     )
+
+
+def _coerce_variant_count(value: object) -> int:
+    try:
+        count = int(str(value or 0))
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(count, MAX_VARIANT_COUNT))

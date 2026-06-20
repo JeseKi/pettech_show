@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .schemas import DailyWriterResultOut
+from .schemas import DailyWriterResultOut, DailyWriterVariantOut
 
 IMAGE_PATTERNS = [
     re.compile(r"!\[[^\]]*]\([^)]*\)"),
@@ -33,6 +33,7 @@ def parse_daily_writer_result(
     markdown = resolved_article.read_text(encoding="utf-8")
     metadata = json.loads(resolved_metadata.read_text(encoding="utf-8"))
     validate_result(markdown, metadata, resolved_article, resolved_metadata)
+    variants = parse_variants(resolved_metadata.parent, workdir)
     article_rel = resolved_article.relative_to(workdir).as_posix()
     metadata_rel = resolved_metadata.relative_to(workdir).as_posix()
     return DailyWriterResultOut(
@@ -44,7 +45,8 @@ def parse_daily_writer_result(
         metadata_path=metadata_rel,
         markdown=markdown,
         metadata=metadata,
-        summary=build_summary(metadata, markdown),
+        summary=build_summary(metadata, markdown, variants),
+        variants=variants,
     )
 
 
@@ -92,11 +94,46 @@ def validate_result(
         raise ValueError("metadata.json article.file 必须是 main.md")
 
 
-def build_summary(metadata: dict[str, Any], markdown: str) -> dict[str, Any]:
+def parse_variants(article_dir: Path, workdir: Path) -> list[DailyWriterVariantOut]:
+    variants_dir = article_dir / "variants"
+    if not variants_dir.is_dir():
+        return []
+
+    variants: list[DailyWriterVariantOut] = []
+    for run_dir in sorted(path for path in variants_dir.iterdir() if path.is_dir()):
+        markdown_path = run_dir / "output" / "others.md"
+        metadata_path = run_dir / "output" / "metadata.json"
+        if not markdown_path.is_file() or not metadata_path.is_file():
+            continue
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        markdown = markdown_path.read_text(encoding="utf-8")
+        angle = _variant_angle(metadata, run_dir)
+        variants.append(
+            DailyWriterVariantOut(
+                angle=angle,
+                directory=run_dir.relative_to(workdir).as_posix(),
+                markdown_path=markdown_path.relative_to(workdir).as_posix(),
+                metadata_path=metadata_path.relative_to(workdir).as_posix(),
+                markdown=markdown,
+                metadata=metadata,
+            )
+        )
+    return variants
+
+
+def build_summary(
+    metadata: dict[str, Any],
+    markdown: str,
+    variants: list[DailyWriterVariantOut] | None = None,
+) -> dict[str, Any]:
     article = metadata.get("article") if isinstance(metadata.get("article"), dict) else {}
     tags = article.get("tags") if isinstance(article, dict) else []
     search_intents = article.get("search_intents") if isinstance(article, dict) else []
     materials_used = article.get("materials_used") if isinstance(article, dict) else []
+    variant_count = len(variants or [])
     return {
         "output_id": metadata.get("output_id") or "",
         "topic": metadata.get("topic") or "",
@@ -106,4 +143,18 @@ def build_summary(metadata: dict[str, Any], markdown: str) -> dict[str, Any]:
         "search_intent_count": len(search_intents) if isinstance(search_intents, list) else 0,
         "material_count": len(materials_used) if isinstance(materials_used, list) else 0,
         "character_count": len(markdown),
+        "variant_success_count": variant_count,
+        "variant_status": "completed" if variant_count else "not_requested",
     }
+
+
+def _variant_angle(metadata: dict[str, Any], run_dir: Path) -> str:
+    label = metadata.get("audience_label")
+    if isinstance(label, str) and label.strip():
+        return label.strip()
+    article = metadata.get("article")
+    if isinstance(article, dict):
+        title = article.get("title")
+        if isinstance(title, str) and title.strip():
+            return title.strip()
+    return run_dir.name

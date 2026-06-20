@@ -65,7 +65,6 @@ def job_summary_from_model(
 
 
 def coerce_status(value: str) -> Any:
-    if value not in {"queued", "running", "completed", "failed"}:
+    if value not in {"queued", "running", "completed", "failed", "partial_failed"}:
         return "failed"
     return value
-

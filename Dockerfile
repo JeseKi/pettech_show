@@ -91,6 +91,9 @@ RUN set -eux; \
             ;; \
     esac; \
     echo "Using mirror mode: $mirror_mode"; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends tmux bash; \
+    rm -rf /var/lib/apt/lists/*; \
     pip install --no-cache-dir --index-url "$pypi_index" uv; \
     uv pip install --no-cache-dir --index-url "$pypi_index" -r requirements.txt --system
 

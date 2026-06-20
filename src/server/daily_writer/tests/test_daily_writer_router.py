@@ -5,6 +5,7 @@ import csv
 import json
 import sys
 import time
+import zipfile
 from datetime import datetime, timezone
 from http import HTTPStatus
 from pathlib import Path
@@ -27,9 +28,63 @@ def fake_daily_writer_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 root = Path.cwd()
+prompt = sys.argv[-1]
+if "wechat-main-variant-batch-rewriter" in prompt:
+    events = []
+
+    def write_progress(status: str, current_step: str) -> None:
+        (root / "progress.json").write_text(
+            json.dumps(
+                {"status": status, "current_step": current_step, "events": events},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+    events.append({"event": "started", "step": "variants", "summary": "开始生成变体"})
+    write_progress("running", "正在生成变体")
+    variants_dir = root / "main" / "260620" / "260620_1" / "variants"
+    variants_dir.mkdir(parents=True, exist_ok=True)
+    for index in range(1, 6):
+        run_dir = variants_dir / f"angle-{index}"
+        output_dir = run_dir / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "others.md").write_text(
+            f"这是第 {index} 篇结构不同的长文变体。\\n\\n它保留同一个痛点和方案，但换了叙事路径。\\n",
+            encoding="utf-8",
+        )
+        (output_dir / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "input_mode": "filesystem",
+                    "output_id": "260620_1",
+                    "audience_label": f"角度 {index}",
+                    "article": {
+                        "role": "variant",
+                        "file": "others.md",
+                        "title": f"长文变体 {index}",
+                        "summary": "结构不同的长文变体。",
+                        "tags": ["产品介绍"],
+                        "search_intents": [],
+                        "based_on_output_id": "260620_1",
+                        "source_main_file": "main/260620/260620_1/main.md",
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    (variants_dir / "manifest.json").write_text(json.dumps({"count": 5}, ensure_ascii=False), encoding="utf-8")
+    (variants_dir / "angle_plan.json").write_text(json.dumps([], ensure_ascii=False), encoding="utf-8")
+    events.append({"event": "completed", "step": "variants", "summary": "已生成 5 篇变体"})
+    events.append({"event": "completed", "step": "all", "summary": "任务完成"})
+    write_progress("completed", "任务完成")
+    raise SystemExit(0)
+
 assert (root / "input" / "selected_seed_row.json").is_file()
 assert (root / "material" / "260620" / "sample.json").is_file()
 assert (root / "raw" / "260620" / "sample.md").is_file()
@@ -97,9 +152,14 @@ write_progress("completed", "任务完成")
         f"{sys.executable} {fake_opencode}",
     )
     monkeypatch.setattr(global_config, "aiwiki_task_timeout_seconds", 30)
-    skill_dir = tmp_path / ".agents" / "skills" / "wechat-daily-writer"
-    skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text("# fake daily writer skill\n", encoding="utf-8")
+    for skill_name in (
+        "wechat-daily-writer",
+        "wechat-main-variant-batch-rewriter",
+        "wechat-main-variant-rewriter",
+    ):
+        skill_dir = tmp_path / ".agents" / "skills" / skill_name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(f"# fake {skill_name} skill\n", encoding="utf-8")
     reset_queue_for_tests()
     yield tmp_path
     reset_queue_for_tests()
@@ -232,7 +292,7 @@ def _wait_for_terminal_status(test_client, job_id: str, headers: dict[str, str])
         resp = test_client.get(f"/api/daily-writer/jobs/{job_id}", headers=headers)
         assert resp.status_code == HTTPStatus.OK, resp.text
         latest = resp.json()
-        if latest["status"] in {"completed", "failed"}:
+        if latest["status"] in {"completed", "failed", "partial_failed"}:
             return latest
         time.sleep(0.05)
     raise AssertionError(f"daily writer job did not finish: {latest}")
@@ -280,6 +340,164 @@ def test_create_daily_writer_job_and_download_result(
     )
     assert delete_resp.status_code == HTTPStatus.NO_CONTENT, delete_resp.text
     assert not (fake_daily_writer_runtime / "data" / created["id"]).exists()
+
+
+def test_create_daily_writer_job_with_variants(
+    test_client, test_db_session, fake_daily_writer_runtime: Path
+):
+    user = _create_user(test_db_session, "daily_writer_variants")
+    _, matrix = _create_source_jobs(test_db_session, fake_daily_writer_runtime, user)
+    headers = _auth_headers(user)
+
+    create_resp = test_client.post(
+        "/api/daily-writer/jobs",
+        headers=headers,
+        json={
+            "source_seed_matrix_job_id": matrix.id,
+            "seed_id": "S001",
+            "generate_variants": True,
+            "variant_count": 5,
+        },
+    )
+    assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
+    finished = _wait_for_terminal_status(test_client, create_resp.json()["id"], headers)
+    assert finished["status"] == "completed", finished
+    assert finished["summary"]["variant_requested_count"] == 5
+    assert finished["summary"]["variant_success_count"] == 5
+    assert finished["summary"]["variant_status"] == "completed"
+
+    result_resp = test_client.get(
+        f"/api/daily-writer/jobs/{create_resp.json()['id']}/result", headers=headers
+    )
+    assert result_resp.status_code == HTTPStatus.OK, result_resp.text
+    result = result_resp.json()
+    assert len(result["variants"]) == 5
+    assert result["variants"][0]["angle"] == "角度 1"
+
+    download_resp = test_client.get(
+        f"/api/daily-writer/jobs/{create_resp.json()['id']}/download", headers=headers
+    )
+    assert download_resp.status_code == HTTPStatus.OK, download_resp.text
+    zip_path = fake_daily_writer_runtime / "download.zip"
+    zip_path.write_bytes(download_resp.content)
+    with zipfile.ZipFile(zip_path) as archive:
+        names = set(archive.namelist())
+    assert "main.md" in names
+    assert "metadata.json" in names
+    assert "variants/angle-1/output/others.md" in names
+
+
+def test_rejects_variant_count_above_api_limit(
+    test_client, test_db_session, fake_daily_writer_runtime: Path
+):
+    user = _create_user(test_db_session, "daily_writer_variant_limit")
+    _, matrix = _create_source_jobs(test_db_session, fake_daily_writer_runtime, user)
+    headers = _auth_headers(user)
+
+    resp = test_client.post(
+        "/api/daily-writer/jobs",
+        headers=headers,
+        json={
+            "source_seed_matrix_job_id": matrix.id,
+            "seed_id": "S001",
+            "generate_variants": True,
+            "variant_count": 6,
+        },
+    )
+
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+def test_variant_failure_marks_job_partial_failed(
+    test_client,
+    test_db_session,
+    fake_daily_writer_runtime: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    failing_opencode = fake_daily_writer_runtime / "failing_variant_opencode.py"
+    failing_opencode.write_text(
+        """
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+root = Path.cwd()
+prompt = sys.argv[-1]
+if "wechat-main-variant-batch-rewriter" in prompt:
+    (root / "progress.json").write_text(
+        json.dumps(
+            {
+                "status": "failed",
+                "current_step": "变体生成失败",
+                "events": [{"event": "failed", "step": "variants", "summary": "模拟失败"}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    raise SystemExit(2)
+
+events = [{"event": "started", "step": "draft", "summary": "开始生成长文"}]
+output = root / "main" / "260620" / "260620_1"
+output.mkdir(parents=True, exist_ok=True)
+(output / "main.md").write_text("长文正文。\\n", encoding="utf-8")
+(output / "metadata.json").write_text(
+    json.dumps(
+        {
+            "input_mode": "filesystem",
+            "output_id": "260620_1",
+            "topic": "AI Wiki",
+            "pain_point": "",
+            "solution": "",
+            "hook": "",
+            "article": {"role": "main", "file": "main.md", "title": "标题", "summary": "", "tags": ["产品介绍"], "search_intents": [], "materials_used": []},
+        },
+        ensure_ascii=False,
+    ),
+    encoding="utf-8",
+)
+events.append({"event": "completed", "step": "all", "summary": "任务完成"})
+(root / "progress.json").write_text(
+    json.dumps({"status": "completed", "current_step": "任务完成", "events": events}, ensure_ascii=False),
+    encoding="utf-8",
+)
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        global_config,
+        "aiwiki_opencode_command",
+        f"{sys.executable} {failing_opencode}",
+    )
+    reset_queue_for_tests()
+    user = _create_user(test_db_session, "daily_writer_variant_failed")
+    _, matrix = _create_source_jobs(test_db_session, fake_daily_writer_runtime, user)
+    headers = _auth_headers(user)
+
+    create_resp = test_client.post(
+        "/api/daily-writer/jobs",
+        headers=headers,
+        json={
+            "source_seed_matrix_job_id": matrix.id,
+            "seed_id": "S001",
+            "generate_variants": True,
+            "variant_count": 5,
+        },
+    )
+    assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
+    finished = _wait_for_terminal_status(test_client, create_resp.json()["id"], headers)
+
+    assert finished["status"] == "partial_failed"
+    assert finished["summary"]["variant_status"] == "failed"
+    assert "变体生成失败" in finished["message"]
+
+    result_resp = test_client.get(
+        f"/api/daily-writer/jobs/{create_resp.json()['id']}/result", headers=headers
+    )
+    assert result_resp.status_code == HTTPStatus.OK, result_resp.text
+    assert result_resp.json()["markdown"] == "长文正文。\n"
 
 
 def test_rejects_missing_seed_id(

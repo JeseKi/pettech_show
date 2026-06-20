@@ -7,15 +7,19 @@ import {
   Empty,
   Flex,
   Input,
+  InputNumber,
   List,
+  Modal,
   Popconfirm,
   Progress,
   Row,
   Space,
+  Switch,
   Statistic,
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   theme,
 } from 'antd'
@@ -25,6 +29,7 @@ import {
   DownloadOutlined,
   FileTextOutlined,
   PlayCircleOutlined,
+  QuestionCircleOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
@@ -52,6 +57,7 @@ import { formatDateTime, progressEventColor, statusMeta } from '../aiwiki/helper
 type MatrixRow = Record<string, string>
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
+const MAX_VARIANT_COUNT = 5
 
 export default function DailyWriterPage() {
   const { token } = theme.useToken()
@@ -70,6 +76,9 @@ export default function DailyWriterPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [generateVariants, setGenerateVariants] = useState(false)
+  const [variantCount, setVariantCount] = useState(MAX_VARIANT_COUNT)
+  const [variantsOpen, setVariantsOpen] = useState(false)
 
   const sectionStyle = {
     background: token.colorBgContainer,
@@ -126,7 +135,7 @@ export default function DailyWriterPage() {
       const job = await getDailyWriterJob(jobId)
       setActiveJob(job)
       setError(null)
-      if (job.status === 'completed') {
+      if (job.status === 'completed' || job.status === 'partial_failed') {
         setResult(await getDailyWriterResult(jobId))
         void loadWriterJobs()
       } else if (job.status === 'failed') {
@@ -186,6 +195,8 @@ export default function DailyWriterPage() {
       const created = await createDailyWriterJob({
         source_seed_matrix_job_id: selectedMatrixId,
         seed_id: selectedSeedId,
+        generate_variants: generateVariants,
+        variant_count: variantCount,
       })
       setActiveJob(created)
       message.success('长文生成任务已提交')
@@ -208,7 +219,7 @@ export default function DailyWriterPage() {
       setActiveJob(job)
       setSelectedMatrixId(job.source_seed_matrix_job_id)
       setSelectedSeedId(job.seed_id)
-      if (job.status === 'completed') {
+      if (job.status === 'completed' || job.status === 'partial_failed') {
         setResult(await getDailyWriterResult(jobId))
       }
     } catch (err) {
@@ -247,8 +258,9 @@ export default function DailyWriterPage() {
   ]
 
   return (
-    <Row gutter={[16, 16]} align="stretch">
-      <Col xs={24} xl={5}>
+    <>
+      <Row gutter={[16, 16]} align="stretch">
+        <Col xs={24} xl={5}>
         <section style={{ ...sectionStyle, height: '100%' }}>
           <Flex align="center" justify="space-between" gap={12} style={{ marginBottom: 12 }}>
             <Typography.Title level={5} style={{ margin: 0 }}>选题矩阵</Typography.Title>
@@ -286,9 +298,9 @@ export default function DailyWriterPage() {
             }}
           />
         </section>
-      </Col>
+        </Col>
 
-      <Col xs={24} xl={13}>
+        <Col xs={24} xl={13}>
         <Flex vertical gap={16}>
           <section style={sectionStyle}>
             <Flex align="center" justify="space-between" wrap="wrap" gap={12}>
@@ -314,6 +326,26 @@ export default function DailyWriterPage() {
                 <Col xs={24} md={8}><Statistic title="预计篇数" value={selectedRow.expected_article_count || '-'} /></Col>
               </Row>
             )}
+            <Flex align="center" wrap="wrap" gap={16} style={{ marginTop: 16 }}>
+              <Space>
+                <Switch checked={generateVariants} onChange={setGenerateVariants} />
+                <Typography.Text>生成变体</Typography.Text>
+              </Space>
+              <Space>
+                <Typography.Text type={!generateVariants ? 'secondary' : undefined}>变体篇数</Typography.Text>
+                <InputNumber
+                  min={1}
+                  max={MAX_VARIANT_COUNT}
+                  value={variantCount}
+                  disabled={!generateVariants}
+                  onChange={(value) => setVariantCount(Number(value || MAX_VARIANT_COUNT))}
+                  style={{ width: 96 }}
+                />
+                <Tooltip title="当前限制五篇，若想要更高上限可以咨询管理员">
+                  <QuestionCircleOutlined style={{ color: token.colorTextTertiary }} />
+                </Tooltip>
+              </Space>
+            </Flex>
           </section>
 
           <section style={sectionStyle}>
@@ -370,9 +402,14 @@ export default function DailyWriterPage() {
                   },
                 ]}
                 tabBarExtraContent={
-                  <Button icon={<DownloadOutlined />} onClick={() => activeJob && void downloadDailyWriterResult(activeJob.id)}>
-                    下载
-                  </Button>
+                  <Space>
+                    <Button disabled={!result.variants.length} onClick={() => setVariantsOpen(true)}>
+                      查看变体
+                    </Button>
+                    <Button icon={<DownloadOutlined />} onClick={() => activeJob && void downloadDailyWriterResult(activeJob.id)}>
+                      下载
+                    </Button>
+                  </Space>
                 }
               />
             ) : (
@@ -380,9 +417,9 @@ export default function DailyWriterPage() {
             )}
           </section>
         </Flex>
-      </Col>
+        </Col>
 
-      <Col xs={24} xl={6}>
+        <Col xs={24} xl={6}>
         <TaskPanel
           activeJob={activeJob}
           writerJobs={writerJobs}
@@ -393,8 +430,75 @@ export default function DailyWriterPage() {
           onSelectJob={(jobId) => void selectWriterJob(jobId)}
           onDeleteJob={(jobId) => void deleteWriterJob(jobId)}
         />
-      </Col>
-    </Row>
+        </Col>
+      </Row>
+
+      <VariantModal
+        open={variantsOpen}
+        variants={result?.variants ?? []}
+        onClose={() => setVariantsOpen(false)}
+      />
+    </>
+  )
+}
+
+function VariantModal({
+  open,
+  variants,
+  onClose,
+}: {
+  open: boolean
+  variants: DailyWriterResult['variants']
+  onClose: () => void
+}) {
+  return (
+    <Modal
+      title="查看变体"
+      open={open}
+      onCancel={onClose}
+      footer={null}
+      width="min(1120px, 92vw)"
+      styles={{ body: { maxHeight: '72vh', overflow: 'auto' } }}
+      destroyOnClose
+    >
+      {variants.length ? (
+        <Tabs
+          items={variants.map((variant, index) => ({
+            key: variant.directory || String(index),
+            label: variant.angle || `变体 ${index + 1}`,
+            children: (
+              <Tabs
+                size="small"
+                items={[
+                  {
+                    key: 'article',
+                    label: '正文',
+                    children: (
+                      <article style={{ maxWidth: 820 }}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {variant.markdown}
+                        </ReactMarkdown>
+                      </article>
+                    ),
+                  },
+                  {
+                    key: 'metadata',
+                    label: 'Metadata',
+                    children: (
+                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', overflow: 'auto' }}>
+                        {JSON.stringify(variant.metadata, null, 2)}
+                      </pre>
+                    ),
+                  },
+                ]}
+              />
+            ),
+          }))}
+        />
+      ) : (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无变体" />
+      )}
+    </Modal>
   )
 }
 
@@ -430,7 +534,13 @@ function TaskPanel({
           </Space>
         </Flex>
         <Progress percent={meta.percent} status={meta.status} />
-        {activeJob?.message && <Alert type={activeJob.status === 'failed' ? 'error' : 'info'} showIcon message={activeJob.message} />}
+        {activeJob?.message && (
+          <Alert
+            type={activeJob.status === 'failed' ? 'error' : activeJob.status === 'partial_failed' ? 'warning' : 'info'}
+            showIcon
+            message={activeJob.message}
+          />
+        )}
         <List
           size="small"
           loading={loading}
@@ -444,7 +554,7 @@ function TaskPanel({
             >
               <Flex vertical gap={4} style={{ width: '100%' }}>
                 <Space wrap>
-                  <Tag color={item.status === 'completed' ? 'green' : item.status === 'failed' ? 'red' : 'blue'}>{statusMeta(item.status).label}</Tag>
+                  <Tag color={item.status === 'completed' ? 'green' : item.status === 'failed' ? 'red' : item.status === 'partial_failed' ? 'gold' : 'blue'}>{statusMeta(item.status).label}</Tag>
                   <Tag icon={<FileTextOutlined />}>{item.seed_id}</Tag>
                   <Popconfirm
                     title="删除任务"
