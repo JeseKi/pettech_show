@@ -1,9 +1,10 @@
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import Lenis from 'lenis'
+import 'lenis/dist/lenis.css'
 import {
   Archive,
   ArrowRight,
-  BookOpenCheck,
   CalendarDays,
   ChevronDown,
   Database,
@@ -23,35 +24,69 @@ import {
 import BrandLogo from '../../components/brand/BrandLogo'
 import { useAuth } from '../../hooks/useAuth'
 import { BRAND_NAME } from '../../lib/brand'
-import SandTableHero from './SandTableHero'
 import './LandingPage.css'
 
 type Course = {
   day: string
   title: string
   question: string
+  description: string
+  duration: string
+  format: string
   deliverable: string
   capability: string
+  accent: string
+  gains: string[]
   goals: string[]
   practice: string[]
   acceptance: string[]
 }
 
-const INTRO_UNLOCK_DELAY_MS = 3900
-const PROGRESSIVE_BLOCK_IDS = ['course-intro', 'production', 'courses', 'deliverables', 'contact', 'footer'] as const
+const PROGRESSIVE_BLOCK_IDS = ['course-intro', 'production', 'deliverables', 'contact', 'footer'] as const
+const INTRO_UNLOCK_DELAY_MS = 1900
+const STACK_INTRO_DELAY_MS = 480
+const STACK_INTRO_DURATION_MS = 1420
+const STACK_PROGRESS_OFFSET = 0.55
+const STACK_PROGRESS_RANGE = 0.15
+const STACK_SMOOTH_SCROLL_LERP = 0.07
 
 type ProgressiveBlockId = (typeof PROGRESSIVE_BLOCK_IDS)[number]
 type RevealStyle = CSSProperties & Record<'--reveal-delay', string>
+type CourseStackSectionStyle = CSSProperties & Record<'--course-scroll-height', string>
+type CourseCardStyle = CSSProperties & Record<
+  | '--course-accent'
+  | '--stack-z'
+  | '--stack-rotate-y'
+  | '--stack-rotate-z'
+  | '--stack-opacity'
+  | '--stack-brightness',
+  string
+>
+type ViewportSize = {
+  width: number
+  height: number
+}
 
 const revealItemStyle = (index: number): RevealStyle => ({
   '--reveal-delay': `${index * 48}ms`,
 })
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
 const isProgressiveBlockId = (id: string | null): id is ProgressiveBlockId => (
   id !== null && PROGRESSIVE_BLOCK_IDS.includes(id as ProgressiveBlockId)
 )
 
 const navGroups = [
+  {
+    label: '7天课程',
+    href: '#courses',
+    items: [
+      ['课程卡片堆叠', '滚动浏览 Day 0 到毕业项目，每张卡展示内容、收获、时间和交付物。'],
+      ['业务诊断', '先明确账号身份、目标用户和首轮内容方向。'],
+      ['分发转化', '设计推荐流、搜索流、私域承接和复盘沉淀。'],
+    ],
+  },
   {
     label: '课程介绍',
     href: '#course-intro',
@@ -68,15 +103,6 @@ const navGroups = [
       ['知识库生成', '把对标素材、课程资料和运营素材沉淀为可检索资产。'],
       ['选题矩阵', '从素材库生成 30 天选题规划，保留痛点、方案和承接动作。'],
       ['主稿与变体', '从一个 seed 生成主内容，再拆成多平台内容包。'],
-    ],
-  },
-  {
-    label: '7天课程',
-    href: '#courses',
-    items: [
-      ['业务诊断', '先明确账号身份、目标用户和首轮内容方向。'],
-      ['内容生产', '把选题写成主稿、短视频旁白、图文卡和标题封面。'],
-      ['分发转化', '设计推荐流、搜索流、私域承接和复盘沉淀。'],
     ],
   },
   {
@@ -176,8 +202,13 @@ const courses: Course[] = [
     day: 'Day 0',
     title: '课程导入',
     question: '内容增长到底要解决哪些运营问题？',
+    description: '把工具学习切回真实运营场景，先理解宠物行业内容增长为什么是前置销售系统。',
+    duration: '约 150 分钟',
+    format: '场景导入 + 链路认知',
     deliverable: '内容增长场景表',
     capability: '增长链路认知',
+    accent: '#b8ff67',
+    gains: ['看清 8 个运营场景', '标出最关注的 3 个问题', '明确最终想拿到的业务产物'],
     goals: [
       '理解宠物行业为什么适合内容增长',
       '明确 8 个运营场景分别解决什么问题',
@@ -198,8 +229,13 @@ const courses: Course[] = [
     day: 'Day 1',
     title: '业务诊断',
     question: '我适合做什么内容？',
+    description: '从身份、目标用户、业务目标、资源优势和内容禁区出发，收束首轮内容方向。',
+    duration: '约 150 分钟',
+    format: '定位判断 + 诊断表实操',
     deliverable: '内容诊断表',
     capability: '账号定位与内容方向',
+    accent: '#6ee7f9',
+    gains: ['账号 / 品牌定位表达', '主目标与副目标', '首轮 30 天内容方向'],
     goals: [
       '明确业务身份、目标用户和业务目标',
       '识别内容资源和内容禁区',
@@ -212,8 +248,13 @@ const courses: Course[] = [
     day: 'Day 2',
     title: '竞品洞察',
     question: '我该对标谁，从哪里切入？',
+    description: '把对标账号和高表现内容变成可复用素材，而不是只停留在看同行、抄标题。',
+    duration: '约 150 分钟',
+    format: '案例拆解 + 素材入库',
     deliverable: '对标内容素材包',
     capability: '对标内容入库 / 知识库生成',
+    accent: '#facc15',
+    gains: ['3-5 个对标账号', '10 条原始素材记录', '高频痛点和搜索入口'],
     goals: [
       '找到 3-5 个对标账号',
       '整理 10 条对标内容原始记录',
@@ -226,8 +267,13 @@ const courses: Course[] = [
     day: 'Day 3',
     title: '选题生成',
     question: '我今天到底发什么？',
+    description: '从素材库、用户问题、搜索入口和业务目标里生成选题矩阵，让每天发什么有依据。',
+    duration: '约 150 分钟',
+    format: '矩阵生成 + Top 选题筛选',
     deliverable: '30 天选题矩阵',
     capability: '选题矩阵生成',
+    accent: '#fb7185',
+    gains: ['30 条以上选题 seed', 'Top 10 优先选题', '痛点、方案和承接动作'],
     goals: [
       '从素材和知识库生成可复用选题 seed',
       '让每个选题都有痛点、解决方案和承接动作',
@@ -244,8 +290,13 @@ const courses: Course[] = [
     day: 'Day 4',
     title: '主内容与脚本',
     question: '选题怎么写成能拍的内容？',
+    description: '把优先选题写成主内容，再改成短视频旁白、小红书图文结构和承接话术。',
+    duration: '约 150 分钟',
+    format: '主稿生成 + 脚本改写',
     deliverable: '主内容与短视频旁白',
     capability: '主内容生成 / 内容变体改写',
+    accent: '#a78bfa',
+    gains: ['3 个优先选题', '至少 1 篇主内容', '短视频旁白与图文结构'],
     goals: [
       '把优先选题写成完整主内容',
       '改出短视频旁白和小红书图文结构',
@@ -258,8 +309,13 @@ const courses: Course[] = [
     day: 'Day 5',
     title: '内容生产',
     question: '脚本怎么变成图文、封面和标题？',
+    description: '把一条主内容拆成标题、图文卡、封面方向、短视频和公众号结构，形成一题多发内容包。',
+    duration: '约 150 分钟',
+    format: '标题封面 + 图文卡实操',
     deliverable: '一题多发内容包',
     capability: '标题 / 图文卡 / 封面方向',
+    accent: '#f97316',
+    gains: ['标题候选池', '一组图文卡', '封面与视频化方向'],
     goals: ['生成标题候选和图文卡内容', '形成封面与正文视觉方向', '把一个选题拆成多平台内容包'],
     practice: ['选择一个主内容目录', '生成标题池和图文卡', '规划封面、短视频成片和公众号长文结构'],
     acceptance: ['标题匹配平台和业务目标', '图文卡可发布', '封面和正文视觉没有文字溢出或误导表达'],
@@ -268,8 +324,13 @@ const courses: Course[] = [
     day: 'Day 6',
     title: '分发获客',
     question: '内容做完，怎么发到不同平台？',
+    description: '理解推荐流、搜索流和私域承接，把内容改写成抖音、视频号、小红书、公众号等平台版本。',
+    duration: '约 150 分钟',
+    format: '平台适配 + 视频化组织',
     deliverable: '多平台变体与视频化产物',
     capability: '多平台分发 / 图文卡视频化',
+    accent: '#38bdf8',
+    gains: ['3-5 个平台版本', '发布节奏规划', '图文卡视频化方案'],
     goals: [
       '理解推荐流、搜索流和私域承接',
       '为不同平台生成内容变体',
@@ -282,8 +343,13 @@ const courses: Course[] = [
     day: 'Day 7',
     title: '转化与资产沉淀',
     question: '内容怎么带来咨询、到店，并沉淀资产？',
+    description: '把内容后的咨询、到店、下单和私域路径设计清楚，再把素材、数据和复盘沉淀为资产。',
+    duration: '约 150 分钟',
+    format: '转化路径 + 复盘资产库',
     deliverable: '转化路径 + 内容资产库',
     capability: '转化路径设计 / 内容资产沉淀',
+    accent: '#2dd4bf',
+    gains: ['转化路径设计表', '轻量内容资产库', '下一轮复盘计划'],
     goals: [
       '设计咨询、到店、下单和私域承接路径',
       '把内容、素材、数据和复盘沉淀为资产',
@@ -296,7 +362,65 @@ const courses: Course[] = [
       '复盘不只看播放量，也看咨询、收藏和搜索入口',
     ],
   },
+  {
+    day: '毕业项目',
+    title: '闭环实战',
+    question: '怎么从 0 到 1 跑完一次内容增长？',
+    description: '把定位、素材、选题、主内容、视觉卡、分发、转化和资产沉淀串成一份完整增长方案。',
+    duration: '结课项目',
+    format: '方案提交 + 复盘计划',
+    deliverable: '完整内容增长方案',
+    capability: '内容增长闭环',
+    accent: '#f0abfc',
+    gains: ['30 天选题矩阵', '3 个优先选题主内容', '分发、转化和下一轮复盘方案'],
+    goals: [
+      '完成一轮从定位到资产沉淀的完整闭环',
+      '明确接下来 30 天选题和 3 个优先生产主题',
+      '知道数据怎么复盘、下一轮内容从哪里来',
+    ],
+    practice: [
+      '提交账号 / 品牌定位与目标用户',
+      '整理素材、选题矩阵、主内容和内容包',
+      '完成多平台分发计划、转化路径和复盘记录',
+    ],
+    acceptance: [
+      '定位、素材、选题和内容产物完整',
+      '分发与转化匹配平台和业务目标',
+      '资产沉淀能指导下一轮内容生产',
+    ],
+  },
 ]
+
+const courseStackSectionStyle: CourseStackSectionStyle = {
+  '--course-scroll-height': `${courses.length * 70}svh`,
+}
+
+const getCourseCardStyle = (
+  index: number,
+  progress: number,
+  course: Course,
+  viewportSize: ViewportSize,
+): CourseCardStyle => {
+  const staggeredProgress = clamp(progress * 1.05 - index * 0.006, 0, 1)
+  const startZ = -2.65 * viewportSize.width - index * 0.03 * viewportSize.width
+  const endZ = 1.4 * viewportSize.width + (courses.length - index - 1) * 0.03 * viewportSize.width
+  const z = startZ + (endZ - startZ) * progress
+  const rotateY = -30 * staggeredProgress
+  const rotateZ = -220 + 340 * staggeredProgress
+  const visibleDepth = Math.abs(z) / Math.max(viewportSize.width, 1)
+  const opacity = clamp(1 - Math.max(visibleDepth - 1.9, 0) * 0.34, 0, 1)
+  const brightness = clamp(1.08 - visibleDepth * 0.08, 0.68, 1.08)
+
+  return {
+    '--course-accent': course.accent,
+    '--stack-z': `${z}px`,
+    '--stack-rotate-y': `${rotateY}deg`,
+    '--stack-rotate-z': `${rotateZ}deg`,
+    '--stack-opacity': `${opacity}`,
+    '--stack-brightness': `${brightness}`,
+    zIndex: courses.length - index,
+  }
+}
 
 export default function LandingPage() {
   const navigate = useNavigate()
@@ -304,9 +428,14 @@ export default function LandingPage() {
   const [activeCourse, setActiveCourse] = useState<Course | null>(null)
   const [introComplete, setIntroComplete] = useState(false)
   const [revealedBlockIds, setRevealedBlockIds] = useState<Set<ProgressiveBlockId>>(() => new Set())
+  const [stackProgress, setStackProgress] = useState(0)
+  const [stackIntroProgress, setStackIntroProgress] = useState(0)
+  const [viewportSize, setViewportSize] = useState<ViewportSize>({ width: 1280, height: 720 })
   const progressiveBlockRefs = useRef(new Map<ProgressiveBlockId, HTMLElement>())
+  const courseStackRef = useRef<HTMLElement | null>(null)
 
-  const featuredCourse = useMemo(() => courses[3], [])
+  const motionProgress = STACK_PROGRESS_OFFSET * stackIntroProgress + stackProgress * STACK_PROGRESS_RANGE
+  const activeStackIndex = clamp(Math.round(stackProgress * (courses.length - 1)), 0, courses.length - 1)
 
   const revealBlock = useCallback((id: ProgressiveBlockId) => {
     setRevealedBlockIds((current) => {
@@ -340,6 +469,141 @@ export default function LandingPage() {
     navigate(isAuthenticated ? '/dashboard' : '/register')
   }
 
+  const openCourse = (course: Course) => {
+    setActiveCourse(course)
+  }
+
+  const handleCourseKeyDown = (event: React.KeyboardEvent<HTMLElement>, course: Course) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+
+    event.preventDefault()
+    openCourse(course)
+  }
+
+  const handleStackSceneClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const cardElements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('.stack-course-card'))
+    const matchingCard = cardElements
+      .map((cardElement) => {
+        const rect = cardElement.getBoundingClientRect()
+        const opacity = Number(window.getComputedStyle(cardElement).opacity)
+        const courseIndex = Number(cardElement.dataset.courseIndex)
+
+        return {
+          courseIndex,
+          isHit:
+            opacity > 0.1
+            && event.clientX >= rect.left
+            && event.clientX <= rect.right
+            && event.clientY >= rect.top
+            && event.clientY <= rect.bottom,
+          zIndex: Number(window.getComputedStyle(cardElement).zIndex) || 0,
+        }
+      })
+      .filter((card) => card.isHit && Number.isInteger(card.courseIndex))
+      .sort((left, right) => right.zIndex - left.zIndex)[0]
+
+    if (!matchingCard) return
+
+    openCourse(courses[matchingCard.courseIndex])
+  }
+
+  useEffect(() => {
+    const updateStackProgress = () => {
+      const section = courseStackRef.current
+      if (!section) return
+
+      const scrollable = Math.max(section.offsetHeight - window.innerHeight, 1)
+      const progress = clamp(-section.getBoundingClientRect().top / scrollable, 0, 1)
+
+      setStackProgress((current) => (Math.abs(current - progress) < 0.0001 ? current : progress))
+    }
+
+    const updateViewportSize = () => {
+      setViewportSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      })
+    }
+
+    let frameId = 0
+    const requestUpdate = () => {
+      window.cancelAnimationFrame(frameId)
+      frameId = window.requestAnimationFrame(updateStackProgress)
+    }
+
+    updateViewportSize()
+    updateStackProgress()
+    window.addEventListener('scroll', requestUpdate, { passive: true })
+    window.addEventListener('resize', updateViewportSize)
+    window.addEventListener('resize', requestUpdate)
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+      window.removeEventListener('scroll', requestUpdate)
+      window.removeEventListener('resize', updateViewportSize)
+      window.removeEventListener('resize', requestUpdate)
+    }
+  }, [])
+
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    if (prefersReducedMotion) {
+      setStackIntroProgress(1)
+      return undefined
+    }
+
+    let frameId = 0
+    const startTime = window.performance.now() + STACK_INTRO_DELAY_MS
+
+    const animateIntro = (timestamp: number) => {
+      const linearProgress = clamp((timestamp - startTime) / STACK_INTRO_DURATION_MS, 0, 1)
+      const easedProgress = 1 - ((1 - linearProgress) ** 3)
+
+      setStackIntroProgress((current) => (
+        Math.abs(current - easedProgress) < 0.0001 ? current : easedProgress
+      ))
+
+      if (linearProgress < 1) {
+        frameId = window.requestAnimationFrame(animateIntro)
+      }
+    }
+
+    frameId = window.requestAnimationFrame(animateIntro)
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!introComplete) return undefined
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    if (prefersReducedMotion) return undefined
+
+    const lenis = new Lenis({
+      lerp: STACK_SMOOTH_SCROLL_LERP,
+      smoothWheel: true,
+      syncTouch: true,
+      prevent: (node) => Boolean(node.closest('.course-modal__panel')),
+    })
+
+    let frameId = 0
+    const animateSmoothScroll = (time: number) => {
+      lenis.raf(time)
+      frameId = window.requestAnimationFrame(animateSmoothScroll)
+    }
+
+    frameId = window.requestAnimationFrame(animateSmoothScroll)
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+      lenis.destroy()
+    }
+  }, [introComplete])
+
   useEffect(() => {
     const previousHtmlOverflowY = document.documentElement.style.overflowY
     const previousBodyOverflowY = document.body.style.overflowY
@@ -364,8 +628,6 @@ export default function LandingPage() {
   }, [])
 
   useEffect(() => {
-    if (!introComplete) return undefined
-
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
     if (prefersReducedMotion || !('IntersectionObserver' in window)) {
@@ -407,12 +669,12 @@ export default function LandingPage() {
       window.cancelAnimationFrame(frameId)
       observer.disconnect()
     }
-  }, [introComplete, revealBlock])
+  }, [revealBlock])
 
   return (
     <main className={`landing-page${introComplete ? ' is-intro-complete' : ''}`}>
       <header className="landing-nav">
-        <a className="landing-brand" href="#hero" aria-label={`${BRAND_NAME}首页`}>
+        <a className="landing-brand" href="#courses" aria-label={`${BRAND_NAME}首页`}>
           <BrandLogo compact size={32} />
           <span>{BRAND_NAME}</span>
         </a>
@@ -446,30 +708,54 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <section className="landing-hero" id="hero">
-        <SandTableHero />
-        <div className="landing-hero__content">
-          <p className="landing-eyebrow">PET CONTENT GROWTH SYSTEM</p>
-          <h1>宠物行业 AI 内容增长与内容生产系统</h1>
-          <p>
-            面向宠物医院、门店、品牌和达人，把对标素材、知识库、选题矩阵、主内容、
-            图文短视频、多平台分发和转化资产串成一套可持续运行的内容生产流程。
-          </p>
-          <div className="landing-hero__actions">
-            <a className="landing-button landing-button--primary" href="#contact">
-              预约咨询
-              <ArrowRight size={18} />
-            </a>
-            <a className="landing-button" href="#courses">
-              <BookOpenCheck size={17} />
-              查看 7 天课程
-            </a>
+      <section
+        className="course-stack-section"
+        id="courses"
+        ref={courseStackRef}
+        style={courseStackSectionStyle}
+      >
+        <div className="course-stack-stage">
+          <div className="course-stack-scene" onClick={handleStackSceneClick}>
+            <div className="course-stack-content" aria-label="课程卡片堆叠">
+              {courses.map((course, index) => {
+                const cardDistance = Math.abs(index - activeStackIndex)
+
+                return (
+                  <article
+                    aria-current={activeStackIndex === index ? 'step' : undefined}
+                    aria-label={`${course.day} ${course.title} 课程详情`}
+                    className="stack-course-card"
+                    key={course.day}
+                    onClick={() => openCourse(course)}
+                    onKeyDown={(event) => handleCourseKeyDown(event, course)}
+                    role="button"
+                    data-course-index={index}
+                    style={getCourseCardStyle(index, motionProgress, course, viewportSize)}
+                    tabIndex={cardDistance < 2 ? 0 : -1}
+                  >
+                    <div className="stack-course-card__top">
+                      <span>{course.day}</span>
+                      <strong>{course.duration}</strong>
+                    </div>
+
+                    <h2>{course.title}</h2>
+                    <p>{course.description}</p>
+
+                    <div className="stack-course-card__meta">
+                      <strong>得到什么</strong>
+                      <ul>
+                        {course.gains.slice(0, 2).map((gain) => (
+                          <li key={gain}>{gain}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <footer>{course.deliverable}</footer>
+                  </article>
+                )
+              })}
+            </div>
           </div>
-        </div>
-        <div className="landing-hero__metrics" aria-label="课程与系统数据">
-          <div><strong>8</strong><span>运营场景</span></div>
-          <div><strong>30</strong><span>天选题矩阵</span></div>
-          <div><strong>7</strong><span>天训练营</span></div>
         </div>
       </section>
 
@@ -538,50 +824,11 @@ export default function LandingPage() {
           <p className="landing-eyebrow">LOGIN REQUIRED</p>
           <h2>实际功能需要登录后进入工作台查看和使用</h2>
         </div>
-        <div className="landing-hero__actions" style={{ marginTop: 24 }}>
+        <div className="landing-actions" style={{ marginTop: 24 }}>
           <button className="landing-button landing-button--primary" type="button" onClick={goToWorkspace}>
             {isAuthenticated ? '进入内容生产工作台' : '登录查看功能'}
             <ArrowRight size={18} />
           </button>
-        </div>
-      </section>
-
-      <section
-        className={progressiveClassName('courses', 'landing-section course-section')}
-        id="courses"
-        ref={registerProgressiveBlock('courses')}
-        data-reveal-id="courses"
-      >
-        <div className="landing-section__heading">
-          <p className="landing-eyebrow">7-DAY BOOTCAMP</p>
-          <h2>宠物行业 AI 内容增长实战课 · 7 天训练营</h2>
-        </div>
-        <div className="course-layout">
-          <button
-            className="course-feature"
-            type="button"
-            onClick={() => setActiveCourse(featuredCourse)}
-            style={revealItemStyle(0)}
-          >
-            <span>{featuredCourse.day} · {featuredCourse.capability}</span>
-            <h3>{featuredCourse.title}</h3>
-            <p>{featuredCourse.question}</p>
-            <strong>{featuredCourse.deliverable}</strong>
-          </button>
-          <div className="course-grid">
-            {courses.map((course, index) => (
-              <button
-                key={course.day}
-                type="button"
-                onClick={() => setActiveCourse(course)}
-                style={revealItemStyle(index + 1)}
-              >
-                <span>{course.day} · {course.capability}</span>
-                <h3>{course.title}</h3>
-                <p>{course.question}</p>
-              </button>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -598,7 +845,7 @@ export default function LandingPage() {
             从业务诊断、竞品素材、知识库、选题矩阵，到主内容、图文短视频、多平台分发和转化复盘，
             每一步都对应真实可检查的业务产物。
           </p>
-          <div className="landing-hero__actions">
+          <div className="landing-actions">
             <button className="landing-button landing-button--primary" type="button" onClick={goToWorkspace}>
               {isAuthenticated ? '进入工作台查看功能' : '登录查看功能'}
               <ArrowRight size={18} />
@@ -654,18 +901,23 @@ export default function LandingPage() {
             onClick={() => setActiveCourse(null)}
             aria-label="关闭课程详情"
           />
-          <article className="course-modal__panel">
+          <article className="course-modal__panel" data-lenis-prevent>
             <button className="course-modal__close" type="button" onClick={() => setActiveCourse(null)} aria-label="关闭">
               <X size={20} />
             </button>
             <span>{activeCourse.day} · {activeCourse.capability}</span>
             <h2>{activeCourse.title}</h2>
-            <p>{activeCourse.question}</p>
+            <p>{activeCourse.description}</p>
             <div className="course-modal__meta">
               <strong>{activeCourse.deliverable}</strong>
-              <strong>宠物行业真实运营场景</strong>
+              <strong>{activeCourse.duration}</strong>
+              <strong>{activeCourse.format}</strong>
             </div>
             <div className="course-modal__columns">
+              <section>
+                <h3>你会得到</h3>
+                {activeCourse.gains.map((item) => <p key={item}>{item}</p>)}
+              </section>
               <section>
                 <h3>今日目标</h3>
                 {activeCourse.goals.map((item) => <p key={item}>{item}</p>)}
