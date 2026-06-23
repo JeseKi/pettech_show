@@ -1,0 +1,107 @@
+.course-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.course-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.72);
+  border: 0;
+  cursor: pointer;
+}
+
+.course-modal__panel {
+  position: relative;
+  width: min(900px, 100%);
+  max-height: min(760px, calc(100vh - 36px));
+  padding: 48px;
+  overflow: auto;
+  color: #f5f7f1;
+  background: #0a0f0c;
+  border: 1px solid rgba(184, 255, 103, 0.24);
+  border-radius: 8px;
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.46);
+}
+
+.course-modal__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  color: #f5f7f1;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
+
+.course-modal__panel > span {
+  color: #b8ff67;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.course-modal__panel h2 {
+  margin: 18px 0 14px;
+  font-size: 54px;
+  line-height: 1.02;
+  letter-spacing: 0;
+}
+
+.course-modal__panel > p {
+  max-width: 720px;
+  color: rgba(245, 247, 241, 0.72);
+  font-size: 18px;
+  line-height: 1.78;
+}
+
+.course-modal__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 24px 0;
+}
+
+.course-modal__meta strong {
+  padding: 9px 11px;
+  color: #0a0f0c;
+  background: #b8ff67;
+  border-radius: 6px;
+}
+
+.course-modal__columns {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.course-modal__columns section {
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+}
+
+.course-modal__columns section:last-child {
+  grid-column: 1 / -1;
+}
+
+.course-modal__columns h3 {
+  margin: 0 0 16px;
+}
+
+.course-modal__columns p {
+  margin: 10px 0 0;
+  color: rgba(245, 247, 241, 0.68);
+  line-height: 1.65;
+}
+
