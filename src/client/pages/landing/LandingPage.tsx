@@ -1,7 +1,5 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Lenis from 'lenis'
-import 'lenis/dist/lenis.css'
 import {
   Archive,
   ArrowRight,
@@ -43,24 +41,40 @@ type Course = {
 
 const PROGRESSIVE_BLOCK_IDS = ['course-intro', 'production', 'deliverables', 'contact', 'footer'] as const
 const INTRO_UNLOCK_DELAY_MS = 1900
-const STACK_INTRO_DELAY_MS = 480
-const STACK_INTRO_DURATION_MS = 1420
-const STACK_PROGRESS_OFFSET = 0.55
-const STACK_PROGRESS_RANGE = 0.15
-const STACK_SMOOTH_SCROLL_LERP = 0.07
+const COURSE_ORBIT_COPY_COUNT = 5
+const COURSE_ORBIT_DRAG_SENSITIVITY = 0.18
+const COURSE_ORBIT_WHEEL_SENSITIVITY = 0.12
+const COURSE_ORBIT_INERTIA_FRICTION = 0.94
+const COURSE_ORBIT_MIN_VELOCITY = 0.018
 
 type ProgressiveBlockId = (typeof PROGRESSIVE_BLOCK_IDS)[number]
 type RevealStyle = CSSProperties & Record<'--reveal-delay', string>
-type CourseStackSectionStyle = CSSProperties & Record<'--course-scroll-height', string>
 type CourseCardStyle = CSSProperties & Record<
   | '--course-accent'
-  | '--stack-z'
-  | '--stack-rotate-y'
-  | '--stack-rotate-z'
-  | '--stack-opacity'
-  | '--stack-brightness',
+  | '--orbit-x'
+  | '--orbit-y'
+  | '--orbit-z'
+  | '--orbit-scale'
+  | '--orbit-opacity'
+  | '--orbit-brightness'
+  | '--orbit-rotate-y'
+  | '--orbit-tilt'
+  | '--orbit-pointer',
   string
 >
+type CourseFocusCardStyle = CSSProperties & Record<'--course-accent', string>
+type CourseOrbitItem = Course & {
+  copyIndex: number
+  courseIndex: number
+  orbitIndex: number
+}
+type CourseOrbitPointerState = {
+  isDragging: boolean
+  hasDragged: boolean
+  lastX: number
+  lastTime: number
+  velocity: number
+}
 type ViewportSize = {
   width: number
   height: number
@@ -81,7 +95,7 @@ const navGroups = [
     label: '7天课程',
     href: '#courses',
     items: [
-      ['课程卡片堆叠', '滚动浏览 Day 0 到毕业项目，每张卡展示内容、收获、时间和交付物。'],
+      ['课程卡片轮盘', '左右浏览 Day 0 到毕业项目，每张卡展示内容、收获、时间和交付物。'],
       ['业务诊断', '先明确账号身份、目标用户和首轮内容方向。'],
       ['分发转化', '设计推荐流、搜索流、私域承接和复盘沉淀。'],
     ],
@@ -381,51 +395,119 @@ const courses: Course[] = [
   },
 ]
 
-const courseStackSectionStyle: CourseStackSectionStyle = {
-  '--course-scroll-height': `${courses.length * 70}svh`,
-}
+const courseOrbitItems: CourseOrbitItem[] = Array.from({ length: COURSE_ORBIT_COPY_COUNT }).flatMap(
+  (_, copyIndex) => courses.map((course, courseIndex) => ({
+    ...course,
+    copyIndex,
+    courseIndex,
+    orbitIndex: copyIndex * courses.length + courseIndex,
+  })),
+)
+const COURSE_ORBIT_ANGLE_STEP = 360 / courseOrbitItems.length
+
+const normalizeAngle = (value: number) => ((value % 360) + 360) % 360
+const getSignedAngleDistance = (angle: number, target = 0) => (
+  ((angle - target + 540) % 360) - 180
+)
+const getCourseOrbitAngle = (item: CourseOrbitItem, phase: number) => (
+  normalizeAngle(item.orbitIndex * COURSE_ORBIT_ANGLE_STEP + phase)
+)
+const getCourseOrbitDistance = (item: CourseOrbitItem, phase: number) => (
+  Math.abs(getSignedAngleDistance(getCourseOrbitAngle(item, phase)))
+)
+const getActiveCourseOrbitItem = (phase: number) => (
+  courseOrbitItems.reduce((closest, item) => (
+    getCourseOrbitDistance(item, phase) < getCourseOrbitDistance(closest, phase) ? item : closest
+  ), courseOrbitItems[0])
+)
 
 const getCourseCardStyle = (
-  index: number,
-  progress: number,
-  course: Course,
+  item: CourseOrbitItem,
+  phase: number,
   viewportSize: ViewportSize,
+  isActive: boolean,
 ): CourseCardStyle => {
-  const staggeredProgress = clamp(progress * 1.05 - index * 0.006, 0, 1)
-  const startZ = -2.65 * viewportSize.width - index * 0.03 * viewportSize.width
-  const endZ = 1.4 * viewportSize.width + (courses.length - index - 1) * 0.03 * viewportSize.width
-  const z = startZ + (endZ - startZ) * progress
-  const rotateY = -30 * staggeredProgress
-  const rotateZ = -220 + 340 * staggeredProgress
-  const visibleDepth = Math.abs(z) / Math.max(viewportSize.width, 1)
-  const opacity = clamp(1 - Math.max(visibleDepth - 1.9, 0) * 0.34, 0, 1)
-  const brightness = clamp(1.08 - visibleDepth * 0.08, 0.68, 1.08)
+  const angle = getCourseOrbitAngle(item, phase)
+  const distanceFromFront = Math.abs(getSignedAngleDistance(angle))
+  const frontness = clamp(1 - distanceFromFront / 180, 0, 1)
+  const radians = angle * Math.PI / 180
+  const radiusX = clamp(viewportSize.width * 0.31, 240, 560)
+  const radiusY = clamp(viewportSize.height * 0.095, 34, 82)
+  const radiusZ = clamp(viewportSize.width * 0.54, 460, 900)
+  const x = Math.sin(radians) * radiusX
+  const y = Math.sin(radians * 2) * radiusY - frontness * 18
+  const z = Math.cos(radians) * radiusZ
+  const scale = 0.55 + frontness * 0.42
+  const opacity = isActive ? 1 : clamp(0.06 + (frontness ** 1.7) * 0.58, 0.06, 0.64)
+  const brightness = isActive ? 1.14 : clamp(0.38 + frontness * 0.5, 0.38, 0.88)
+  const rotateY = Math.sin(radians) * -58
+  const tilt = getSignedAngleDistance(angle) * 0.18
 
   return {
-    '--course-accent': course.accent,
-    '--stack-z': `${z}px`,
-    '--stack-rotate-y': `${rotateY}deg`,
-    '--stack-rotate-z': `${rotateZ}deg`,
-    '--stack-opacity': `${opacity}`,
-    '--stack-brightness': `${brightness}`,
-    zIndex: courses.length - index,
+    '--course-accent': item.accent,
+    '--orbit-x': `${x}px`,
+    '--orbit-y': `${y}px`,
+    '--orbit-z': `${z}px`,
+    '--orbit-scale': `${scale}`,
+    '--orbit-opacity': `${opacity}`,
+    '--orbit-brightness': `${brightness}`,
+    '--orbit-rotate-y': `${rotateY}deg`,
+    '--orbit-tilt': `${tilt}deg`,
+    '--orbit-pointer': 'none',
+    zIndex: Math.round(1000 + z),
   }
 }
+
+const renderCourseCardContent = (course: Course) => (
+  <>
+    <div className="stack-course-card__top">
+      <span>{course.day}</span>
+      <strong>{course.duration}</strong>
+    </div>
+
+    <h2>{course.title}</h2>
+    <p>{course.description}</p>
+
+    <div className="stack-course-card__meta">
+      <strong>得到什么</strong>
+      <ul>
+        {course.gains.slice(0, 2).map((gain) => (
+          <li key={gain}>{gain}</li>
+        ))}
+      </ul>
+    </div>
+
+    <footer>{course.deliverable}</footer>
+  </>
+)
 
 export default function LandingPage() {
   const navigate = useNavigate()
   const { isAuthenticated } = useAuth()
   const [activeCourse, setActiveCourse] = useState<Course | null>(null)
-  const [introComplete, setIntroComplete] = useState(false)
   const [revealedBlockIds, setRevealedBlockIds] = useState<Set<ProgressiveBlockId>>(() => new Set())
-  const [stackProgress, setStackProgress] = useState(0)
-  const [stackIntroProgress, setStackIntroProgress] = useState(0)
+  const [orbitPhase, setOrbitPhase] = useState(0)
   const [viewportSize, setViewportSize] = useState<ViewportSize>({ width: 1280, height: 720 })
   const progressiveBlockRefs = useRef(new Map<ProgressiveBlockId, HTMLElement>())
-  const courseStackRef = useRef<HTMLElement | null>(null)
+  const orbitInertiaFrameRef = useRef(0)
+  const orbitPointerStateRef = useRef<CourseOrbitPointerState>({
+    isDragging: false,
+    hasDragged: false,
+    lastX: 0,
+    lastTime: 0,
+    velocity: 0,
+  })
 
-  const motionProgress = STACK_PROGRESS_OFFSET * stackIntroProgress + stackProgress * STACK_PROGRESS_RANGE
-  const activeStackIndex = clamp(Math.round(stackProgress * (courses.length - 1)), 0, courses.length - 1)
+  const activeOrbitItem = getActiveCourseOrbitItem(orbitPhase)
+  const activeFocusCardStyle: CourseFocusCardStyle = {
+    '--course-accent': activeOrbitItem.accent,
+  }
+  const orderedCourseOrbitItems = [...courseOrbitItems].sort((left, right) => {
+    const leftAngle = getCourseOrbitAngle(left, orbitPhase) * Math.PI / 180
+    const rightAngle = getCourseOrbitAngle(right, orbitPhase) * Math.PI / 180
+
+    return Math.cos(leftAngle) - Math.cos(rightAngle)
+  })
 
   const revealBlock = useCallback((id: ProgressiveBlockId) => {
     setRevealedBlockIds((current) => {
@@ -470,44 +552,105 @@ export default function LandingPage() {
     openCourse(course)
   }
 
-  const handleStackSceneClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    const cardElements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('.stack-course-card'))
-    const matchingCard = cardElements
-      .map((cardElement) => {
-        const rect = cardElement.getBoundingClientRect()
-        const opacity = Number(window.getComputedStyle(cardElement).opacity)
-        const courseIndex = Number(cardElement.dataset.courseIndex)
+  const moveCourseOrbit = useCallback((deltaAngle: number) => {
+    setOrbitPhase((currentPhase) => {
+      const nextPhase = normalizeAngle(currentPhase + deltaAngle)
+      return nextPhase
+    })
+  }, [])
 
-        return {
-          courseIndex,
-          isHit:
-            opacity > 0.1
-            && event.clientX >= rect.left
-            && event.clientX <= rect.right
-            && event.clientY >= rect.top
-            && event.clientY <= rect.bottom,
-          zIndex: Number(window.getComputedStyle(cardElement).zIndex) || 0,
-        }
-      })
-      .filter((card) => card.isHit && Number.isInteger(card.courseIndex))
-      .sort((left, right) => right.zIndex - left.zIndex)[0]
+  const stopCourseOrbitInertia = useCallback(() => {
+    if (!orbitInertiaFrameRef.current) return
 
-    if (!matchingCard) return
+    window.cancelAnimationFrame(orbitInertiaFrameRef.current)
+    orbitInertiaFrameRef.current = 0
+  }, [])
 
-    openCourse(courses[matchingCard.courseIndex])
+  const startCourseOrbitInertia = useCallback(() => {
+    stopCourseOrbitInertia()
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (Math.abs(orbitPointerStateRef.current.velocity) <= COURSE_ORBIT_MIN_VELOCITY) return
+
+    const animateInertia = () => {
+      const pointerState = orbitPointerStateRef.current
+      pointerState.velocity *= COURSE_ORBIT_INERTIA_FRICTION
+      moveCourseOrbit(pointerState.velocity * 16 * COURSE_ORBIT_DRAG_SENSITIVITY)
+
+      if (Math.abs(pointerState.velocity) > COURSE_ORBIT_MIN_VELOCITY) {
+        orbitInertiaFrameRef.current = window.requestAnimationFrame(animateInertia)
+      }
+    }
+
+    orbitInertiaFrameRef.current = window.requestAnimationFrame(animateInertia)
+  }, [moveCourseOrbit, stopCourseOrbitInertia])
+
+  const handleCourseOrbitPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+
+    const pointerState = orbitPointerStateRef.current
+    pointerState.isDragging = true
+    pointerState.hasDragged = false
+    pointerState.lastX = event.clientX
+    pointerState.lastTime = window.performance.now()
+    pointerState.velocity = 0
+    stopCourseOrbitInertia()
+    event.currentTarget.classList.add('is-dragging')
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handleCourseOrbitPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const pointerState = orbitPointerStateRef.current
+    if (!pointerState.isDragging) return
+
+    const now = window.performance.now()
+    const deltaX = event.clientX - pointerState.lastX
+    const deltaTime = Math.max(now - pointerState.lastTime, 1)
+
+    pointerState.hasDragged = pointerState.hasDragged || Math.abs(deltaX) > 4
+    pointerState.velocity = deltaX / deltaTime
+    pointerState.lastX = event.clientX
+    pointerState.lastTime = now
+    moveCourseOrbit(deltaX * COURSE_ORBIT_DRAG_SENSITIVITY)
+  }
+
+  const releaseCourseOrbitPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    const pointerState = orbitPointerStateRef.current
+    if (!pointerState.isDragging) return
+
+    pointerState.isDragging = false
+    event.currentTarget.classList.remove('is-dragging')
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    startCourseOrbitInertia()
+  }
+
+  const handleCourseOrbitWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return
+
+    event.preventDefault()
+    stopCourseOrbitInertia()
+    moveCourseOrbit(-event.deltaX * COURSE_ORBIT_WHEEL_SENSITIVITY)
+  }
+
+  const handleCourseOrbitKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+
+    event.preventDefault()
+    stopCourseOrbitInertia()
+    moveCourseOrbit(event.key === 'ArrowLeft' ? COURSE_ORBIT_ANGLE_STEP : -COURSE_ORBIT_ANGLE_STEP)
+  }
+
+  const handleCourseCardClick = (course: Course) => {
+    if (orbitPointerStateRef.current.hasDragged) return
+
+    openCourse(course)
   }
 
   useEffect(() => {
-    const updateStackProgress = () => {
-      const section = courseStackRef.current
-      if (!section) return
-
-      const scrollable = Math.max(section.offsetHeight - window.innerHeight, 1)
-      const progress = clamp(-section.getBoundingClientRect().top / scrollable, 0, 1)
-
-      setStackProgress((current) => (Math.abs(current - progress) < 0.0001 ? current : progress))
-    }
-
     const updateViewportSize = () => {
       setViewportSize({
         width: window.innerWidth,
@@ -515,84 +658,15 @@ export default function LandingPage() {
       })
     }
 
-    let frameId = 0
-    const requestUpdate = () => {
-      window.cancelAnimationFrame(frameId)
-      frameId = window.requestAnimationFrame(updateStackProgress)
-    }
-
     updateViewportSize()
-    updateStackProgress()
-    window.addEventListener('scroll', requestUpdate, { passive: true })
     window.addEventListener('resize', updateViewportSize)
-    window.addEventListener('resize', requestUpdate)
 
     return () => {
-      window.cancelAnimationFrame(frameId)
-      window.removeEventListener('scroll', requestUpdate)
       window.removeEventListener('resize', updateViewportSize)
-      window.removeEventListener('resize', requestUpdate)
     }
   }, [])
 
-  useEffect(() => {
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-    if (prefersReducedMotion) {
-      setStackIntroProgress(1)
-      return undefined
-    }
-
-    let frameId = 0
-    const startTime = window.performance.now() + STACK_INTRO_DELAY_MS
-
-    const animateIntro = (timestamp: number) => {
-      const linearProgress = clamp((timestamp - startTime) / STACK_INTRO_DURATION_MS, 0, 1)
-      const easedProgress = 1 - ((1 - linearProgress) ** 3)
-
-      setStackIntroProgress((current) => (
-        Math.abs(current - easedProgress) < 0.0001 ? current : easedProgress
-      ))
-
-      if (linearProgress < 1) {
-        frameId = window.requestAnimationFrame(animateIntro)
-      }
-    }
-
-    frameId = window.requestAnimationFrame(animateIntro)
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!introComplete) return undefined
-
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-    if (prefersReducedMotion) return undefined
-
-    const lenis = new Lenis({
-      lerp: STACK_SMOOTH_SCROLL_LERP,
-      smoothWheel: true,
-      syncTouch: true,
-      prevent: (node) => Boolean(node.closest('.course-modal__panel')),
-    })
-
-    let frameId = 0
-    const animateSmoothScroll = (time: number) => {
-      lenis.raf(time)
-      frameId = window.requestAnimationFrame(animateSmoothScroll)
-    }
-
-    frameId = window.requestAnimationFrame(animateSmoothScroll)
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-      lenis.destroy()
-    }
-  }, [introComplete])
+  useEffect(() => () => stopCourseOrbitInertia(), [stopCourseOrbitInertia])
 
   useEffect(() => {
     const previousHtmlOverflowY = document.documentElement.style.overflowY
@@ -605,7 +679,6 @@ export default function LandingPage() {
     document.body.style.overflowY = 'hidden'
 
     const unlockTimer = window.setTimeout(() => {
-      setIntroComplete(true)
       document.documentElement.style.overflowY = previousHtmlOverflowY
       document.body.style.overflowY = previousBodyOverflowY
     }, unlockDelay)
@@ -701,49 +774,62 @@ export default function LandingPage() {
       <section
         className="course-stack-section"
         id="courses"
-        ref={courseStackRef}
-        style={courseStackSectionStyle}
       >
         <div className="course-stack-stage">
-          <div className="course-stack-scene" onClick={handleStackSceneClick}>
-            <div className="course-stack-content" aria-label="课程卡片堆叠">
-              {courses.map((course, index) => {
-                const cardDistance = Math.abs(index - activeStackIndex)
+          <div
+            className="course-stack-scene"
+            onKeyDown={handleCourseOrbitKeyDown}
+            onPointerCancel={releaseCourseOrbitPointer}
+            onPointerDown={handleCourseOrbitPointerDown}
+            onPointerMove={handleCourseOrbitPointerMove}
+            onPointerUp={releaseCourseOrbitPointer}
+            onWheel={handleCourseOrbitWheel}
+            tabIndex={0}
+          >
+            <div className="course-stack-content" aria-label="课程卡片轮盘">
+              <div className="course-stack-orbit-ring" aria-hidden="true" />
+              <div className="course-stack-cards">
+                {orderedCourseOrbitItems.map((course) => {
+                  const isActiveOrbitCard = course.orbitIndex === activeOrbitItem.orbitIndex
+                  const courseCardStyle = getCourseCardStyle(
+                    course,
+                    orbitPhase,
+                    viewportSize,
+                    false,
+                  )
 
-                return (
-                  <article
-                    aria-current={activeStackIndex === index ? 'step' : undefined}
-                    aria-label={`${course.day} ${course.title} 课程详情`}
-                    className="stack-course-card"
-                    key={course.day}
-                    onClick={() => openCourse(course)}
-                    onKeyDown={(event) => handleCourseKeyDown(event, course)}
-                    role="button"
-                    data-course-index={index}
-                    style={getCourseCardStyle(index, motionProgress, course, viewportSize)}
-                    tabIndex={cardDistance < 2 ? 0 : -1}
-                  >
-                    <div className="stack-course-card__top">
-                      <span>{course.day}</span>
-                      <strong>{course.duration}</strong>
-                    </div>
-
-                    <h2>{course.title}</h2>
-                    <p>{course.description}</p>
-
-                    <div className="stack-course-card__meta">
-                      <strong>得到什么</strong>
-                      <ul>
-                        {course.gains.slice(0, 2).map((gain) => (
-                          <li key={gain}>{gain}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <footer>{course.deliverable}</footer>
-                  </article>
-                )
-              })}
+                  return (
+                    <article
+                      aria-hidden
+                      className={`stack-course-card${isActiveOrbitCard ? ' is-orbit-placeholder' : ''}`}
+                      key={`${course.copyIndex}-${course.day}`}
+                      data-course-index={course.courseIndex}
+                      data-copy-index={course.copyIndex}
+                      data-orbit-index={course.orbitIndex}
+                      style={courseCardStyle}
+                    >
+                      {renderCourseCardContent(course)}
+                    </article>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="course-stack-focus-layer">
+              <article
+                aria-current="step"
+                aria-label={`${activeOrbitItem.day} ${activeOrbitItem.title} 课程详情`}
+                className="stack-course-card stack-course-card--focus is-front"
+                onClick={() => handleCourseCardClick(activeOrbitItem)}
+                onKeyDown={(event) => handleCourseKeyDown(event, activeOrbitItem)}
+                role="button"
+                data-course-index={activeOrbitItem.courseIndex}
+                data-copy-index={activeOrbitItem.copyIndex}
+                data-orbit-index={activeOrbitItem.orbitIndex}
+                style={activeFocusCardStyle}
+                tabIndex={0}
+              >
+                {renderCourseCardContent(activeOrbitItem)}
+              </article>
             </div>
           </div>
         </div>

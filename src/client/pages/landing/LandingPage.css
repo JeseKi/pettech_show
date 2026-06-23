@@ -205,15 +205,16 @@
 }
 
 .course-stack-section {
-  min-height: var(--course-scroll-height);
+  min-height: 100svh;
   background:
     radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.055), transparent 38%),
+    radial-gradient(circle at 18% 26%, rgba(184, 255, 103, 0.09), transparent 30%),
+    radial-gradient(circle at 82% 76%, rgba(56, 189, 248, 0.08), transparent 32%),
     #050505;
 }
 
 .course-stack-stage {
-  position: sticky;
-  top: 0;
+  position: relative;
   display: grid;
   width: 100%;
   height: 100svh;
@@ -229,26 +230,81 @@
   width: 100vw;
   height: 100svh;
   min-height: 620px;
+  overflow: hidden;
+  cursor: grab;
+  outline: 0;
   opacity: 0;
   perspective: 3000px;
   place-items: center;
+  touch-action: pan-y;
   transform-style: preserve-3d;
+  user-select: none;
   animation: landingSupportIn 940ms cubic-bezier(0.16, 1, 0.3, 1) 540ms forwards;
 }
 
+.course-stack-scene.is-dragging {
+  cursor: grabbing;
+}
+
+.course-stack-scene:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(184, 255, 103, 0.52);
+}
+
 .course-stack-content {
-  position: relative;
-  display: grid;
-  width: min(900px, 100vw);
-  height: min(760px, 100svh);
-  place-items: center;
+  position: absolute;
+  inset: 0;
   opacity: 1;
   transform-style: preserve-3d;
   transform:
-    translate3d(12vw, 8vh, 0)
-    rotate3d(1, 0, 0, -25deg)
-    rotate3d(0, 1, 0, 50deg)
-    rotate3d(0, 0, 1, 25deg);
+    translate3d(-6vw, -4vh, 0)
+    rotateX(-10deg)
+    rotateY(22deg)
+    rotateZ(6deg);
+}
+
+.course-stack-orbit-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(72vw, 920px);
+  height: min(38vh, 310px);
+  border: 1px solid rgba(184, 255, 103, 0.2);
+  border-radius: 50%;
+  opacity: 0.64;
+  transform:
+    translate3d(-50%, -50%, -520px)
+    rotateX(74deg);
+  transform-style: preserve-3d;
+}
+
+.course-stack-orbit-ring::before,
+.course-stack-orbit-ring::after {
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: inherit;
+  content: "";
+}
+
+.course-stack-orbit-ring::before {
+  inset: 14%;
+}
+
+.course-stack-orbit-ring::after {
+  inset: 30%;
+  border-color: rgba(110, 231, 249, 0.12);
+}
+
+.course-stack-cards {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.course-stack-focus-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
 }
 
 .stack-course-card {
@@ -257,34 +313,54 @@
   left: 50%;
   display: grid;
   grid-template-rows: auto auto auto 1fr auto;
-  width: clamp(320px, 42vw, 560px);
+  width: clamp(240px, 24vw, 350px);
   aspect-ratio: 16 / 9;
   padding: clamp(12px, 1.4vw, 18px);
   overflow: hidden;
   color: #f8faf3;
   cursor: pointer;
+  pointer-events: var(--orbit-pointer);
   background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.035) 36%, rgba(0, 0, 0, 0.22)),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.035) 36%, rgba(0, 0, 0, 0.24)),
+    radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--course-accent), transparent 42%), transparent 38%),
     rgb(30, 25, 30);
-  border: 1px solid var(--course-accent);
+  border: 1px solid color-mix(in srgb, var(--course-accent), white 10%);
   border-radius: 10px;
   box-shadow:
     0 2px 7px rgba(0, 0, 0, 0.8),
     0 26px 70px rgba(0, 0, 0, 0.44);
   outline: 0;
-  opacity: var(--stack-opacity);
-  filter: brightness(var(--stack-brightness));
+  opacity: var(--orbit-opacity);
+  filter: brightness(var(--orbit-brightness));
   transform:
-    translate3d(-50%, -50%, var(--stack-z))
-    rotateY(var(--stack-rotate-y))
-    rotateZ(var(--stack-rotate-z));
+    translate3d(calc(-50% + var(--orbit-x)), calc(-50% + var(--orbit-y)), var(--orbit-z))
+    rotateY(var(--orbit-rotate-y))
+    rotateZ(var(--orbit-tilt))
+    scale(var(--orbit-scale));
   transform-style: preserve-3d;
   transform-origin: 50% 50%;
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
-    filter 120ms linear;
+    filter 80ms linear,
+    opacity 80ms linear;
   will-change: transform, opacity, filter;
+}
+
+.stack-course-card.is-orbit-placeholder {
+  opacity: 0;
+}
+
+.stack-course-card--focus {
+  top: calc(50% + 42px);
+  left: min(68vw, calc(100vw - 220px));
+  z-index: 10;
+  pointer-events: auto;
+  opacity: 1;
+  filter: none;
+  transform: translate3d(-50%, -50%, 0) rotateZ(-2deg);
+  transform-style: flat;
+  will-change: transform;
 }
 
 .stack-course-card::before,
@@ -297,9 +373,10 @@
 .stack-course-card::before {
   inset: 0;
   background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 22px),
     linear-gradient(115deg, var(--course-accent), transparent 38%),
     linear-gradient(315deg, rgba(255, 255, 255, 0.1), transparent 42%);
-  opacity: 0.2;
+  opacity: 0.16;
 }
 
 .stack-course-card::after {
@@ -309,11 +386,12 @@
 }
 
 .stack-course-card:hover,
-.stack-course-card:focus-visible {
+.stack-course-card:focus-visible,
+.stack-course-card.is-front {
   border-color: var(--course-accent);
   box-shadow:
-    0 28px 80px rgba(0, 0, 0, 0.62),
-    0 0 34px rgba(255, 255, 255, 0.08),
+    0 34px 90px rgba(0, 0, 0, 0.6),
+    0 0 38px color-mix(in srgb, var(--course-accent), transparent 70%),
     0 0 0 1px var(--course-accent);
 }
 
@@ -757,47 +835,30 @@
   .landing-reveal,
   .landing-reveal .result-strip article,
   .landing-reveal .capability-grid article,
-  .landing-reveal .tool-flow__items article,
-  .stack-course-card {
+  .landing-reveal .tool-flow__items article {
     opacity: 1;
     filter: none;
     animation: none;
     transition: none;
   }
 
+  .stack-course-card {
+    transition: none;
+    will-change: auto;
+  }
+
   .landing-nav {
     transform: translateX(-50%);
-  }
-
-  .course-stack-section {
-    min-height: auto;
-  }
-
-  .course-stack-stage {
-    position: relative;
-  }
-
-  .course-stack-content {
-    position: relative;
-    display: grid;
-    gap: 16px;
-    perspective: none;
-    transform: none;
-  }
-
-  .stack-course-card {
-    position: relative;
-    top: auto;
-    left: auto;
-    width: 100%;
-    max-width: 320px;
-    transform: none;
   }
 }
 
 @media (max-width: 1100px) {
   .stack-course-card {
-    width: clamp(300px, 50vw, 500px);
+    width: clamp(240px, 32vw, 340px);
+  }
+
+  .stack-course-card--focus {
+    left: min(66vw, calc(100vw - 190px));
   }
 }
 
@@ -811,7 +872,11 @@
   }
 
   .stack-course-card {
-    width: clamp(300px, 62vw, 460px);
+    width: clamp(230px, 44vw, 330px);
+  }
+
+  .stack-course-card--focus {
+    left: 62vw;
   }
 
   .landing-section__heading,
@@ -835,7 +900,12 @@
 
 @media (max-width: 760px) {
   .stack-course-card {
-    width: clamp(280px, 78vw, 400px);
+    width: clamp(220px, 62vw, 320px);
+  }
+
+  .stack-course-card--focus {
+    top: calc(50% + 32px);
+    left: 58vw;
   }
 
   .landing-section__heading h2,
@@ -878,10 +948,10 @@
 
   .course-stack-content {
     transform:
-      translate3d(26vw, 6vh, 0)
-      rotate3d(1, 0, 0, -25deg)
-      rotate3d(0, 1, 0, 50deg)
-      rotate3d(0, 0, 1, 25deg);
+      translate3d(-2vw, -1vh, 0)
+      rotateX(-10deg)
+      rotateY(18deg)
+      rotateZ(6deg);
   }
 
   .course-stack-stage {
@@ -889,8 +959,13 @@
   }
 
   .stack-course-card {
-    width: clamp(270px, 86vw, 360px);
+    width: clamp(220px, 70vw, 310px);
     padding: 10px;
+  }
+
+  .stack-course-card--focus {
+    top: calc(50% + 24px);
+    left: 52vw;
   }
 
   .stack-course-card h2 {
