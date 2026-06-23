@@ -1,6 +1,8 @@
 import { type KeyboardEvent, type PointerEvent, type WheelEvent, useCallback, useEffect, useRef, useState } from 'react'
 import {
   COURSE_ORBIT_ANGLE_STEP,
+  COURSE_ORBIT_AUTOPLAY_DELAY_MS,
+  COURSE_ORBIT_AUTOPLAY_SPEED,
   COURSE_ORBIT_DRAG_SENSITIVITY,
   COURSE_ORBIT_INERTIA_FRICTION,
   COURSE_ORBIT_MIN_VELOCITY,
@@ -16,6 +18,7 @@ import type { Course, CourseOrbitPointerState, ViewportSize } from './types'
 import { clamp, normalizeAngle, smoothstep } from './utils'
 
 type CourseStackProps = {
+  autoPlayEnabled?: boolean
   onCourseOpen: (course: Course) => void
 }
 
@@ -39,9 +42,12 @@ const isFocusCardTarget = (target: EventTarget | null) => (
   target instanceof Element && target.closest('.stack-course-card--focus') !== null
 )
 
-export function CourseStack({ onCourseOpen }: CourseStackProps) {
+export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStackProps) {
   const [orbitPhase, setOrbitPhase] = useState(0)
   const [viewportSize, setViewportSize] = useState<ViewportSize>({ width: 1280, height: 720 })
+  const autoScrollFrameRef = useRef(0)
+  const autoScrollLastTimeRef = useRef(0)
+  const autoScrollResumeTimerRef = useRef(0)
   const orbitInertiaFrameRef = useRef(0)
   const orbitPointerStateRef = useRef<CourseOrbitPointerState>({
     isDragging: false,
@@ -70,10 +76,51 @@ export function CourseStack({ onCourseOpen }: CourseStackProps) {
     orbitInertiaFrameRef.current = 0
   }, [])
 
+  const stopCourseOrbitAutoplay = useCallback(() => {
+    if (autoScrollFrameRef.current) {
+      window.cancelAnimationFrame(autoScrollFrameRef.current)
+      autoScrollFrameRef.current = 0
+    }
+    if (autoScrollResumeTimerRef.current) {
+      window.clearTimeout(autoScrollResumeTimerRef.current)
+      autoScrollResumeTimerRef.current = 0
+    }
+    autoScrollLastTimeRef.current = 0
+  }, [])
+
+  const startCourseOrbitAutoplay = useCallback(() => {
+    if (!autoPlayEnabled) return
+    if (autoScrollFrameRef.current) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    const animateAutoplay = (timestamp: number) => {
+      const previousTimestamp = autoScrollLastTimeRef.current || timestamp
+      const deltaTime = Math.min(timestamp - previousTimestamp, 48)
+      autoScrollLastTimeRef.current = timestamp
+      moveCourseOrbit(deltaTime * COURSE_ORBIT_AUTOPLAY_SPEED)
+      autoScrollFrameRef.current = window.requestAnimationFrame(animateAutoplay)
+    }
+
+    autoScrollFrameRef.current = window.requestAnimationFrame(animateAutoplay)
+  }, [autoPlayEnabled, moveCourseOrbit])
+
+  const scheduleCourseOrbitAutoplay = useCallback(() => {
+    stopCourseOrbitAutoplay()
+    if (!autoPlayEnabled) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    autoScrollResumeTimerRef.current = window.setTimeout(() => {
+      autoScrollResumeTimerRef.current = 0
+      startCourseOrbitAutoplay()
+    }, COURSE_ORBIT_AUTOPLAY_DELAY_MS)
+  }, [autoPlayEnabled, startCourseOrbitAutoplay, stopCourseOrbitAutoplay])
+
   const startCourseOrbitInertia = useCallback(() => {
     stopCourseOrbitInertia()
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    if (Math.abs(orbitPointerStateRef.current.velocity) <= COURSE_ORBIT_MIN_VELOCITY) return
+    if (Math.abs(orbitPointerStateRef.current.velocity) <= COURSE_ORBIT_MIN_VELOCITY) {
+      scheduleCourseOrbitAutoplay()
+      return
+    }
 
     const animateInertia = () => {
       const pointerState = orbitPointerStateRef.current
@@ -81,10 +128,13 @@ export function CourseStack({ onCourseOpen }: CourseStackProps) {
       moveCourseOrbit(pointerState.velocity * 16 * COURSE_ORBIT_DRAG_SENSITIVITY)
       if (Math.abs(pointerState.velocity) > COURSE_ORBIT_MIN_VELOCITY) {
         orbitInertiaFrameRef.current = window.requestAnimationFrame(animateInertia)
+      } else {
+        orbitInertiaFrameRef.current = 0
+        scheduleCourseOrbitAutoplay()
       }
     }
     orbitInertiaFrameRef.current = window.requestAnimationFrame(animateInertia)
-  }, [moveCourseOrbit, stopCourseOrbitInertia])
+  }, [moveCourseOrbit, scheduleCourseOrbitAutoplay, stopCourseOrbitInertia])
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return
@@ -96,6 +146,7 @@ export function CourseStack({ onCourseOpen }: CourseStackProps) {
     pointerState.lastTime = window.performance.now()
     pointerState.velocity = 0
     stopCourseOrbitInertia()
+    stopCourseOrbitAutoplay()
     event.currentTarget.classList.add('is-dragging')
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -133,19 +184,25 @@ export function CourseStack({ onCourseOpen }: CourseStackProps) {
     if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return
     event.preventDefault()
     stopCourseOrbitInertia()
+    stopCourseOrbitAutoplay()
     moveCourseOrbit(-event.deltaX * COURSE_ORBIT_WHEEL_SENSITIVITY)
+    scheduleCourseOrbitAutoplay()
   }
 
   const handleSceneKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
     stopCourseOrbitInertia()
+    stopCourseOrbitAutoplay()
     moveCourseOrbit(event.key === 'ArrowLeft' ? COURSE_ORBIT_ANGLE_STEP : -COURSE_ORBIT_ANGLE_STEP)
+    scheduleCourseOrbitAutoplay()
   }
 
   const handleCourseKeyDown = (event: KeyboardEvent<HTMLElement>, course: Course) => {
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
+    stopCourseOrbitInertia()
+    stopCourseOrbitAutoplay()
     onCourseOpen(course)
   }
 
@@ -161,13 +218,18 @@ export function CourseStack({ onCourseOpen }: CourseStackProps) {
 
   useEffect(() => () => stopCourseOrbitInertia(), [stopCourseOrbitInertia])
 
+  useEffect(() => {
+    startCourseOrbitAutoplay()
+    return () => stopCourseOrbitAutoplay()
+  }, [startCourseOrbitAutoplay, stopCourseOrbitAutoplay])
+
   return (
     <section className="course-stack-section" id="courses">
       <div className="course-stack-stage">
-          <div
-            className="course-stack-scene"
-            onKeyDown={handleSceneKeyDown}
-            onPointerCancel={(event) => releasePointer(event, false)}
+        <div
+          className="course-stack-scene"
+          onKeyDown={handleSceneKeyDown}
+          onPointerCancel={(event) => releasePointer(event, false)}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={releasePointer}

@@ -126,7 +126,7 @@ export default function LandingPage() {
         onAuthAction={goToWorkspace}
         onConsult={goToConsult}
       />
-      <CourseStack onCourseOpen={setActiveCourse} />
+      <CourseStack autoPlayEnabled={activeCourse === null} onCourseOpen={setActiveCourse} />
       <CourseIntroSection
         progressiveClassName={progressiveClassName}
         registerProgressiveBlock={registerProgressiveBlock}
