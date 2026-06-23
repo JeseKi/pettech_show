@@ -1,12 +1,20 @@
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { useNavigate } from 'react-router-dom'
-import Lenis from 'lenis'
-import 'lenis/dist/lenis.css'
 import {
   Archive,
   ArrowRight,
+  Bookmark,
   CalendarDays,
   ChevronDown,
+  CircleHelp,
   Database,
   FileText,
   Layers3,
@@ -16,6 +24,7 @@ import {
   PackageCheck,
   PenLine,
   Route,
+  Share2,
   Target,
   UploadCloud,
   Wand2,
@@ -42,35 +51,59 @@ type Course = {
 }
 
 const PROGRESSIVE_BLOCK_IDS = ['course-intro', 'production', 'deliverables', 'contact', 'footer'] as const
-const INTRO_UNLOCK_DELAY_MS = 1900
-const STACK_INTRO_DELAY_MS = 480
-const STACK_INTRO_DURATION_MS = 1420
-const STACK_PROGRESS_OFFSET = 0.55
-const STACK_PROGRESS_RANGE = 0.15
-const STACK_SMOOTH_SCROLL_LERP = 0.07
+const COURSE_STACK_CARD_COUNT = 34
+const COURSE_FLOW_TARGET_VELOCITY = 0.00125
+const COURSE_FLOW_ACCELERATION_MS = 180
+const COURSE_FLOW_DETAIL_DURATION_MS = 560
 
 type ProgressiveBlockId = (typeof PROGRESSIVE_BLOCK_IDS)[number]
 type RevealStyle = CSSProperties & Record<'--reveal-delay', string>
-type CourseStackSectionStyle = CSSProperties & Record<'--course-scroll-height', string>
-type CourseCardStyle = CSSProperties & Record<
-  | '--course-accent'
-  | '--stack-z'
-  | '--stack-rotate-y'
-  | '--stack-rotate-z'
-  | '--stack-opacity'
-  | '--stack-brightness',
+type StackSide = 'left' | 'right'
+type FlowSnapshot = {
+  position: number
+  velocity: number
+}
+type CourseStackCardStyle = CSSProperties & Record<
+  '--course-accent' | '--stack-index' | '--stack-nudge' | '--stack-brightness',
   string
 >
-type ViewportSize = {
+type CourseFocusCardStyle = CSSProperties & Record<
+  '--course-accent' | '--focus-travel' | '--focus-velocity',
+  string
+>
+type CourseDetailOrigin = {
+  x: number
+  y: number
   width: number
   height: number
 }
+type CourseDetailState = {
+  course: Course
+  phase: 'open' | 'closing'
+  origin: CourseDetailOrigin
+  endSize: {
+    width: number
+    height: number
+  }
+}
+type CourseDetailStyle = CSSProperties & Record<
+  | '--course-accent'
+  | '--detail-start-x'
+  | '--detail-start-y'
+  | '--detail-start-width'
+  | '--detail-start-height'
+  | '--detail-end-width'
+  | '--detail-end-height',
+  string
+>
 
 const revealItemStyle = (index: number): RevealStyle => ({
   '--reveal-delay': `${index * 48}ms`,
 })
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+const positiveModulo = (value: number, divisor: number) => ((value % divisor) + divisor) % divisor
 
 const isProgressiveBlockId = (id: string | null): id is ProgressiveBlockId => (
   id !== null && PROGRESSIVE_BLOCK_IDS.includes(id as ProgressiveBlockId)
@@ -81,7 +114,7 @@ const navGroups = [
     label: '7天课程',
     href: '#courses',
     items: [
-      ['课程卡片堆叠', '滚动浏览 Day 0 到毕业项目，每张卡展示内容、收获、时间和交付物。'],
+      ['课程切片展墙', '像资料流一样浏览 Day 0 到毕业项目，每一片都是课程节点。'],
       ['业务诊断', '先明确账号身份、目标用户和首轮内容方向。'],
       ['分发转化', '设计推荐流、搜索流、私域承接和复盘沉淀。'],
     ],
@@ -381,51 +414,70 @@ const courses: Course[] = [
   },
 ]
 
-const courseStackSectionStyle: CourseStackSectionStyle = {
-  '--course-scroll-height': `${courses.length * 70}svh`,
-}
+const loopCourse = (index: number) => courses[positiveModulo(index, courses.length)]
 
-const getCourseCardStyle = (
-  index: number,
-  progress: number,
+const getCourseStackCardStyle = (
   course: Course,
-  viewportSize: ViewportSize,
-): CourseCardStyle => {
-  const staggeredProgress = clamp(progress * 1.05 - index * 0.006, 0, 1)
-  const startZ = -2.65 * viewportSize.width - index * 0.03 * viewportSize.width
-  const endZ = 1.4 * viewportSize.width + (courses.length - index - 1) * 0.03 * viewportSize.width
-  const z = startZ + (endZ - startZ) * progress
-  const rotateY = -30 * staggeredProgress
-  const rotateZ = -220 + 340 * staggeredProgress
-  const visibleDepth = Math.abs(z) / Math.max(viewportSize.width, 1)
-  const opacity = clamp(1 - Math.max(visibleDepth - 1.9, 0) * 0.34, 0, 1)
-  const brightness = clamp(1.08 - visibleDepth * 0.08, 0.68, 1.08)
+  index: number,
+  side: StackSide,
+  flow: FlowSnapshot,
+): CourseStackCardStyle => {
+  const sourcePush = side === 'left' ? Math.max(flow.velocity, 0) : Math.max(-flow.velocity, 0)
+  const brightness = clamp(1 - index * 0.011 + sourcePush * 45, 0.58, 1.04)
 
   return {
     '--course-accent': course.accent,
-    '--stack-z': `${z}px`,
-    '--stack-rotate-y': `${rotateY}deg`,
-    '--stack-rotate-z': `${rotateZ}deg`,
-    '--stack-opacity': `${opacity}`,
+    '--stack-index': `${index}`,
+    '--stack-nudge': `${clamp(sourcePush * 62000, 0, 42)}px`,
     '--stack-brightness': `${brightness}`,
-    zIndex: courses.length - index,
   }
 }
+
+const getCourseFocusCardStyle = (
+  course: Course,
+  flowFraction: number,
+  velocity: number,
+): CourseFocusCardStyle => ({
+  '--course-accent': course.accent,
+  '--focus-travel': `${(flowFraction - 0.5) * 2}`,
+  '--focus-velocity': `${clamp(Math.abs(velocity) * 1450, 0, 1)}`,
+})
+
+const getCourseDetailStyle = (detail: CourseDetailState): CourseDetailStyle => ({
+  '--course-accent': detail.course.accent,
+  '--detail-start-x': `${detail.origin.x}px`,
+  '--detail-start-y': `${detail.origin.y}px`,
+  '--detail-start-width': `${detail.origin.width}px`,
+  '--detail-start-height': `${detail.origin.height}px`,
+  '--detail-end-width': `${detail.endSize.width}px`,
+  '--detail-end-height': `${detail.endSize.height}px`,
+})
 
 export default function LandingPage() {
   const navigate = useNavigate()
   const { isAuthenticated } = useAuth()
-  const [activeCourse, setActiveCourse] = useState<Course | null>(null)
-  const [introComplete, setIntroComplete] = useState(false)
+  const [detailState, setDetailState] = useState<CourseDetailState | null>(null)
+  const [flowSnapshot, setFlowSnapshot] = useState<FlowSnapshot>({ position: 0, velocity: 0 })
+  const [hoverSource, setHoverSource] = useState<StackSide | null>(null)
   const [revealedBlockIds, setRevealedBlockIds] = useState<Set<ProgressiveBlockId>>(() => new Set())
-  const [stackProgress, setStackProgress] = useState(0)
-  const [stackIntroProgress, setStackIntroProgress] = useState(0)
-  const [viewportSize, setViewportSize] = useState<ViewportSize>({ width: 1280, height: 720 })
+  const detailCloseTimerRef = useRef<number | null>(null)
+  const flowPositionRef = useRef(0)
+  const flowVelocityRef = useRef(0)
+  const focusCardRef = useRef<HTMLButtonElement | null>(null)
+  const hoverSourceRef = useRef<StackSide | null>(null)
   const progressiveBlockRefs = useRef(new Map<ProgressiveBlockId, HTMLElement>())
-  const courseStackRef = useRef<HTMLElement | null>(null)
-
-  const motionProgress = STACK_PROGRESS_OFFSET * stackIntroProgress + stackProgress * STACK_PROGRESS_RANGE
-  const activeStackIndex = clamp(Math.round(stackProgress * (courses.length - 1)), 0, courses.length - 1)
+  const baseCourseIndex = Math.floor(flowSnapshot.position)
+  const activeCourseIndex = positiveModulo(baseCourseIndex, courses.length)
+  const flowFraction = positiveModulo(flowSnapshot.position, 1)
+  const focusCourse = loopCourse(baseCourseIndex)
+  const leftStackCourses = Array.from(
+    { length: COURSE_STACK_CARD_COUNT },
+    (_, index) => loopCourse(baseCourseIndex - index),
+  )
+  const rightStackCourses = Array.from(
+    { length: COURSE_STACK_CARD_COUNT },
+    (_, index) => loopCourse(baseCourseIndex + index + 1),
+  )
 
   const revealBlock = useCallback((id: ProgressiveBlockId) => {
     setRevealedBlockIds((current) => {
@@ -459,161 +511,143 @@ export default function LandingPage() {
     navigate(isAuthenticated ? '/dashboard' : '/register')
   }
 
-  const openCourse = (course: Course) => {
-    setActiveCourse(course)
+  const setStackHoverSource = (side: StackSide | null) => {
+    if (hoverSourceRef.current === side) return
+
+    hoverSourceRef.current = side
+    setHoverSource(side)
   }
 
-  const handleCourseKeyDown = (event: React.KeyboardEvent<HTMLElement>, course: Course) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return
+  const setStackHoverSourceFromTarget = (target: EventTarget | null) => {
+    if (!(target instanceof Element)) {
+      setStackHoverSource(null)
+      return
+    }
 
-    event.preventDefault()
-    openCourse(course)
+    if (target.closest('.course-flow-force-zone--left, .course-flow-stack--left')) {
+      setStackHoverSource('left')
+      return
+    }
+
+    if (target.closest('.course-flow-force-zone--right, .course-flow-stack--right')) {
+      setStackHoverSource('right')
+      return
+    }
+
+    setStackHoverSource(null)
   }
 
-  const handleStackSceneClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    const cardElements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('.stack-course-card'))
-    const matchingCard = cardElements
-      .map((cardElement) => {
-        const rect = cardElement.getBoundingClientRect()
-        const opacity = Number(window.getComputedStyle(cardElement).opacity)
-        const courseIndex = Number(cardElement.dataset.courseIndex)
-
-        return {
-          courseIndex,
-          isHit:
-            opacity > 0.1
-            && event.clientX >= rect.left
-            && event.clientX <= rect.right
-            && event.clientY >= rect.top
-            && event.clientY <= rect.bottom,
-          zIndex: Number(window.getComputedStyle(cardElement).zIndex) || 0,
-        }
-      })
-      .filter((card) => card.isHit && Number.isInteger(card.courseIndex))
-      .sort((left, right) => right.zIndex - left.zIndex)[0]
-
-    if (!matchingCard) return
-
-    openCourse(courses[matchingCard.courseIndex])
+  const handleCourseFrameMove = (
+    event: ReactMouseEvent<HTMLDivElement> | ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    setStackHoverSourceFromTarget(event.target)
   }
 
-  useEffect(() => {
-    const updateStackProgress = () => {
-      const section = courseStackRef.current
-      if (!section) return
-
-      const scrollable = Math.max(section.offsetHeight - window.innerHeight, 1)
-      const progress = clamp(-section.getBoundingClientRect().top / scrollable, 0, 1)
-
-      setStackProgress((current) => (Math.abs(current - progress) < 0.0001 ? current : progress))
+  const openFocusedCourse = () => {
+    const rect = focusCardRef.current?.getBoundingClientRect()
+    const fallbackOrigin = {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+      width: 220,
+      height: 140,
     }
-
-    const updateViewportSize = () => {
-      setViewportSize({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      })
-    }
-
-    let frameId = 0
-    const requestUpdate = () => {
-      window.cancelAnimationFrame(frameId)
-      frameId = window.requestAnimationFrame(updateStackProgress)
-    }
-
-    updateViewportSize()
-    updateStackProgress()
-    window.addEventListener('scroll', requestUpdate, { passive: true })
-    window.addEventListener('resize', updateViewportSize)
-    window.addEventListener('resize', requestUpdate)
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-      window.removeEventListener('scroll', requestUpdate)
-      window.removeEventListener('resize', updateViewportSize)
-      window.removeEventListener('resize', requestUpdate)
-    }
-  }, [])
-
-  useEffect(() => {
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-    if (prefersReducedMotion) {
-      setStackIntroProgress(1)
-      return undefined
-    }
-
-    let frameId = 0
-    const startTime = window.performance.now() + STACK_INTRO_DELAY_MS
-
-    const animateIntro = (timestamp: number) => {
-      const linearProgress = clamp((timestamp - startTime) / STACK_INTRO_DURATION_MS, 0, 1)
-      const easedProgress = 1 - ((1 - linearProgress) ** 3)
-
-      setStackIntroProgress((current) => (
-        Math.abs(current - easedProgress) < 0.0001 ? current : easedProgress
-      ))
-
-      if (linearProgress < 1) {
-        frameId = window.requestAnimationFrame(animateIntro)
+    const origin = rect
+      ? {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+        width: rect.width,
+        height: rect.height,
       }
+      : fallbackOrigin
+
+    if (detailCloseTimerRef.current !== null) {
+      window.clearTimeout(detailCloseTimerRef.current)
+      detailCloseTimerRef.current = null
     }
 
-    frameId = window.requestAnimationFrame(animateIntro)
+    setDetailState({
+      course: focusCourse,
+      phase: 'open',
+      origin,
+      endSize: {
+        width: Math.min(940, Math.max(window.innerWidth - 36, 280)),
+        height: Math.min(760, Math.max(window.innerHeight - 36, 420)),
+      },
+    })
+  }
 
-    return () => {
-      window.cancelAnimationFrame(frameId)
+  const closeCourseDetail = () => {
+    setDetailState((current) => (current ? { ...current, phase: 'closing' } : current))
+
+    if (detailCloseTimerRef.current !== null) {
+      window.clearTimeout(detailCloseTimerRef.current)
     }
-  }, [])
+
+    detailCloseTimerRef.current = window.setTimeout(() => {
+      setDetailState(null)
+      detailCloseTimerRef.current = null
+    }, COURSE_FLOW_DETAIL_DURATION_MS)
+  }
 
   useEffect(() => {
-    if (!introComplete) return undefined
-
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
     if (prefersReducedMotion) return undefined
 
-    const lenis = new Lenis({
-      lerp: STACK_SMOOTH_SCROLL_LERP,
-      smoothWheel: true,
-      syncTouch: true,
-      prevent: (node) => Boolean(node.closest('.course-modal__panel')),
-    })
-
     let frameId = 0
-    const animateSmoothScroll = (time: number) => {
-      lenis.raf(time)
-      frameId = window.requestAnimationFrame(animateSmoothScroll)
+    let previousTime = window.performance.now()
+
+    const animateCourseFlow = (time: number) => {
+      const deltaTime = Math.min(Math.max(time - previousTime, 0), 48)
+      previousTime = time
+
+      const hoverDirection = hoverSourceRef.current === 'left' ? 1 : hoverSourceRef.current === 'right' ? -1 : 0
+      const targetVelocity = hoverDirection * COURSE_FLOW_TARGET_VELOCITY
+      const acceleration = Math.min(deltaTime / COURSE_FLOW_ACCELERATION_MS, 0.24)
+
+      flowVelocityRef.current += (targetVelocity - flowVelocityRef.current) * acceleration
+
+      if (hoverDirection === 0) {
+        flowVelocityRef.current *= Math.exp(-deltaTime / 520)
+      }
+
+      if (Math.abs(flowVelocityRef.current) < 0.00003 && hoverDirection === 0) {
+        flowVelocityRef.current = 0
+      }
+
+      flowPositionRef.current += flowVelocityRef.current * deltaTime
+
+      if (Math.abs(flowPositionRef.current) > courses.length * 100) {
+        flowPositionRef.current = positiveModulo(flowPositionRef.current, courses.length)
+      }
+
+      setFlowSnapshot((current) => {
+        if (
+          Math.abs(current.position - flowPositionRef.current) < 0.001
+          && Math.abs(current.velocity - flowVelocityRef.current) < 0.00001
+        ) {
+          return current
+        }
+
+        return {
+          position: flowPositionRef.current,
+          velocity: flowVelocityRef.current,
+        }
+      })
+
+      frameId = window.requestAnimationFrame(animateCourseFlow)
     }
 
-    frameId = window.requestAnimationFrame(animateSmoothScroll)
+    frameId = window.requestAnimationFrame(animateCourseFlow)
 
     return () => {
       window.cancelAnimationFrame(frameId)
-      lenis.destroy()
     }
-  }, [introComplete])
+  }, [])
 
-  useEffect(() => {
-    const previousHtmlOverflowY = document.documentElement.style.overflowY
-    const previousBodyOverflowY = document.body.style.overflowY
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const unlockDelay = prefersReducedMotion ? 0 : INTRO_UNLOCK_DELAY_MS
-
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-    document.documentElement.style.overflowY = 'hidden'
-    document.body.style.overflowY = 'hidden'
-
-    const unlockTimer = window.setTimeout(() => {
-      setIntroComplete(true)
-      document.documentElement.style.overflowY = previousHtmlOverflowY
-      document.body.style.overflowY = previousBodyOverflowY
-    }, unlockDelay)
-
-    return () => {
-      window.clearTimeout(unlockTimer)
-      document.documentElement.style.overflowY = previousHtmlOverflowY
-      document.body.style.overflowY = previousBodyOverflowY
+  useEffect(() => () => {
+    if (detailCloseTimerRef.current !== null) {
+      window.clearTimeout(detailCloseTimerRef.current)
     }
   }, [])
 
@@ -698,52 +732,125 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <section
-        className="course-stack-section"
-        id="courses"
-        ref={courseStackRef}
-        style={courseStackSectionStyle}
-      >
-        <div className="course-stack-stage">
-          <div className="course-stack-scene" onClick={handleStackSceneClick}>
-            <div className="course-stack-content" aria-label="课程卡片堆叠">
-              {courses.map((course, index) => {
-                const cardDistance = Math.abs(index - activeStackIndex)
+      <section className="course-flow-section" id="courses">
+        <div className="course-flow-shell">
+          <div
+            className={`course-flow-frame${hoverSource ? ` is-pushed-from-${hoverSource}` : ''}`}
+            aria-labelledby="course-flow-title"
+            onMouseLeave={() => setStackHoverSource(null)}
+            onMouseMove={handleCourseFrameMove}
+            onPointerLeave={() => setStackHoverSource(null)}
+            onPointerMove={handleCourseFrameMove}
+          >
+            <div className="course-flow-time" aria-hidden="true">
+              <strong>Day 0 - Day 7</strong>
+              <span>content growth</span>
+            </div>
+            <h1 className="course-flow-title" id="course-flow-title">every : course</h1>
 
-                return (
+            <div
+              className="course-flow-force-zone course-flow-force-zone--left"
+              onMouseEnter={() => setStackHoverSource('left')}
+              onMouseLeave={() => setStackHoverSource(null)}
+              onMouseMove={() => setStackHoverSource('left')}
+              onPointerEnter={() => setStackHoverSource('left')}
+              onPointerLeave={() => setStackHoverSource(null)}
+              onPointerMove={() => setStackHoverSource('left')}
+              aria-hidden="true"
+            />
+            <div
+              className="course-flow-force-zone course-flow-force-zone--right"
+              onMouseEnter={() => setStackHoverSource('right')}
+              onMouseLeave={() => setStackHoverSource(null)}
+              onMouseMove={() => setStackHoverSource('right')}
+              onPointerEnter={() => setStackHoverSource('right')}
+              onPointerLeave={() => setStackHoverSource(null)}
+              onPointerMove={() => setStackHoverSource('right')}
+              aria-hidden="true"
+            />
+
+            <div
+              className={`course-flow-stack course-flow-stack--left${hoverSource === 'left' ? ' is-source' : ''}`}
+              onMouseEnter={() => setStackHoverSource('left')}
+              onMouseLeave={() => setStackHoverSource(null)}
+              onMouseMove={() => setStackHoverSource('left')}
+              onPointerEnter={() => setStackHoverSource('left')}
+              onPointerLeave={() => setStackHoverSource(null)}
+              onPointerMove={() => setStackHoverSource('left')}
+              aria-label="左侧课程堆叠"
+            >
+              <div className="course-flow-stack__depth" aria-hidden="true">
+                {leftStackCourses.map((course, index) => (
                   <article
-                    aria-current={activeStackIndex === index ? 'step' : undefined}
-                    aria-label={`${course.day} ${course.title} 课程详情`}
-                    className="stack-course-card"
-                    key={course.day}
-                    onClick={() => openCourse(course)}
-                    onKeyDown={(event) => handleCourseKeyDown(event, course)}
-                    role="button"
-                    data-course-index={index}
-                    style={getCourseCardStyle(index, motionProgress, course, viewportSize)}
-                    tabIndex={cardDistance < 2 ? 0 : -1}
+                    className="course-flow-card"
+                    key={`left-${index}-${course.day}`}
+                    style={getCourseStackCardStyle(course, index, 'left', flowSnapshot)}
                   >
-                    <div className="stack-course-card__top">
-                      <span>{course.day}</span>
-                      <strong>{course.duration}</strong>
-                    </div>
-
-                    <h2>{course.title}</h2>
-                    <p>{course.description}</p>
-
-                    <div className="stack-course-card__meta">
-                      <strong>得到什么</strong>
-                      <ul>
-                        {course.gains.slice(0, 2).map((gain) => (
-                          <li key={gain}>{gain}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <footer>{course.deliverable}</footer>
+                    <span>{course.day}</span>
+                    <strong>{course.title}</strong>
+                    <em>{course.deliverable}</em>
                   </article>
-                )
-              })}
+                ))}
+              </div>
+            </div>
+
+            <div
+              className={`course-flow-stack course-flow-stack--right${hoverSource === 'right' ? ' is-source' : ''}`}
+              onMouseEnter={() => setStackHoverSource('right')}
+              onMouseLeave={() => setStackHoverSource(null)}
+              onMouseMove={() => setStackHoverSource('right')}
+              onPointerEnter={() => setStackHoverSource('right')}
+              onPointerLeave={() => setStackHoverSource(null)}
+              onPointerMove={() => setStackHoverSource('right')}
+              aria-label="右侧课程堆叠"
+            >
+              <div className="course-flow-stack__depth" aria-hidden="true">
+                {rightStackCourses.map((course, index) => (
+                  <article
+                    className="course-flow-card"
+                    key={`right-${index}-${course.day}`}
+                    style={getCourseStackCardStyle(course, index, 'right', flowSnapshot)}
+                  >
+                    <span>{course.day}</span>
+                    <strong>{course.title}</strong>
+                    <em>{course.deliverable}</em>
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <button
+              aria-label={`${focusCourse.day} ${focusCourse.title} 课程详情`}
+              className="course-flow-focus"
+              ref={focusCardRef}
+              style={getCourseFocusCardStyle(focusCourse, flowFraction, flowSnapshot.velocity)}
+              type="button"
+              onClick={openFocusedCourse}
+            >
+              <span>{focusCourse.day}</span>
+              <strong>{focusCourse.title}</strong>
+              <em>{focusCourse.deliverable}</em>
+            </button>
+
+            <aside className="course-flow-index" aria-label="课程目录">
+              <strong>all <span>{courses.length * 261}</span></strong>
+              <ol>
+                {courses.map((course, index) => (
+                  <li
+                    aria-current={activeCourseIndex === index ? 'step' : undefined}
+                    className={activeCourseIndex === index ? 'is-active' : undefined}
+                    key={course.day}
+                  >
+                    {course.title} <span>{(index + 1) * 18}</span>
+                  </li>
+                ))}
+              </ol>
+            </aside>
+
+            <div className="course-flow-icons" aria-hidden="true">
+              <Bookmark size={13} strokeWidth={2.2} />
+              <Share2 size={13} strokeWidth={2.2} />
+              <CircleHelp size={13} strokeWidth={2.2} />
             </div>
           </div>
         </div>
@@ -883,46 +990,54 @@ export default function LandingPage() {
         <span>宠物行业 AI 内容增长与内容生产系统</span>
       </footer>
 
-      {activeCourse && (
-        <div className="course-modal" role="dialog" aria-modal="true" aria-label={`${activeCourse.title}详情`}>
+      {detailState && (
+        <div
+          className={`course-detail course-detail--${detailState.phase}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${detailState.course.title}详情`}
+          style={getCourseDetailStyle(detailState)}
+        >
           <button
-            className="course-modal__backdrop"
+            className="course-detail__backdrop"
             type="button"
-            onClick={() => setActiveCourse(null)}
+            onClick={closeCourseDetail}
             aria-label="关闭课程详情"
           />
-          <article className="course-modal__panel" data-lenis-prevent>
-            <button className="course-modal__close" type="button" onClick={() => setActiveCourse(null)} aria-label="关闭">
+          <article className="course-detail__panel">
+            <button className="course-detail__close" type="button" onClick={closeCourseDetail} aria-label="关闭">
               <X size={20} />
             </button>
-            <span>{activeCourse.day} · {activeCourse.capability}</span>
-            <h2>{activeCourse.title}</h2>
-            <p>{activeCourse.description}</p>
-            <div className="course-modal__meta">
-              <strong>{activeCourse.deliverable}</strong>
-              <strong>{activeCourse.duration}</strong>
-              <strong>{activeCourse.format}</strong>
+            <div className="course-detail__content">
+              <span>{detailState.course.day} · {detailState.course.capability}</span>
+              <h2>{detailState.course.title}</h2>
+              <p>{detailState.course.description}</p>
             </div>
-            <div className="course-modal__columns">
+            <div className="course-detail__meta">
+              <strong>{detailState.course.deliverable}</strong>
+              <strong>{detailState.course.duration}</strong>
+              <strong>{detailState.course.format}</strong>
+            </div>
+            <div className="course-detail__columns">
               <section>
                 <h3>你会得到</h3>
-                {activeCourse.gains.map((item) => <p key={item}>{item}</p>)}
+                {detailState.course.gains.map((item) => <p key={item}>{item}</p>)}
               </section>
               <section>
                 <h3>今日目标</h3>
-                {activeCourse.goals.map((item) => <p key={item}>{item}</p>)}
+                {detailState.course.goals.map((item) => <p key={item}>{item}</p>)}
               </section>
               <section>
                 <h3>课堂实操</h3>
-                {activeCourse.practice.map((item) => <p key={item}>{item}</p>)}
+                {detailState.course.practice.map((item) => <p key={item}>{item}</p>)}
               </section>
               <section>
                 <h3>验收标准</h3>
-                {activeCourse.acceptance.map((item) => <p key={item}>{item}</p>)}
+                {detailState.course.acceptance.map((item) => <p key={item}>{item}</p>)}
               </section>
               <section>
                 <h3>对应系统能力</h3>
-                <p>{activeCourse.capability}</p>
+                <p>{detailState.course.capability}</p>
                 <p>课程先讲运营判断，再进入工具化执行，功能需要登录后在工作台查看。</p>
               </section>
             </div>
