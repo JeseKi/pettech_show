@@ -30,6 +30,7 @@ export type CourseOrbitItem = Course & {
 export type CourseOrbitPointerState = {
   isDragging: boolean
   hasDragged: boolean
+  startedOnFocusCard: boolean
   lastX: number
   lastTime: number
   velocity: number

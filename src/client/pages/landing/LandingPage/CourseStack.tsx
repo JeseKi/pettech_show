@@ -35,11 +35,22 @@ const renderCourseCardContent = (course: Course) => (
   </>
 )
 
+const isFocusCardTarget = (target: EventTarget | null) => (
+  target instanceof Element && target.closest('.stack-course-card--focus') !== null
+)
+
 export function CourseStack({ onCourseOpen }: CourseStackProps) {
   const [orbitPhase, setOrbitPhase] = useState(0)
   const [viewportSize, setViewportSize] = useState<ViewportSize>({ width: 1280, height: 720 })
   const orbitInertiaFrameRef = useRef(0)
-  const orbitPointerStateRef = useRef<CourseOrbitPointerState>({ isDragging: false, hasDragged: false, lastX: 0, lastTime: 0, velocity: 0 })
+  const orbitPointerStateRef = useRef<CourseOrbitPointerState>({
+    isDragging: false,
+    hasDragged: false,
+    startedOnFocusCard: false,
+    lastX: 0,
+    lastTime: 0,
+    velocity: 0,
+  })
   const activeOrbitItem = getActiveCourseOrbitItem(orbitPhase)
   const activePose = getOrbitPose(activeOrbitItem, orbitPhase, viewportSize)
   const edgeProgress = clamp(Math.abs(activePose.signed) / COURSE_ORBIT_ANGLE_STEP, 0, 1)
@@ -80,6 +91,7 @@ export function CourseStack({ onCourseOpen }: CourseStackProps) {
     const pointerState = orbitPointerStateRef.current
     pointerState.isDragging = true
     pointerState.hasDragged = false
+    pointerState.startedOnFocusCard = isFocusCardTarget(event.target)
     pointerState.lastX = event.clientX
     pointerState.lastTime = window.performance.now()
     pointerState.velocity = 0
@@ -101,12 +113,19 @@ export function CourseStack({ onCourseOpen }: CourseStackProps) {
     moveCourseOrbit(deltaX * COURSE_ORBIT_DRAG_SENSITIVITY)
   }
 
-  const releasePointer = (event: PointerEvent<HTMLDivElement>) => {
+  const releasePointer = (event: PointerEvent<HTMLDivElement>, allowFocusCardOpen = true) => {
     const pointerState = orbitPointerStateRef.current
     if (!pointerState.isDragging) return
+    const shouldOpenFocusCard = allowFocusCardOpen && pointerState.startedOnFocusCard && !pointerState.hasDragged
     pointerState.isDragging = false
+    pointerState.startedOnFocusCard = false
     event.currentTarget.classList.remove('is-dragging')
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    if (shouldOpenFocusCard) {
+      pointerState.velocity = 0
+      window.setTimeout(() => onCourseOpen(activeOrbitItem), 0)
+      return
+    }
     startCourseOrbitInertia()
   }
 
@@ -130,11 +149,6 @@ export function CourseStack({ onCourseOpen }: CourseStackProps) {
     onCourseOpen(course)
   }
 
-  const handleCourseCardClick = (course: Course) => {
-    if (orbitPointerStateRef.current.hasDragged) return
-    onCourseOpen(course)
-  }
-
   useEffect(() => {
     const updateViewportSize = () => {
       setViewportSize({ width: window.innerWidth, height: window.innerHeight })
@@ -150,10 +164,10 @@ export function CourseStack({ onCourseOpen }: CourseStackProps) {
   return (
     <section className="course-stack-section" id="courses">
       <div className="course-stack-stage">
-        <div
-          className="course-stack-scene"
-          onKeyDown={handleSceneKeyDown}
-          onPointerCancel={releasePointer}
+          <div
+            className="course-stack-scene"
+            onKeyDown={handleSceneKeyDown}
+            onPointerCancel={(event) => releasePointer(event, false)}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={releasePointer}
@@ -183,7 +197,6 @@ export function CourseStack({ onCourseOpen }: CourseStackProps) {
               aria-current="step"
               aria-label={`${activeOrbitItem.day} ${activeOrbitItem.title} 课程详情`}
               className="stack-course-card stack-course-card--focus is-front"
-              onClick={() => handleCourseCardClick(activeOrbitItem)}
               onKeyDown={(event) => handleCourseKeyDown(event, activeOrbitItem)}
               role="button"
               data-course-index={activeOrbitItem.courseIndex}
