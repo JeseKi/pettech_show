@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import MainLayout from './components/layout/MainLayout'
 import DashboardPage from './pages/dashboard/DashboardPage'
 import ExamplePage from './pages/dashboard/ExamplePage'
@@ -20,6 +20,14 @@ import { AuthProvider, RequireAdmin, RequireAuth } from './providers/AuthProvide
 import { RuntimeConfigProvider } from './providers/RuntimeConfigProvider'
 import ThemeToggle from './components/theme/ThemeToggle'
 
+function ThemeToggleGate() {
+  const location = useLocation()
+  if (location.pathname === '/' || location.pathname === '/landing') {
+    return null
+  }
+  return <ThemeToggle />
+}
+
 export default function App() {
   return (
     <Router>
@@ -27,7 +35,7 @@ export default function App() {
         <AuthProvider>
           <>
             <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<LandingPage />} />
             <Route path="/landing" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
@@ -75,7 +83,7 @@ export default function App() {
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-            <ThemeToggle />
+            <ThemeToggleGate />
           </>
         </AuthProvider>
       </RuntimeConfigProvider>
