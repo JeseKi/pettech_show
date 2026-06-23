@@ -564,18 +564,55 @@
   width: min(1180px, calc(100vw - 36px));
   margin: 0 auto;
   padding: 110px 0;
-  opacity: 0;
-  animation: landingSupportIn 800ms cubic-bezier(0.16, 1, 0.3, 1) 3500ms forwards;
 }
 
-.landing-footer {
+.landing-reveal {
   opacity: 0;
-  animation: landingSupportIn 800ms cubic-bezier(0.16, 1, 0.3, 1) 3500ms forwards;
+  filter: blur(10px);
+  transform: translateY(34px);
+  transition:
+    opacity 760ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 760ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 760ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, filter, transform;
 }
 
-.landing-page:not(.is-intro-complete) .landing-section,
-.landing-page:not(.is-intro-complete) .landing-footer {
+.landing-reveal.is-revealed {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0);
+}
+
+.landing-reveal:not(.is-revealed),
+.landing-page:not(.is-intro-complete) .landing-reveal {
   pointer-events: none;
+}
+
+.landing-reveal .result-strip article,
+.landing-reveal .capability-grid article,
+.landing-reveal .tool-flow__items article,
+.landing-reveal .course-grid button,
+.landing-reveal .course-feature {
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(18px);
+  transition:
+    opacity 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 160ms ease,
+    background 160ms ease;
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+.landing-reveal.is-revealed .result-strip article,
+.landing-reveal.is-revealed .capability-grid article,
+.landing-reveal.is-revealed .tool-flow__items article,
+.landing-reveal.is-revealed .course-grid button,
+.landing-reveal.is-revealed .course-feature {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0);
 }
 
 .landing-section__heading {
@@ -732,6 +769,11 @@
 .course-feature:hover,
 .course-grid button:hover {
   border-color: rgba(184, 255, 103, 0.58);
+  transform: translateY(-2px);
+}
+
+.landing-reveal.is-revealed .course-feature:hover,
+.landing-reveal.is-revealed .course-grid button:hover {
   transform: translateY(-2px);
 }
 
@@ -921,11 +963,16 @@
   .landing-hero__content p:not(.landing-eyebrow),
   .landing-hero__actions,
   .landing-hero__metrics,
-  .landing-section,
-  .landing-footer {
+  .landing-reveal,
+  .landing-reveal .result-strip article,
+  .landing-reveal .capability-grid article,
+  .landing-reveal .tool-flow__items article,
+  .landing-reveal .course-grid button,
+  .landing-reveal .course-feature {
     opacity: 1;
     filter: none;
     animation: none;
+    transition: none;
   }
 
   .landing-nav {
@@ -938,8 +985,12 @@
   .landing-hero__content p:not(.landing-eyebrow),
   .landing-hero__actions,
   .landing-hero__metrics,
-  .landing-section,
-  .landing-footer {
+  .landing-reveal,
+  .landing-reveal .result-strip article,
+  .landing-reveal .capability-grid article,
+  .landing-reveal .tool-flow__items article,
+  .landing-reveal .course-grid button,
+  .landing-reveal .course-feature {
     transform: none;
   }
 }

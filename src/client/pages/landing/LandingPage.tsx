@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Archive,
@@ -38,6 +38,18 @@ type Course = {
 }
 
 const INTRO_UNLOCK_DELAY_MS = 3900
+const PROGRESSIVE_BLOCK_IDS = ['course-intro', 'production', 'courses', 'deliverables', 'contact', 'footer'] as const
+
+type ProgressiveBlockId = (typeof PROGRESSIVE_BLOCK_IDS)[number]
+type RevealStyle = CSSProperties & Record<'--reveal-delay', string>
+
+const revealItemStyle = (index: number): RevealStyle => ({
+  '--reveal-delay': `${index * 48}ms`,
+})
+
+const isProgressiveBlockId = (id: string | null): id is ProgressiveBlockId => (
+  id !== null && PROGRESSIVE_BLOCK_IDS.includes(id as ProgressiveBlockId)
+)
 
 const navGroups = [
   {
@@ -291,8 +303,34 @@ export default function LandingPage() {
   const { isAuthenticated } = useAuth()
   const [activeCourse, setActiveCourse] = useState<Course | null>(null)
   const [introComplete, setIntroComplete] = useState(false)
+  const [revealedBlockIds, setRevealedBlockIds] = useState<Set<ProgressiveBlockId>>(() => new Set())
+  const progressiveBlockRefs = useRef(new Map<ProgressiveBlockId, HTMLElement>())
 
   const featuredCourse = useMemo(() => courses[3], [])
+
+  const revealBlock = useCallback((id: ProgressiveBlockId) => {
+    setRevealedBlockIds((current) => {
+      if (current.has(id)) return current
+
+      const next = new Set(current)
+      const targetIndex = PROGRESSIVE_BLOCK_IDS.indexOf(id)
+      PROGRESSIVE_BLOCK_IDS.slice(0, targetIndex + 1).forEach((blockId) => next.add(blockId))
+      return next
+    })
+  }, [])
+
+  const registerProgressiveBlock = useCallback((id: ProgressiveBlockId) => (node: HTMLElement | null) => {
+    if (node) {
+      progressiveBlockRefs.current.set(id, node)
+      return
+    }
+
+    progressiveBlockRefs.current.delete(id)
+  }, [])
+
+  const progressiveClassName = (id: ProgressiveBlockId, className: string) => (
+    `${className} landing-reveal${revealedBlockIds.has(id) ? ' is-revealed' : ''}`
+  )
 
   const goToWorkspace = () => {
     navigate(isAuthenticated ? '/aiwiki' : '/login')
@@ -324,6 +362,52 @@ export default function LandingPage() {
       document.body.style.overflowY = previousBodyOverflowY
     }
   }, [])
+
+  useEffect(() => {
+    if (!introComplete) return undefined
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    if (prefersReducedMotion || !('IntersectionObserver' in window)) {
+      setRevealedBlockIds(new Set(PROGRESSIVE_BLOCK_IDS))
+      return undefined
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return
+
+          const id = entry.target.getAttribute('data-reveal-id')
+          if (!isProgressiveBlockId(id)) return
+
+          revealBlock(id)
+          observer.unobserve(entry.target)
+        })
+      },
+      {
+        rootMargin: '0px 0px -12% 0px',
+        threshold: 0.08,
+      },
+    )
+
+    progressiveBlockRefs.current.forEach((node) => observer.observe(node))
+
+    const frameId = window.requestAnimationFrame(() => {
+      progressiveBlockRefs.current.forEach((node, id) => {
+        const rect = node.getBoundingClientRect()
+        if (rect.top < window.innerHeight * 0.88 && rect.bottom > 0) {
+          revealBlock(id)
+          observer.unobserve(node)
+        }
+      })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+      observer.disconnect()
+    }
+  }, [introComplete, revealBlock])
 
   return (
     <main className={`landing-page${introComplete ? ' is-intro-complete' : ''}`}>
@@ -389,14 +473,19 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="landing-section landing-section--intro" id="course-intro">
+      <section
+        className={progressiveClassName('course-intro', 'landing-section landing-section--intro')}
+        id="course-intro"
+        ref={registerProgressiveBlock('course-intro')}
+        data-reveal-id="course-intro"
+      >
         <div className="landing-section__heading">
           <p className="landing-eyebrow">COURSE POSITIONING</p>
           <h2>不是临时写几段文案，而是跑完一轮内容获客闭环</h2>
         </div>
         <div className="result-strip">
-          {productionFlow.map(([title, text]) => (
-            <article key={title}>
+          {productionFlow.map(([title, text], index) => (
+            <article key={title} style={revealItemStyle(index)}>
               <span>{title.slice(1, 3)}</span>
               <h3>{title}</h3>
               <p>{text}</p>
@@ -404,8 +493,8 @@ export default function LandingPage() {
           ))}
         </div>
         <div className="capability-grid">
-          {audience.map((item) => (
-            <article key={item}>
+          {audience.map((item, index) => (
+            <article key={item} style={revealItemStyle(index + productionFlow.length)}>
               <Target size={24} />
               <h3>{item}</h3>
               <p>围绕真实业务目标，设计适合自己的内容方向、转化动作和资产沉淀方式。</p>
@@ -414,7 +503,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="landing-section tool-flow" id="production">
+      <section
+        className={progressiveClassName('production', 'landing-section tool-flow')}
+        id="production"
+        ref={registerProgressiveBlock('production')}
+        data-reveal-id="production"
+      >
         <div className="landing-section__heading">
           <p className="landing-eyebrow">CONTENT PRODUCTION</p>
           <h2>内容生产系统在工作台里使用，公开页只展示能力链路</h2>
@@ -430,7 +524,7 @@ export default function LandingPage() {
             {productionSteps.map((item, index) => {
               const Icon = item.icon
               return (
-                <article key={item.title}>
+                <article key={item.title} style={revealItemStyle(index)}>
                   <span>{String(index + 1).padStart(2, '0')}</span>
                   <Icon size={26} />
                   <h3>{item.title}</h3>
@@ -452,21 +546,36 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="landing-section course-section" id="courses">
+      <section
+        className={progressiveClassName('courses', 'landing-section course-section')}
+        id="courses"
+        ref={registerProgressiveBlock('courses')}
+        data-reveal-id="courses"
+      >
         <div className="landing-section__heading">
           <p className="landing-eyebrow">7-DAY BOOTCAMP</p>
           <h2>宠物行业 AI 内容增长实战课 · 7 天训练营</h2>
         </div>
         <div className="course-layout">
-          <button className="course-feature" type="button" onClick={() => setActiveCourse(featuredCourse)}>
+          <button
+            className="course-feature"
+            type="button"
+            onClick={() => setActiveCourse(featuredCourse)}
+            style={revealItemStyle(0)}
+          >
             <span>{featuredCourse.day} · {featuredCourse.capability}</span>
             <h3>{featuredCourse.title}</h3>
             <p>{featuredCourse.question}</p>
             <strong>{featuredCourse.deliverable}</strong>
           </button>
           <div className="course-grid">
-            {courses.map((course) => (
-              <button key={course.day} type="button" onClick={() => setActiveCourse(course)}>
+            {courses.map((course, index) => (
+              <button
+                key={course.day}
+                type="button"
+                onClick={() => setActiveCourse(course)}
+                style={revealItemStyle(index + 1)}
+              >
                 <span>{course.day} · {course.capability}</span>
                 <h3>{course.title}</h3>
                 <p>{course.question}</p>
@@ -476,7 +585,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="landing-section demo-section" id="deliverables">
+      <section
+        className={progressiveClassName('deliverables', 'landing-section demo-section')}
+        id="deliverables"
+        ref={registerProgressiveBlock('deliverables')}
+        data-reveal-id="deliverables"
+      >
         <div className="demo-section__copy">
           <p className="landing-eyebrow">DELIVERABLES</p>
           <h2>课程结束，带走的是自己的内容增长资产</h2>
@@ -493,7 +607,7 @@ export default function LandingPage() {
         </div>
         <div className="tool-flow__items">
           {deliverables.map((item, index) => (
-            <article key={item}>
+            <article key={item} style={revealItemStyle(index)}>
               <span>{String(index + 1).padStart(2, '0')}</span>
               <PackageCheck size={24} />
               <h3>{item}</h3>
@@ -503,7 +617,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="landing-section final-cta" id="contact">
+      <section
+        className={progressiveClassName('contact', 'landing-section final-cta')}
+        id="contact"
+        ref={registerProgressiveBlock('contact')}
+        data-reveal-id="contact"
+      >
         <CalendarDays size={34} />
         <h2>想把宠物行业内容生产做成可持续系统？</h2>
         <p>预约咨询，了解内容生产系统、7 天训练营和适合你业务的落地方式。</p>
@@ -518,7 +637,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="landing-footer">
+      <footer
+        className={progressiveClassName('footer', 'landing-footer')}
+        ref={registerProgressiveBlock('footer')}
+        data-reveal-id="footer"
+      >
         <span>{BRAND_NAME}</span>
         <span>宠物行业 AI 内容增长与内容生产系统</span>
       </footer>
