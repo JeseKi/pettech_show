@@ -3,17 +3,19 @@ import { App, Col, Row, theme } from 'antd'
 import type { UploadFile, UploadProps } from 'antd'
 import { useAuth } from '../../hooks/useAuth'
 import { createAiwikiJob, deleteAiwikiJob, getAiwikiJob, getAiwikiResult, listAiwikiJobs, type AiwikiJob, type AiwikiJobSummary, type AiwikiResult } from '../../lib/aiwiki'
-import { resolveErrorMessage } from '../dashboard/ExamplePage/utils'
+import { resolveErrorMessage } from '../../lib/errorMessage'
 import { ACTIVE_STATUSES, ACCEPTED_TYPES, entryTypeLabel, statusMeta } from './helpers'
 import KeywordModal from './KeywordModal'
 import ResultView from './ResultView'
 import { HistorySidebar, TaskSidebar } from './sidebars'
 import UploadPanel from './UploadPanel'
+import { AIWIKI_MODES, type AiwikiModeId } from '../../lib/workflowModes'
 
-export default function AiwikiPage() {
+export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const { message } = App.useApp()
   const { token } = theme.useToken()
   const { user } = useAuth()
+  const modeConfig = AIWIKI_MODES[mode]
   const [fileList, setFileList] = useState<UploadFile[]>([])
   const [job, setJob] = useState<AiwikiJob | null>(null)
   const [history, setHistory] = useState<AiwikiJobSummary[]>([])
@@ -27,7 +29,6 @@ export default function AiwikiPage() {
   const [activeEntrySlug, setActiveEntrySlug] = useState<string | null>(null)
   const [keywordModalOpen, setKeywordModalOpen] = useState(false)
   const [keywordSearch, setKeywordSearch] = useState('')
-  const [generateSearchAssets, setGenerateSearchAssets] = useState(true)
 
   const isAdmin = user?.role === 'admin'
   const meta = statusMeta(job?.status)
@@ -149,7 +150,7 @@ export default function AiwikiPage() {
     setActiveEntrySlug(null)
     try {
       const created = await createAiwikiJob(files, {
-        generate_search_assets: generateSearchAssets,
+        generate_search_assets: modeConfig.generateSearchAssets,
       })
       setJob(created)
       message.success('任务已提交')
@@ -222,8 +223,9 @@ export default function AiwikiPage() {
               submitting={submitting}
               token={token}
               uploadProps={uploadProps}
-              generateSearchAssets={generateSearchAssets}
-              onGenerateSearchAssetsChange={setGenerateSearchAssets}
+              title={modeConfig.title}
+              description={modeConfig.description}
+              buttonText={modeConfig.buttonText}
               onSubmit={handleSubmit}
             />
           )}

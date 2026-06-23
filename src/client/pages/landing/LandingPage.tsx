@@ -109,7 +109,7 @@ export default function LandingPage() {
             {BRAND_NAME}
           </h1>
           <p className="text-lg sm:text-xl text-[var(--app-text-secondary)] max-w-2xl mx-auto mb-8 leading-relaxed">
-            面向内容创意、选题策划与广告投放协作的工作台，
+            面向内容创意、选题策划与广告投放协作的首页，
             将素材沉淀、知识整理和长文生成集中在一个清晰可靠的界面中。
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -120,7 +120,7 @@ export default function LandingPage() {
                 className="h-12 px-8 text-base font-medium"
                 onClick={() => navigate('/dashboard')}
               >
-                进入工作台
+                进入首页
               </Button>
             ) : (
               <>
@@ -203,8 +203,8 @@ export default function LandingPage() {
             </h2>
             <p className="text-lg text-[var(--app-text-secondary)] mb-8 max-w-xl mx-auto">
               {isAuthenticated
-                ? '回到工作台，继续推进内容与投放任务'
-                : '创建账号，进入中影广告的内容协作工作台'}
+                ? '回到首页，继续推进内容与投放任务'
+                : '创建账号，进入中影广告的内容协作首页'}
             </p>
             <Button
               type="primary"
@@ -212,7 +212,7 @@ export default function LandingPage() {
               className="h-12 px-8 text-base font-medium"
               onClick={() => navigate(isAuthenticated ? '/dashboard' : '/register')}
             >
-              {isAuthenticated ? '进入工作台' : '立即注册'}
+              {isAuthenticated ? '进入首页' : '立即注册'}
             </Button>
           </div>
         </div>

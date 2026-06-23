@@ -9,7 +9,6 @@ import {
   Flex,
   Form,
   Input,
-  InputNumber,
   List,
   Popconfirm,
   Progress,
@@ -37,22 +36,18 @@ import {
   type SeedMatrixJobSummary,
   type SeedMatrixResult,
 } from '../../lib/seedMatrix'
-import { resolveErrorMessage } from '../dashboard/ExamplePage/utils'
+import { resolveErrorMessage } from '../../lib/errorMessage'
 import { formatDateTime, progressEventColor, statusMeta } from '../aiwiki/helpers'
+import { SEED_MATRIX_MODES, seedMatrixModeLabel, type SeedMatrixModeId } from '../../lib/workflowModes'
 
 type MatrixRow = Record<string, string>
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
 
-const DEFAULT_FORM: Omit<SeedMatrixCreatePayload, 'source_aiwiki_job_id'> = {
-  expected_seed_count: 10,
-  slots_per_day: 3,
-  hooks: [''],
-}
-
-export default function SeedMatrixPage() {
+export default function SeedMatrixPage({ mode = 'standard' }: { mode?: SeedMatrixModeId }) {
   const { token } = theme.useToken()
   const { message } = App.useApp()
+  const modeConfig = SEED_MATRIX_MODES[mode]
   const [form] = Form.useForm<Omit<SeedMatrixCreatePayload, 'source_aiwiki_job_id'>>()
   const [aiwikiJobs, setAiwikiJobs] = useState<AiwikiJobSummary[]>([])
   const [matrixJobs, setMatrixJobs] = useState<SeedMatrixJobSummary[]>([])
@@ -126,8 +121,8 @@ export default function SeedMatrixPage() {
   useEffect(() => {
     void loadAiwikiJobs()
     void loadMatrixJobs()
-    form.setFieldsValue(DEFAULT_FORM)
-  }, [form, loadAiwikiJobs, loadMatrixJobs])
+    form.setFieldsValue(modeConfig.defaults)
+  }, [form, loadAiwikiJobs, loadMatrixJobs, modeConfig.defaults])
 
   useEffect(() => {
     if (!activeJob?.id || !ACTIVE_STATUSES.has(activeJob.status)) return
@@ -146,11 +141,12 @@ export default function SeedMatrixPage() {
     setError(null)
     setResult(null)
     try {
-      const values = await form.validateFields()
+      const values = modeConfig.showHooks ? await form.validateFields() : modeConfig.defaults
       const created = await createSeedMatrixJob({
-        ...DEFAULT_FORM,
-        ...values,
-        hooks: (values.hooks ?? []).map((item) => item.trim()).filter(Boolean),
+        ...modeConfig.defaults,
+        hooks: modeConfig.showHooks
+          ? (values.hooks ?? []).map((item) => item.trim()).filter(Boolean)
+          : modeConfig.defaults.hooks,
         source_aiwiki_job_id: selectedAiwikiJobId,
       })
       setActiveJob(created)
@@ -291,8 +287,8 @@ export default function SeedMatrixPage() {
             <section style={sectionStyle}>
               <Flex align="center" justify="space-between" wrap="wrap" gap={12}>
                 <div>
-                  <Typography.Title level={3} style={{ margin: 0 }}>自动批量生成选题矩阵</Typography.Title>
-                  <Typography.Text type="secondary">从已完成 AI Wiki 的 material/wiki 资产生成可下载 CSV。</Typography.Text>
+                  <Typography.Title level={3} style={{ margin: 0 }}>{modeConfig.title}</Typography.Title>
+                  <Typography.Text type="secondary">{modeConfig.description}</Typography.Text>
                 </div>
                 <Button
                   type="primary"
@@ -301,44 +297,49 @@ export default function SeedMatrixPage() {
                   disabled={!selectedAiwikiJobId}
                   onClick={() => void submit()}
                 >
-                  生成矩阵
+                  {modeConfig.buttonText}
                 </Button>
               </Flex>
-              <Form form={form} layout="vertical" initialValues={DEFAULT_FORM} style={{ marginTop: 16 }}>
-                <Row gutter={12}>
-                  <Col xs={24} md={8}><Form.Item label="Seed 总量" name="expected_seed_count"><InputNumber min={1} max={500} style={{ width: '100%' }} /></Form.Item></Col>
-                  <Col xs={24} md={8}><Form.Item label="每日 Slot 数量" name="slots_per_day"><InputNumber min={1} max={24} style={{ width: '100%' }} /></Form.Item></Col>
-                  <Col xs={24} md={8}>
-                    <Form.List name="hooks">
-                      {(fields, { add, remove }) => (
-                        <Flex vertical gap={8}>
-                          <Flex align="center" justify="space-between" gap={8}>
-                            <Typography.Text>Hooks</Typography.Text>
-                            <Button size="small" icon={<PlusOutlined />} onClick={() => add('')}>新增</Button>
-                          </Flex>
-                          {fields.map((field, index) => (
-                            <Flex key={field.key} align="flex-start" gap={8}>
-                              <Form.Item {...field} style={{ flex: 1, marginBottom: 0 }}>
-                                <Input.TextArea
-                                  autoSize={{ minRows: 3, maxRows: 6 }}
-                                  placeholder={`Hook ${index + 1}，可多行输入`}
-                                />
-                              </Form.Item>
-                              <Button
-                                danger
-                                type="text"
-                                icon={<DeleteOutlined />}
-                                disabled={fields.length <= 1}
-                                onClick={() => remove(field.name)}
-                              />
+              <Row gutter={[12, 12]} style={{ marginTop: 14 }}>
+                <Col xs={12} md={8}><Statistic title="Seed 总量" value={modeConfig.defaults.expected_seed_count} /></Col>
+                <Col xs={12} md={8}><Statistic title="每日 Slot" value={modeConfig.defaults.slots_per_day} /></Col>
+                <Col xs={12} md={8}><Statistic title="入口模式" value={modeConfig.navLabel} /></Col>
+              </Row>
+              {modeConfig.showHooks && (
+                <Form form={form} layout="vertical" initialValues={modeConfig.defaults} style={{ marginTop: 16 }}>
+                  <Row gutter={12}>
+                    <Col xs={24}>
+                      <Form.List name="hooks">
+                        {(fields, { add, remove }) => (
+                          <Flex vertical gap={8}>
+                            <Flex align="center" justify="space-between" gap={8}>
+                              <Typography.Text>Hooks</Typography.Text>
+                              <Button size="small" icon={<PlusOutlined />} onClick={() => add('')}>新增</Button>
                             </Flex>
-                          ))}
-                        </Flex>
-                      )}
-                    </Form.List>
-                  </Col>
-                </Row>
-              </Form>
+                            {fields.map((field, index) => (
+                              <Flex key={field.key} align="flex-start" gap={8}>
+                                <Form.Item {...field} style={{ flex: 1, marginBottom: 0 }}>
+                                  <Input.TextArea
+                                    autoSize={{ minRows: 3, maxRows: 6 }}
+                                    placeholder={`Hook ${index + 1}，可多行输入`}
+                                  />
+                                </Form.Item>
+                                <Button
+                                  danger
+                                  type="text"
+                                  icon={<DeleteOutlined />}
+                                  disabled={fields.length <= 1}
+                                  onClick={() => remove(field.name)}
+                                />
+                              </Flex>
+                            ))}
+                          </Flex>
+                        )}
+                      </Form.List>
+                    </Col>
+                  </Row>
+                </Form>
+              )}
               {error && <Alert type="error" showIcon message={error} style={{ marginTop: 12 }} />}
             </section>
 
@@ -449,6 +450,7 @@ function TaskPanel({
                 <Space wrap>
                   <Tag color={item.status === 'completed' ? 'green' : item.status === 'failed' ? 'red' : 'blue'}>{statusMeta(item.status).label}</Tag>
                   <Tag>Seed {Number(item.summary.seed_count ?? 0)}</Tag>
+                  <Tag>{seedMatrixModeLabel(item.params)}</Tag>
                   <Popconfirm
                     title="删除任务"
                     description="会删除该矩阵任务记录和 CSV 文件。"
