@@ -1,0 +1,7 @@
+interface:
+  display_name: "中影脚本创作"
+  short_description: "生成可校验的中影拍摄脚本"
+  default_prompt: "Use $zhongying-script-creator to generate a validated script creation result."
+
+policy:
+  allow_implicit_invocation: true

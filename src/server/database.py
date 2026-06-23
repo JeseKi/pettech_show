@@ -95,6 +95,8 @@ def import_all_models() -> None:
         from src.server.providers import models as _6  # noqa: F401
         from src.server.aiwiki import models as _7  # noqa: F401
         from src.server.seed_matrix import models as _8  # noqa: F401
+        from src.server.daily_writer import models as _9  # noqa: F401
+        from src.server.capability_jobs import models as _10  # noqa: F401
     except Exception as e:
         logger.warning(f"导入模型时出现警告：{e}")
 

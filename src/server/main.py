@@ -35,6 +35,7 @@ from src.server.providers.router import router as provider_dev_router
 from src.server.aiwiki.router import router as aiwiki_router
 from src.server.seed_matrix.router import router as seed_matrix_router
 from src.server.daily_writer.router import router as daily_writer_router
+from src.server.capability_jobs.router import router as capability_jobs_router
 
 # --- 配置与常量 ---
 PROJECT_ROOT = Path(global_config.project_root)
@@ -75,6 +76,9 @@ async def lifespan(_: FastAPI):
         from src.server.daily_writer.service import sync_job_records as sync_daily_writer_records
 
         sync_daily_writer_records(db)
+        from src.server.capability_jobs.service import sync_job_records as sync_capability_records
+
+        sync_capability_records(db)
     finally:
         db.close()
 
@@ -90,7 +94,7 @@ async def lifespan(_: FastAPI):
 # --- 应用实例与中间件 ---
 fastapi_kwargs = {
     "title": "中影广告 Backend",
-    "description": "提供身份验证、数据库交互及示例模块的后端服务。",
+    "description": "提供身份验证、数据库交互及内容生产工作流的后端服务。",
     "lifespan": lifespan,
 }
 
@@ -200,6 +204,7 @@ app.include_router(example_router)
 app.include_router(aiwiki_router)
 app.include_router(seed_matrix_router)
 app.include_router(daily_writer_router)
+app.include_router(capability_jobs_router)
 app.include_router(admin_router)
 app.include_router(scope_management_router)
 if global_config.app_env == "dev":

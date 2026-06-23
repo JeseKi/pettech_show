@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
+import type { ReactNode } from 'react'
 import {
   Avatar,
   Dropdown,
@@ -32,13 +33,27 @@ import ProfilePage from '../../pages/profile/ProfilePage'
 import SecurityPage from '../../pages/profile/SecurityPage'
 import DevicesPage from '../../pages/profile/DevicesPage'
 import BrandLogo from '../brand/BrandLogo'
-import { AIWIKI_MODES, DAILY_WRITER_MODES, SEED_MATRIX_MODES } from '../../lib/workflowModes'
+import {
+  AIWIKI_MODES,
+  CAPABILITY_GROUP_META,
+  DAILY_WRITER_MODES,
+  SEED_MATRIX_MODES,
+  VISIBLE_CAPABILITY_ENTRIES,
+  type CapabilityGroupId,
+} from '../../lib/workflowModes'
 
 const workflowEntries = [
   ...Object.values(AIWIKI_MODES),
   ...Object.values(SEED_MATRIX_MODES),
   ...Object.values(DAILY_WRITER_MODES),
+  ...VISIBLE_CAPABILITY_ENTRIES,
 ]
+
+const capabilityGroupIcons: Record<CapabilityGroupId, ReactNode> = {
+  'competitor-insights': <FileSearchOutlined />,
+  'topic-planning': <TableOutlined />,
+  'script-creation': <FileTextOutlined />,
+}
 
 export default function MainLayout() {
   const navigate = useNavigate()
@@ -143,6 +158,17 @@ export default function MainLayout() {
           label: <Link to={entry.path}>{entry.navLabel}</Link>,
         })),
       },
+      ...Object.entries(CAPABILITY_GROUP_META).map(([groupId, meta]) => ({
+        key: `${groupId}-group`,
+        icon: capabilityGroupIcons[groupId as CapabilityGroupId],
+        label: meta.title,
+        children: VISIBLE_CAPABILITY_ENTRIES
+          .filter((entry) => entry.group === groupId)
+          .map((entry) => ({
+            key: entry.key,
+            label: <Link to={entry.path}>{entry.navLabel}</Link>,
+          })),
+      })).filter((item) => item.children.length > 0),
     ]
 
     if (user?.role === 'admin') {
@@ -507,7 +533,13 @@ export default function MainLayout() {
           <div
             style={{
               margin: '0 auto',
-              maxWidth: location.pathname.startsWith('/aiwiki') || location.pathname.startsWith('/seed-matrices') ? 1600 : 1120,
+              maxWidth: location.pathname.startsWith('/aiwiki')
+                || location.pathname.startsWith('/seed-matrices')
+                || location.pathname.startsWith('/competitor-insights')
+                || location.pathname.startsWith('/topic-planning')
+                || location.pathname.startsWith('/script-creation')
+                ? 1600
+                : 1120,
               width: '100%',
             }}
           >
