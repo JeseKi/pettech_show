@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Archive,
@@ -36,6 +36,8 @@ type Course = {
   practice: string[]
   acceptance: string[]
 }
+
+const INTRO_UNLOCK_DELAY_MS = 3900
 
 const navGroups = [
   {
@@ -288,6 +290,7 @@ export default function LandingPage() {
   const navigate = useNavigate()
   const { isAuthenticated } = useAuth()
   const [activeCourse, setActiveCourse] = useState<Course | null>(null)
+  const [introComplete, setIntroComplete] = useState(false)
 
   const featuredCourse = useMemo(() => courses[3], [])
 
@@ -299,8 +302,31 @@ export default function LandingPage() {
     navigate(isAuthenticated ? '/dashboard' : '/register')
   }
 
+  useEffect(() => {
+    const previousHtmlOverflowY = document.documentElement.style.overflowY
+    const previousBodyOverflowY = document.body.style.overflowY
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const unlockDelay = prefersReducedMotion ? 0 : INTRO_UNLOCK_DELAY_MS
+
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    document.documentElement.style.overflowY = 'hidden'
+    document.body.style.overflowY = 'hidden'
+
+    const unlockTimer = window.setTimeout(() => {
+      setIntroComplete(true)
+      document.documentElement.style.overflowY = previousHtmlOverflowY
+      document.body.style.overflowY = previousBodyOverflowY
+    }, unlockDelay)
+
+    return () => {
+      window.clearTimeout(unlockTimer)
+      document.documentElement.style.overflowY = previousHtmlOverflowY
+      document.body.style.overflowY = previousBodyOverflowY
+    }
+  }, [])
+
   return (
-    <main className="landing-page">
+    <main className={`landing-page${introComplete ? ' is-intro-complete' : ''}`}>
       <header className="landing-nav">
         <a className="landing-brand" href="#hero" aria-label={`${BRAND_NAME}首页`}>
           <BrandLogo compact size={32} />
