@@ -15,13 +15,14 @@ import {
   PackageCheck,
   PenLine,
   Route,
-  Sparkles,
   Target,
   UploadCloud,
   Wand2,
   X,
 } from 'lucide-react'
+import BrandLogo from '../../components/brand/BrandLogo'
 import { useAuth } from '../../hooks/useAuth'
+import { BRAND_NAME } from '../../lib/brand'
 import SandTableHero from './SandTableHero'
 import './LandingPage.css'
 
@@ -163,9 +164,21 @@ const courses: Course[] = [
     question: '内容增长到底要解决哪些运营问题？',
     deliverable: '内容增长场景表',
     capability: '增长链路认知',
-    goals: ['理解宠物行业为什么适合内容增长', '明确 8 个运营场景分别解决什么问题', '知道 AI 和工具只在场景落地时出现'],
-    practice: ['填写自己的内容增长场景表', '标出最关注的 3 个场景', '描述课程结束后希望拿到的业务结果'],
-    acceptance: ['能说清自己的业务目标', '能选出最重要的 3 个内容增长场景', '能描述最终想获得的业务产物'],
+    goals: [
+      '理解宠物行业为什么适合内容增长',
+      '明确 8 个运营场景分别解决什么问题',
+      '知道 AI 和工具只在场景落地时出现',
+    ],
+    practice: [
+      '填写自己的内容增长场景表',
+      '标出最关注的 3 个场景',
+      '描述课程结束后希望拿到的业务结果',
+    ],
+    acceptance: [
+      '能说清自己的业务目标',
+      '能选出最重要的 3 个内容增长场景',
+      '能描述最终想获得的业务产物',
+    ],
   },
   {
     day: 'Day 1',
@@ -173,7 +186,11 @@ const courses: Course[] = [
     question: '我适合做什么内容？',
     deliverable: '内容诊断表',
     capability: '账号定位与内容方向',
-    goals: ['明确业务身份、目标用户和业务目标', '识别内容资源和内容禁区', '收束首轮 30 天内容方向'],
+    goals: [
+      '明确业务身份、目标用户和业务目标',
+      '识别内容资源和内容禁区',
+      '收束首轮 30 天内容方向',
+    ],
     practice: ['填写 Day 1 内容诊断表', '选择主目标和副目标', '写出一句账号定位表达'],
     acceptance: ['主业务目标只选 1 个', '账号定位能说清用户和问题', '内容方向能接上自己的资源'],
   },
@@ -183,7 +200,11 @@ const courses: Course[] = [
     question: '我该对标谁，从哪里切入？',
     deliverable: '对标内容素材包',
     capability: '对标内容入库 / 知识库生成',
-    goals: ['找到 3-5 个对标账号', '整理 10 条对标内容原始记录', '提炼高频痛点、搜索入口和差异化切入点'],
+    goals: [
+      '找到 3-5 个对标账号',
+      '整理 10 条对标内容原始记录',
+      '提炼高频痛点、搜索入口和差异化切入点',
+    ],
     practice: ['记录竞品账号和高表现内容', '整理原始素材 Markdown', '生成结构化素材并抽查选题和搜索入口'],
     acceptance: ['至少 3 个竞品账号', '至少 10 条原始素材', '每条结构化素材都有选题和搜索入口'],
   },
@@ -193,9 +214,17 @@ const courses: Course[] = [
     question: '我今天到底发什么？',
     deliverable: '30 天选题矩阵',
     capability: '选题矩阵生成',
-    goals: ['从素材和知识库生成可复用选题 seed', '让每个选题都有痛点、解决方案和承接动作', '筛出优先生产的 Top 选题'],
+    goals: [
+      '从素材和知识库生成可复用选题 seed',
+      '让每个选题都有痛点、解决方案和承接动作',
+      '筛出优先生产的 Top 选题',
+    ],
     practice: ['生成 30 条以上选题矩阵', '标出 Top 10 选题', '选择 Day 4 要生产的 3 个选题'],
-    acceptance: ['至少 30 个选题', '每个选题都有痛点、方案和承接动作', '能追溯到素材或选题资产库'],
+    acceptance: [
+      '至少 30 个选题',
+      '每个选题都有痛点、方案和承接动作',
+      '能追溯到素材或选题资产库',
+    ],
   },
   {
     day: 'Day 4',
@@ -203,7 +232,11 @@ const courses: Course[] = [
     question: '选题怎么写成能拍的内容？',
     deliverable: '主内容与短视频旁白',
     capability: '主内容生成 / 内容变体改写',
-    goals: ['把优先选题写成完整主内容', '改出短视频旁白和小红书图文结构', '检查专业判断、口语感和合规风险'],
+    goals: [
+      '把优先选题写成完整主内容',
+      '改出短视频旁白和小红书图文结构',
+      '检查专业判断、口语感和合规风险',
+    ],
     practice: ['选择 3 个优先选题', '生成至少 1 篇主内容', '改写短视频旁白、图文结构和评论私信引导'],
     acceptance: ['主内容保留痛点、方案和承接动作', '开头 3 秒能进入痛点', '医疗、功效、食品相关表达已复核'],
   },
@@ -223,7 +256,11 @@ const courses: Course[] = [
     question: '内容做完，怎么发到不同平台？',
     deliverable: '多平台变体与视频化产物',
     capability: '多平台分发 / 图文卡视频化',
-    goals: ['理解推荐流、搜索流和私域承接', '为不同平台生成内容变体', '把图文卡组织成可发布视频化内容'],
+    goals: [
+      '理解推荐流、搜索流和私域承接',
+      '为不同平台生成内容变体',
+      '把图文卡组织成可发布视频化内容',
+    ],
     practice: ['生成多平台变体', '规划发布节奏和平台适配', '制作图文卡视频化脚本或轮播方案'],
     acceptance: ['每个平台都有适配理由', '搜索词和推荐流逻辑清楚', '内容能导向后续转化动作'],
   },
@@ -233,9 +270,17 @@ const courses: Course[] = [
     question: '内容怎么带来咨询、到店，并沉淀资产？',
     deliverable: '转化路径 + 内容资产库',
     capability: '转化路径设计 / 内容资产沉淀',
-    goals: ['设计咨询、到店、下单和私域承接路径', '把内容、素材、数据和复盘沉淀为资产', '为下一轮内容生产准备输入'],
+    goals: [
+      '设计咨询、到店、下单和私域承接路径',
+      '把内容、素材、数据和复盘沉淀为资产',
+      '为下一轮内容生产准备输入',
+    ],
     practice: ['填写转化路径设计表', '整理内容资产库', '制定复盘计划和下一轮内容方向'],
-    acceptance: ['转化动作与业务目标匹配', '内容资产能复用', '复盘不只看播放量，也看咨询、收藏和搜索入口'],
+    acceptance: [
+      '转化动作与业务目标匹配',
+      '内容资产能复用',
+      '复盘不只看播放量，也看咨询、收藏和搜索入口',
+    ],
   },
 ]
 
@@ -257,9 +302,9 @@ export default function LandingPage() {
   return (
     <main className="landing-page">
       <header className="landing-nav">
-        <a className="landing-brand" href="#hero" aria-label="新媒体前沿首页">
-          <span className="landing-brand__mark"><Sparkles size={18} /></span>
-          <span>新媒体前沿</span>
+        <a className="landing-brand" href="#hero" aria-label={`${BRAND_NAME}首页`}>
+          <BrandLogo compact size={32} />
+          <span>{BRAND_NAME}</span>
         </a>
         <nav className="landing-nav__links" aria-label="主导航">
           {navGroups.map((group) => (
@@ -448,13 +493,18 @@ export default function LandingPage() {
       </section>
 
       <footer className="landing-footer">
-        <span>新媒体前沿</span>
+        <span>{BRAND_NAME}</span>
         <span>宠物行业 AI 内容增长与内容生产系统</span>
       </footer>
 
       {activeCourse && (
         <div className="course-modal" role="dialog" aria-modal="true" aria-label={`${activeCourse.title}详情`}>
-          <button className="course-modal__backdrop" type="button" onClick={() => setActiveCourse(null)} aria-label="关闭课程详情" />
+          <button
+            className="course-modal__backdrop"
+            type="button"
+            onClick={() => setActiveCourse(null)}
+            aria-label="关闭课程详情"
+          />
           <article className="course-modal__panel">
             <button className="course-modal__close" type="button" onClick={() => setActiveCourse(null)} aria-label="关闭">
               <X size={20} />

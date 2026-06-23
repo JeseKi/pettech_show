@@ -1,7 +1,6 @@
 import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import MainLayout from './components/layout/MainLayout'
 import DashboardPage from './pages/dashboard/DashboardPage'
-import ExamplePage from './pages/dashboard/ExamplePage'
 import ProfilePage from './pages/profile/ProfilePage'
 import SecurityPage from './pages/profile/SecurityPage'
 import DevicesPage from './pages/profile/DevicesPage'
@@ -19,6 +18,7 @@ import DailyWriterPage from './pages/dailyWriter'
 import { AuthProvider, RequireAdmin, RequireAuth } from './providers/AuthProvider'
 import { RuntimeConfigProvider } from './providers/RuntimeConfigProvider'
 import ThemeToggle from './components/theme/ThemeToggle'
+import { AIWIKI_MODES, DAILY_WRITER_MODES, SEED_MATRIX_MODES } from './lib/workflowModes'
 
 function ThemeToggleGate() {
   const location = useLocation()
@@ -65,10 +65,19 @@ export default function App() {
               }
             >
               <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/example" element={<ExamplePage />} />
-              <Route path="/aiwiki" element={<AiwikiPage />} />
-              <Route path="/seed-matrices" element={<SeedMatrixPage />} />
-              <Route path="/daily-writer" element={<DailyWriterPage />} />
+              <Route path="/aiwiki" element={<Navigate to={AIWIKI_MODES.full.path} replace />} />
+              <Route path="/aiwiki/materials" element={<AiwikiPage key="aiwiki-materials" mode="materials" />} />
+              <Route path="/aiwiki/search-assets" element={<AiwikiPage key="aiwiki-search-assets" mode="search-assets" />} />
+              <Route path="/aiwiki/full" element={<AiwikiPage key="aiwiki-full" mode="full" />} />
+              <Route path="/seed-matrices" element={<Navigate to={SEED_MATRIX_MODES.standard.path} replace />} />
+              <Route path="/seed-matrices/standard" element={<SeedMatrixPage key="seed-standard" mode="standard" />} />
+              <Route path="/seed-matrices/batch" element={<SeedMatrixPage key="seed-batch" mode="batch" />} />
+              <Route path="/seed-matrices/high-frequency" element={<SeedMatrixPage key="seed-high-frequency" mode="high-frequency" />} />
+              <Route path="/seed-matrices/hook-driven" element={<SeedMatrixPage key="seed-hook-driven" mode="hook-driven" />} />
+              <Route path="/daily-writer" element={<Navigate to={DAILY_WRITER_MODES.single.path} replace />} />
+              <Route path="/daily-writer/single" element={<DailyWriterPage key="writer-single" mode="single" />} />
+              <Route path="/daily-writer/batch" element={<DailyWriterPage key="writer-batch" mode="batch" />} />
+              <Route path="/daily-writer/five-pack" element={<DailyWriterPage key="writer-five-pack" mode="five-pack" />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/profile/security" element={<SecurityPage />} />
               <Route path="/profile/devices" element={<DevicesPage />} />

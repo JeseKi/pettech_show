@@ -9,17 +9,14 @@ import {
   Input,
   InputNumber,
   List,
-  Modal,
   Popconfirm,
   Progress,
   Row,
   Space,
-  Switch,
   Statistic,
   Table,
   Tabs,
   Tag,
-  Tooltip,
   Typography,
   theme,
 } from 'antd'
@@ -29,7 +26,6 @@ import {
   DownloadOutlined,
   FileTextOutlined,
   PlayCircleOutlined,
-  QuestionCircleOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
@@ -51,17 +47,17 @@ import {
   type DailyWriterJobSummary,
   type DailyWriterResult,
 } from '../../lib/dailyWriter'
-import { resolveErrorMessage } from '../dashboard/ExamplePage/utils'
+import { resolveErrorMessage } from '../../lib/errorMessage'
 import { formatDateTime, progressEventColor, statusMeta } from '../aiwiki/helpers'
+import { DAILY_WRITER_MODES, dailyWriterModeLabel, type DailyWriterModeId } from '../../lib/workflowModes'
 
 type MatrixRow = Record<string, string>
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
-const MAX_VARIANT_COUNT = 5
-
-export default function DailyWriterPage() {
+export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWriterModeId }) {
   const { token } = theme.useToken()
   const { message } = App.useApp()
+  const modeConfig = DAILY_WRITER_MODES[mode]
   const [matrixJobs, setMatrixJobs] = useState<SeedMatrixJobSummary[]>([])
   const [writerJobs, setWriterJobs] = useState<DailyWriterJobSummary[]>([])
   const [selectedMatrixId, setSelectedMatrixId] = useState<string | null>(null)
@@ -76,9 +72,7 @@ export default function DailyWriterPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [generateVariants, setGenerateVariants] = useState(false)
-  const [variantCount, setVariantCount] = useState(MAX_VARIANT_COUNT)
-  const [variantsOpen, setVariantsOpen] = useState(false)
+  const [articleTotal, setArticleTotal] = useState(modeConfig.defaultTotal)
 
   const sectionStyle = {
     background: token.colorBgContainer,
@@ -157,6 +151,10 @@ export default function DailyWriterPage() {
   }, [loadMatrices, loadWriterJobs])
 
   useEffect(() => {
+    setArticleTotal(modeConfig.defaultTotal)
+  }, [modeConfig.defaultTotal])
+
+  useEffect(() => {
     if (!selectedMatrixId) return
     void loadMatrixRows(selectedMatrixId)
   }, [loadMatrixRows, selectedMatrixId])
@@ -192,10 +190,12 @@ export default function DailyWriterPage() {
     setError(null)
     setResult(null)
     try {
+      const total = modeConfig.fixedTotal ?? articleTotal
+      const variantCount = Math.max(0, total - 1)
       const created = await createDailyWriterJob({
         source_seed_matrix_job_id: selectedMatrixId,
         seed_id: selectedSeedId,
-        generate_variants: generateVariants,
+        generate_variants: variantCount > 0,
         variant_count: variantCount,
       })
       setActiveJob(created)
@@ -305,8 +305,8 @@ export default function DailyWriterPage() {
           <section style={sectionStyle}>
             <Flex align="center" justify="space-between" wrap="wrap" gap={12}>
               <div>
-                <Typography.Title level={3} style={{ margin: 0 }}>生成长文</Typography.Title>
-                <Typography.Text type="secondary">从选题矩阵行生成一篇长文，关联 AI Wiki 会作为素材来源。</Typography.Text>
+                <Typography.Title level={3} style={{ margin: 0 }}>{modeConfig.title}</Typography.Title>
+                <Typography.Text type="secondary">{modeConfig.description}</Typography.Text>
               </div>
               <Button
                 type="primary"
@@ -315,7 +315,7 @@ export default function DailyWriterPage() {
                 disabled={!selectedMatrixId || !selectedSeedId}
                 onClick={() => void submit()}
               >
-                生成长文
+                {modeConfig.buttonText}
               </Button>
             </Flex>
             {error && <Alert type="error" showIcon message={error} style={{ marginTop: 12 }} />}
@@ -326,26 +326,29 @@ export default function DailyWriterPage() {
                 <Col xs={24} md={8}><Statistic title="预计篇数" value={selectedRow.expected_article_count || '-'} /></Col>
               </Row>
             )}
-            <Flex align="center" wrap="wrap" gap={16} style={{ marginTop: 16 }}>
-              <Space>
-                <Switch checked={generateVariants} onChange={setGenerateVariants} />
-                <Typography.Text>生成变体</Typography.Text>
-              </Space>
-              <Space>
-                <Typography.Text type={!generateVariants ? 'secondary' : undefined}>变体篇数</Typography.Text>
-                <InputNumber
-                  min={1}
-                  max={MAX_VARIANT_COUNT}
-                  value={variantCount}
-                  disabled={!generateVariants}
-                  onChange={(value) => setVariantCount(Number(value || MAX_VARIANT_COUNT))}
-                  style={{ width: 96 }}
-                />
-                <Tooltip title="当前限制五篇，若想要更高上限可以咨询管理员">
-                  <QuestionCircleOutlined style={{ color: token.colorTextTertiary }} />
-                </Tooltip>
-              </Space>
-            </Flex>
+            <Row gutter={[12, 12]} style={{ marginTop: 14 }}>
+              <Col xs={24} md={8}><Statistic title="入口模式" value={modeConfig.navLabel} /></Col>
+              <Col xs={24} md={8}><Statistic title="主稿" value={1} suffix="篇" /></Col>
+              <Col xs={24} md={8}>
+                {modeConfig.fixedTotal ? (
+                  <Statistic title="生成文章总数" value={modeConfig.fixedTotal} suffix="篇" />
+                ) : (
+                  <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                    <Typography.Text type="secondary">生成文章总数</Typography.Text>
+                    <InputNumber
+                      min={modeConfig.minTotal}
+                      max={modeConfig.maxTotal}
+                      value={articleTotal}
+                      onChange={(value) => setArticleTotal(Number(value || modeConfig.defaultTotal))}
+                      style={{ width: '100%' }}
+                    />
+                    <Typography.Text type="secondary">
+                      1 篇主稿 + {Math.max(0, articleTotal - 1)} 篇变体
+                    </Typography.Text>
+                  </Space>
+                )}
+              </Col>
+            </Row>
           </section>
 
           <section style={sectionStyle}>
@@ -378,38 +381,12 @@ export default function DailyWriterPage() {
 
           <section style={{ ...sectionStyle, minHeight: 360 }}>
             {result ? (
-              <Tabs
-                items={[
-                  {
-                    key: 'article',
-                    label: '长文',
-                    children: (
-                      <article style={{ maxWidth: 760 }}>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {result.markdown}
-                        </ReactMarkdown>
-                      </article>
-                    ),
-                  },
-                  {
-                    key: 'metadata',
-                    label: 'Metadata',
-                    children: (
-                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', overflow: 'auto' }}>
-                        {JSON.stringify(result.metadata, null, 2)}
-                      </pre>
-                    ),
-                  },
-                ]}
+              <ArticlePreviewTabs
+                result={result}
                 tabBarExtraContent={
-                  <Space>
-                    <Button disabled={!result.variants.length} onClick={() => setVariantsOpen(true)}>
-                      查看变体
-                    </Button>
-                    <Button icon={<DownloadOutlined />} onClick={() => activeJob && void downloadDailyWriterResult(activeJob.id)}>
-                      下载
-                    </Button>
-                  </Space>
+                  <Button icon={<DownloadOutlined />} onClick={() => activeJob && void downloadDailyWriterResult(activeJob.id)}>
+                    下载
+                  </Button>
                 }
               />
             ) : (
@@ -433,72 +410,67 @@ export default function DailyWriterPage() {
         </Col>
       </Row>
 
-      <VariantModal
-        open={variantsOpen}
-        variants={result?.variants ?? []}
-        onClose={() => setVariantsOpen(false)}
-      />
     </>
   )
 }
 
-function VariantModal({
-  open,
-  variants,
-  onClose,
+function ArticlePreviewTabs({
+  result,
+  tabBarExtraContent,
 }: {
-  open: boolean
-  variants: DailyWriterResult['variants']
-  onClose: () => void
+  result: DailyWriterResult
+  tabBarExtraContent: React.ReactNode
 }) {
+  const articles = [
+    {
+      key: 'main',
+      label: '主稿',
+      markdown: result.markdown,
+      metadata: result.metadata,
+    },
+    ...result.variants.map((variant, index) => ({
+      key: variant.directory || `variant-${index + 1}`,
+      label: variant.angle || `变体 ${index + 1}`,
+      markdown: variant.markdown,
+      metadata: variant.metadata,
+    })),
+  ]
+
   return (
-    <Modal
-      title="查看变体"
-      open={open}
-      onCancel={onClose}
-      footer={null}
-      width="min(1120px, 92vw)"
-      styles={{ body: { maxHeight: '72vh', overflow: 'auto' } }}
-      destroyOnClose
-    >
-      {variants.length ? (
-        <Tabs
-          items={variants.map((variant, index) => ({
-            key: variant.directory || String(index),
-            label: variant.angle || `变体 ${index + 1}`,
-            children: (
-              <Tabs
-                size="small"
-                items={[
-                  {
-                    key: 'article',
-                    label: '正文',
-                    children: (
-                      <article style={{ maxWidth: 820 }}>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {variant.markdown}
-                        </ReactMarkdown>
-                      </article>
-                    ),
-                  },
-                  {
-                    key: 'metadata',
-                    label: 'Metadata',
-                    children: (
-                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', overflow: 'auto' }}>
-                        {JSON.stringify(variant.metadata, null, 2)}
-                      </pre>
-                    ),
-                  },
-                ]}
-              />
-            ),
-          }))}
-        />
-      ) : (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无变体" />
-      )}
-    </Modal>
+    <Tabs
+      tabBarExtraContent={tabBarExtraContent}
+      items={articles.map((article) => ({
+        key: article.key,
+        label: article.label,
+        children: (
+          <Tabs
+            size="small"
+            items={[
+              {
+                key: 'article',
+                label: '正文',
+                children: (
+                  <article style={{ maxWidth: 820 }}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {article.markdown}
+                    </ReactMarkdown>
+                  </article>
+                ),
+              },
+              {
+                key: 'metadata',
+                label: 'Metadata',
+                children: (
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', overflow: 'auto' }}>
+                    {JSON.stringify(article.metadata, null, 2)}
+                  </pre>
+                ),
+              },
+            ]}
+          />
+        ),
+      }))}
+    />
   )
 }
 
@@ -556,6 +528,7 @@ function TaskPanel({
                 <Space wrap>
                   <Tag color={item.status === 'completed' ? 'green' : item.status === 'failed' ? 'red' : item.status === 'partial_failed' ? 'gold' : 'blue'}>{statusMeta(item.status).label}</Tag>
                   <Tag icon={<FileTextOutlined />}>{item.seed_id}</Tag>
+                  <Tag>{dailyWriterModeLabel(item.params)}</Tag>
                   <Popconfirm
                     title="删除任务"
                     description="会删除该长文任务记录和生成文件。"

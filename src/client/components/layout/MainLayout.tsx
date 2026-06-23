@@ -31,6 +31,14 @@ import { useAuth } from '../../hooks/useAuth'
 import ProfilePage from '../../pages/profile/ProfilePage'
 import SecurityPage from '../../pages/profile/SecurityPage'
 import DevicesPage from '../../pages/profile/DevicesPage'
+import BrandLogo from '../brand/BrandLogo'
+import { AIWIKI_MODES, DAILY_WRITER_MODES, SEED_MATRIX_MODES } from '../../lib/workflowModes'
+
+const workflowEntries = [
+  ...Object.values(AIWIKI_MODES),
+  ...Object.values(SEED_MATRIX_MODES),
+  ...Object.values(DAILY_WRITER_MODES),
+]
 
 export default function MainLayout() {
   const navigate = useNavigate()
@@ -91,17 +99,9 @@ export default function MainLayout() {
     if (location.pathname.startsWith('/admin')) {
       return ['admin']
     }
-    if (location.pathname === '/example') {
-      return ['example']
-    }
-    if (location.pathname === '/aiwiki') {
-      return ['aiwiki']
-    }
-    if (location.pathname === '/seed-matrices') {
-      return ['seed-matrices']
-    }
-    if (location.pathname === '/daily-writer') {
-      return ['daily-writer']
+    const workflowEntry = workflowEntries.find((entry) => location.pathname === entry.path)
+    if (workflowEntry) {
+      return [workflowEntry.key]
     }
     if (location.pathname.startsWith('/')) {
       return ['dashboard']
@@ -112,34 +112,36 @@ export default function MainLayout() {
   const menuItems = useMemo<MenuProps['items']>(() => {
     const items: MenuProps['items'] = [
       {
-        key: 'dashboard-group',
+        key: 'dashboard',
         icon: <DashboardOutlined />,
-        label: '工作台',
-        children: [
-          {
-            key: 'dashboard',
-            label: <Link to="/dashboard">首页</Link>,
-          },
-          {
-            key: 'example',
-            label: <Link to="/example">示例模块</Link>,
-          },
-          {
-            key: 'aiwiki',
-            icon: <FileSearchOutlined />,
-            label: <Link to="/aiwiki">AI Wiki</Link>,
-          },
-          {
-            key: 'seed-matrices',
-            icon: <TableOutlined />,
-            label: <Link to="/seed-matrices">选题矩阵</Link>,
-          },
-          {
-            key: 'daily-writer',
-            icon: <FileTextOutlined />,
-            label: <Link to="/daily-writer">生成长文</Link>,
-          },
-        ],
+        label: <Link to="/dashboard">首页</Link>,
+      },
+      {
+        key: 'aiwiki-group',
+        icon: <FileSearchOutlined />,
+        label: 'AI Wiki',
+        children: Object.values(AIWIKI_MODES).map((entry) => ({
+          key: entry.key,
+          label: <Link to={entry.path}>{entry.navLabel}</Link>,
+        })),
+      },
+      {
+        key: 'seed-matrix-group',
+        icon: <TableOutlined />,
+        label: '选题矩阵',
+        children: Object.values(SEED_MATRIX_MODES).map((entry) => ({
+          key: entry.key,
+          label: <Link to={entry.path}>{entry.navLabel}</Link>,
+        })),
+      },
+      {
+        key: 'daily-writer-group',
+        icon: <FileTextOutlined />,
+        label: '长文生成',
+        children: Object.values(DAILY_WRITER_MODES).map((entry) => ({
+          key: entry.key,
+          label: <Link to={entry.path}>{entry.navLabel}</Link>,
+        })),
       },
     ]
 
@@ -245,19 +247,13 @@ export default function MainLayout() {
     setCollapsed(!collapsed)
   }
 
-  const pageTitle = selectedKeys[0] === 'admin'
+  const selectedWorkflowEntry = workflowEntries.find((entry) => entry.key === selectedKeys[0])
+
+  const pageTitle = selectedWorkflowEntry?.navLabel ?? (selectedKeys[0] === 'admin'
     ? '管理员面板'
     : selectedKeys[0] === 'dashboard'
-      ? '工作台'
-      : selectedKeys[0] === 'example'
-        ? '示例模块'
-        : selectedKeys[0] === 'aiwiki'
-          ? 'AI Wiki'
-          : selectedKeys[0] === 'seed-matrices'
-            ? '选题矩阵'
-            : selectedKeys[0] === 'daily-writer'
-              ? '生成长文'
-            : ''
+      ? '首页'
+        : '')
 
   return (
     <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -298,21 +294,32 @@ export default function MainLayout() {
                 borderBottom: `1px solid ${token.colorBorder}`,
               }}
             >
-              {!collapsed && (
-                <Link
-                  to="/"
-                  className="text-base font-semibold"
-                  style={{ color: token.colorTextHeading, whiteSpace: 'nowrap' }}
-                >
-                  新媒体前沿在线试用
+              {collapsed ? (
+                <Link to="/" aria-label="返回首页">
+                  <BrandLogo compact size={30} />
                 </Link>
+              ) : (
+                <>
+                  <Link
+                    to="/"
+                    aria-label="返回首页"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      minWidth: 0,
+                      color: token.colorTextHeading,
+                    }}
+                  >
+                    <BrandLogo size={34} />
+                  </Link>
+                  <Button
+                    type="text"
+                    icon={<MenuFoldOutlined />}
+                    onClick={toggleCollapsed}
+                    style={{ marginLeft: 'auto' }}
+                  />
+                </>
               )}
-              <Button
-                type="text"
-                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                onClick={toggleCollapsed}
-                style={{ marginLeft: collapsed ? 0 : 'auto' }}
-              />
             </Flex>
             <Menu
               mode="inline"
@@ -500,7 +507,7 @@ export default function MainLayout() {
           <div
             style={{
               margin: '0 auto',
-              maxWidth: ['aiwiki', 'seed-matrices'].includes(selectedKeys[0]) ? 1600 : 1120,
+              maxWidth: location.pathname.startsWith('/aiwiki') || location.pathname.startsWith('/seed-matrices') ? 1600 : 1120,
               width: '100%',
             }}
           >

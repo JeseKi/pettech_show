@@ -34,6 +34,8 @@ import {
   fetchOAuthProviders,
 } from '../../lib/auth'
 import type { OAuthProviderInfo } from '../../lib/types'
+import BrandLogo from '../../components/brand/BrandLogo'
+import { BRAND_NAME } from '../../lib/brand'
 
 function normalizeRedirectPath(path: string | null | undefined): string | null {
   if (!path || !path.startsWith('/') || path.startsWith('//')) {
@@ -293,11 +295,14 @@ export default function LoginPage() {
       >
         <Space direction="vertical" size={24} style={{ width: '100%' }}>
           <div>
+            <div style={{ marginBottom: 20 }}>
+              <BrandLogo showTagline size={42} />
+            </div>
             <Typography.Title level={3} style={{ marginBottom: 8 }}>
               欢迎回来
             </Typography.Title>
             <Typography.Text type="secondary">
-              输入用户名或邮箱及密码以访问现代化的前端模板。
+              输入用户名或邮箱及密码以访问{BRAND_NAME}。
             </Typography.Text>
           </div>
           {registerSuccess && <Alert type="success" showIcon message="注册成功，请使用新账号登录。" style={{ marginBottom: 0 }} />}
