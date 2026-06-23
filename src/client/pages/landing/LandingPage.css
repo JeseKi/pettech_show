@@ -76,16 +76,6 @@
   white-space: nowrap;
 }
 
-.landing-brand__mark {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  color: #081207;
-  background: #b8ff67;
-  border-radius: 8px;
-}
-
 .landing-nav__links {
   display: flex;
   justify-content: center;

@@ -29,7 +29,6 @@ import './LandingPage.css'
 type Course = {
   day: string
   title: string
-  question: string
   description: string
   duration: string
   format: string
@@ -201,7 +200,6 @@ const courses: Course[] = [
   {
     day: 'Day 0',
     title: '课程导入',
-    question: '内容增长到底要解决哪些运营问题？',
     description: '把工具学习切回真实运营场景，先理解宠物行业内容增长为什么是前置销售系统。',
     duration: '约 150 分钟',
     format: '场景导入 + 链路认知',
@@ -228,7 +226,6 @@ const courses: Course[] = [
   {
     day: 'Day 1',
     title: '业务诊断',
-    question: '我适合做什么内容？',
     description: '从身份、目标用户、业务目标、资源优势和内容禁区出发，收束首轮内容方向。',
     duration: '约 150 分钟',
     format: '定位判断 + 诊断表实操',
@@ -247,7 +244,6 @@ const courses: Course[] = [
   {
     day: 'Day 2',
     title: '竞品洞察',
-    question: '我该对标谁，从哪里切入？',
     description: '把对标账号和高表现内容变成可复用素材，而不是只停留在看同行、抄标题。',
     duration: '约 150 分钟',
     format: '案例拆解 + 素材入库',
@@ -266,7 +262,6 @@ const courses: Course[] = [
   {
     day: 'Day 3',
     title: '选题生成',
-    question: '我今天到底发什么？',
     description: '从素材库、用户问题、搜索入口和业务目标里生成选题矩阵，让每天发什么有依据。',
     duration: '约 150 分钟',
     format: '矩阵生成 + Top 选题筛选',
@@ -289,7 +284,6 @@ const courses: Course[] = [
   {
     day: 'Day 4',
     title: '主内容与脚本',
-    question: '选题怎么写成能拍的内容？',
     description: '把优先选题写成主内容，再改成短视频旁白、小红书图文结构和承接话术。',
     duration: '约 150 分钟',
     format: '主稿生成 + 脚本改写',
@@ -308,7 +302,6 @@ const courses: Course[] = [
   {
     day: 'Day 5',
     title: '内容生产',
-    question: '脚本怎么变成图文、封面和标题？',
     description: '把一条主内容拆成标题、图文卡、封面方向、短视频和公众号结构，形成一题多发内容包。',
     duration: '约 150 分钟',
     format: '标题封面 + 图文卡实操',
@@ -323,7 +316,6 @@ const courses: Course[] = [
   {
     day: 'Day 6',
     title: '分发获客',
-    question: '内容做完，怎么发到不同平台？',
     description: '理解推荐流、搜索流和私域承接，把内容改写成抖音、视频号、小红书、公众号等平台版本。',
     duration: '约 150 分钟',
     format: '平台适配 + 视频化组织',
@@ -342,7 +334,6 @@ const courses: Course[] = [
   {
     day: 'Day 7',
     title: '转化与资产沉淀',
-    question: '内容怎么带来咨询、到店，并沉淀资产？',
     description: '把内容后的咨询、到店、下单和私域路径设计清楚，再把素材、数据和复盘沉淀为资产。',
     duration: '约 150 分钟',
     format: '转化路径 + 复盘资产库',
@@ -365,7 +356,6 @@ const courses: Course[] = [
   {
     day: '毕业项目',
     title: '闭环实战',
-    question: '怎么从 0 到 1 跑完一次内容增长？',
     description: '把定位、素材、选题、主内容、视觉卡、分发、转化和资产沉淀串成一份完整增长方案。',
     duration: '结课项目',
     format: '方案提交 + 复盘计划',
@@ -672,7 +662,7 @@ export default function LandingPage() {
   }, [revealBlock])
 
   return (
-    <main className={`landing-page${introComplete ? ' is-intro-complete' : ''}`}>
+    <main className="landing-page">
       <header className="landing-nav">
         <a className="landing-brand" href="#courses" aria-label={`${BRAND_NAME}首页`}>
           <BrandLogo compact size={32} />
