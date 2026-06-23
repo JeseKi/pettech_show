@@ -1,0 +1,51 @@
+.stack-course-card.stack-course-card--focus {
+  z-index: 10;
+  width: min(clamp(340px, 34vw, 430px), calc(100vw - 28px));
+  aspect-ratio: 4 / 3;
+  padding: clamp(16px, 1.5vw, 22px);
+  pointer-events: auto;
+  opacity: var(--focus-opacity);
+  filter: brightness(var(--focus-brightness));
+  transform:
+    translate3d(calc(-50% + var(--focus-x)), calc(-50% + var(--focus-y)), var(--focus-z))
+    rotateY(var(--focus-rotate-y))
+    rotateZ(var(--focus-rotate-z))
+    scale(var(--focus-scale));
+  transform-style: preserve-3d;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    filter 80ms linear,
+    opacity 80ms linear;
+  will-change: transform, opacity, filter;
+}
+
+.stack-course-card.stack-course-card--focus h2 {
+  margin-top: clamp(16px, 2vh, 22px);
+  font-size: clamp(28px, 2.6vw, 40px);
+}
+
+.stack-course-card.stack-course-card--focus > p {
+  margin-top: 10px;
+  font-size: 13px;
+  -webkit-line-clamp: 2;
+}
+
+.stack-course-card.stack-course-card--focus .stack-course-card__meta {
+  align-content: start;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.stack-course-card.stack-course-card--focus .stack-course-card__meta strong {
+  font-size: 14px;
+}
+
+.stack-course-card.stack-course-card--focus .stack-course-card__meta li {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.stack-course-card.stack-course-card--focus footer {
+  font-size: 12px;
+}

@@ -141,25 +141,6 @@
   will-change: transform, opacity, filter;
 }
 
-.stack-course-card--focus {
-  z-index: 10;
-  pointer-events: auto;
-  opacity: var(--focus-opacity);
-  filter: brightness(var(--focus-brightness));
-  transform:
-    translate3d(calc(-50% + var(--focus-x)), calc(-50% + var(--focus-y)), var(--focus-z))
-    rotateY(var(--focus-rotate-y))
-    rotateZ(var(--focus-rotate-z))
-    scale(var(--focus-scale));
-  transform-style: preserve-3d;
-  transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    filter 80ms linear,
-    opacity 80ms linear;
-  will-change: transform, opacity, filter;
-}
-
 .stack-course-card::before,
 .stack-course-card::after {
   position: absolute;
