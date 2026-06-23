@@ -284,51 +284,49 @@
   transform: rotateZ(-14deg);
 }
 
-.course-flow-stack {
+.course-pipeline {
   position: absolute;
-  z-index: 3;
-  width: 520px;
-  height: 300px;
-  cursor: ew-resize;
+  top: 52%;
+  left: 50%;
+  z-index: 8;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
   perspective: 1200px;
   transform-style: preserve-3d;
-}
-
-.course-flow-stack--left {
-  bottom: -104px;
-  left: -120px;
   transform:
-    rotateX(56deg)
-    rotateZ(-28deg)
-    rotateY(8deg);
+    translate3d(-50%, -50%, 0)
+    rotateX(45deg)
+    rotateZ(-24deg);
 }
 
-.course-flow-stack--right {
-  top: 2px;
-  right: -158px;
-  transform:
-    rotateX(54deg)
-    rotateZ(-19deg)
-    rotateY(-8deg);
-}
-
-.course-flow-stack__depth {
+.course-pipeline__floor {
   position: absolute;
-  inset: 0;
+  top: 50%;
+  left: 50%;
+  width: 1180px;
+  height: 360px;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.2), transparent 18% 82%, rgba(0, 0, 0, 0.05)),
+    repeating-linear-gradient(90deg, rgba(17, 17, 17, 0.035) 0 1px, transparent 1px 42px);
+  border: 1px solid rgba(17, 17, 17, 0.04);
+  opacity: 0.28;
+  transform:
+    translate3d(-50%, -50%, -22px)
+    rotateX(0deg);
+}
+
+.course-pipeline__cards {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
   transform-style: preserve-3d;
-  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.course-flow-stack--left.is-source .course-flow-stack__depth {
-  transform: translate3d(34px, -18px, 0) scale(1.025);
-}
-
-.course-flow-stack--right.is-source .course-flow-stack__depth {
-  transform: translate3d(-34px, 18px, 0) scale(1.025);
-}
-
-.course-flow-card,
-.course-flow-focus {
+.course-pipeline-card {
   position: absolute;
   display: grid;
   align-content: end;
@@ -348,49 +346,60 @@
   transform-style: preserve-3d;
 }
 
-.course-flow-card {
-  top: 0;
-  left: 0;
-  width: 188px;
+.course-pipeline-card {
+  top: 50%;
+  left: 50%;
+  width: 190px;
   padding: 10px 12px;
-  filter: saturate(0.95) contrast(1.04) brightness(var(--stack-brightness));
+  filter: saturate(0.95) contrast(1.04) brightness(var(--pipeline-brightness));
+  pointer-events: none;
   transform:
     translate3d(
-      calc(var(--stack-index) * 7.8px + var(--stack-nudge)),
-      calc(var(--stack-index) * -2.55px),
-      calc(var(--stack-index) * 0.55px)
+      calc(-50% + var(--pipeline-shift) * 20px + var(--pipeline-pressure) * 24px),
+      calc(-50% + var(--pipeline-shift) * -5px),
+      calc(var(--pipeline-distance) * 0.7px)
     )
-    rotateY(-49deg);
-  transform-origin: left center;
+    rotateX(-45deg)
+    rotateZ(24deg)
+    rotateY(-45deg)
+    scale(1);
+  transform-origin: center bottom;
   transition:
     filter 120ms linear,
     transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.course-flow-stack--right .course-flow-card {
-  width: 184px;
+.course-pipeline-card.is-focus {
+  width: min(236px, 25vw);
+  min-width: 172px;
+  padding: 17px 18px;
+  cursor: pointer;
+  pointer-events: auto;
   transform:
     translate3d(
-      calc(var(--stack-index) * -7.6px - var(--stack-nudge)),
-      calc(var(--stack-index) * 2.2px),
-      calc(var(--stack-index) * 0.55px)
+      calc(-50% + var(--pipeline-shift) * 20px),
+      calc(-50% + var(--pipeline-shift) * -5px),
+      calc(86px + var(--pipeline-velocity) * 18px)
     )
-    rotateY(49deg);
-  transform-origin: right center;
+    rotateX(-45deg)
+    rotateZ(24deg)
+    rotateY(-45deg)
+    scale(calc(1.24 + var(--pipeline-velocity) * 0.045));
+  transition:
+    box-shadow 180ms ease,
+    filter 140ms ease,
+    transform 120ms linear;
 }
 
-.course-flow-card::before,
-.course-flow-card::after,
-.course-flow-focus::before,
-.course-flow-focus::after {
+.course-pipeline-card::before,
+.course-pipeline-card::after {
   position: absolute;
   inset: 0;
   pointer-events: none;
   content: "";
 }
 
-.course-flow-card::before,
-.course-flow-focus::before {
+.course-pipeline-card::before {
   background:
     linear-gradient(90deg, rgba(255, 255, 255, 0.88) 0 4px, transparent 4px),
     repeating-linear-gradient(90deg, transparent 0 30px, rgba(255, 255, 255, 0.18) 30px 32px),
@@ -399,30 +408,26 @@
   opacity: 0.28;
 }
 
-.course-flow-card::after,
-.course-flow-focus::after {
+.course-pipeline-card::after {
   background:
     radial-gradient(circle at 18% 30%, color-mix(in srgb, var(--course-accent), #ffffff 32%) 0 14%, transparent 15%),
     linear-gradient(22deg, transparent 0 43%, rgba(255, 255, 255, 0.2) 44% 46%, transparent 47%);
   opacity: 0.68;
 }
 
-.course-flow-card span,
-.course-flow-card strong,
-.course-flow-card em,
-.course-flow-focus span,
-.course-flow-focus strong,
-.course-flow-focus em {
+.course-pipeline-card span,
+.course-pipeline-card strong,
+.course-pipeline-card em {
   position: relative;
   z-index: 1;
 }
 
-.course-flow-card span {
+.course-pipeline-card span {
   font-size: 9px;
   font-weight: 900;
 }
 
-.course-flow-card strong {
+.course-pipeline-card strong {
   margin-top: 3px;
   overflow: hidden;
   font-size: 17px;
@@ -431,7 +436,7 @@
   white-space: nowrap;
 }
 
-.course-flow-card em {
+.course-pipeline-card em {
   margin-top: 5px;
   overflow: hidden;
   color: rgba(248, 250, 252, 0.7);
@@ -441,29 +446,8 @@
   white-space: nowrap;
 }
 
-.course-flow-focus {
-  --focus-range: 72px;
-
-  top: 43%;
-  left: 50%;
-  z-index: 8;
-  width: min(236px, 25%);
-  min-width: 172px;
-  padding: 17px 18px;
-  cursor: pointer;
-  transform:
-    translate3d(calc(-50% + var(--focus-travel) * var(--focus-range)), -50%, 0)
-    perspective(760px)
-    rotateY(calc(var(--focus-travel) * -15deg))
-    rotateZ(calc(var(--focus-velocity) * 0.8deg))
-    scale(calc(1 + var(--focus-velocity) * 0.035));
-  transition:
-    box-shadow 180ms ease,
-    filter 140ms ease;
-}
-
-.course-flow-focus:hover,
-.course-flow-focus:focus-visible {
+.course-pipeline-card.is-focus:hover,
+.course-pipeline-card.is-focus:focus-visible {
   outline: 0;
   filter: brightness(1.08);
   box-shadow:
@@ -471,18 +455,18 @@
     22px 28px 48px rgba(0, 0, 0, 0.18);
 }
 
-.course-flow-focus span {
+.course-pipeline-card.is-focus span {
   font-size: 11px;
   font-weight: 900;
 }
 
-.course-flow-focus strong {
+.course-pipeline-card.is-focus strong {
   margin-top: 8px;
   font-size: 29px;
   line-height: 1.02;
 }
 
-.course-flow-focus em {
+.course-pipeline-card.is-focus em {
   margin-top: 10px;
   color: rgba(255, 255, 255, 0.76);
   font-size: 11px;
@@ -988,8 +972,7 @@
 @media (prefers-reduced-motion: reduce) {
   .landing-nav,
   .course-flow-frame,
-  .course-flow-card,
-  .course-flow-focus,
+  .course-pipeline-card,
   .course-detail__backdrop,
   .course-detail__panel,
   .course-detail__content,
@@ -1037,11 +1020,6 @@
     aspect-ratio: 4 / 3;
   }
 
-  .course-flow-stack {
-    width: 480px;
-    height: 270px;
-  }
-
   .course-flow-force-zone--left {
     left: -154px;
     width: 500px;
@@ -1052,21 +1030,15 @@
     width: 500px;
   }
 
-  .course-flow-stack--left {
-    bottom: -54px;
-    left: -176px;
-    transform: scale(0.82) rotateX(56deg) rotateZ(-28deg) rotateY(8deg);
+  .course-pipeline {
+    transform:
+      translate3d(-50%, -50%, 0)
+      scale(0.86)
+      rotateX(45deg)
+      rotateZ(-24deg);
   }
 
-  .course-flow-stack--right {
-    top: 54px;
-    right: -210px;
-    transform: scale(0.78) rotateX(54deg) rotateZ(-19deg) rotateY(-8deg);
-  }
-
-  .course-flow-focus {
-    top: 48%;
-    left: 46%;
+  .course-pipeline-card.is-focus {
     width: 220px;
   }
 
@@ -1108,23 +1080,11 @@
     top: 20px;
   }
 
-  .course-flow-stack--right {
-    top: 92px;
-    right: -300px;
-    transform: scale(0.64) rotateX(54deg) rotateZ(-19deg) rotateY(-8deg);
-  }
-
   .course-flow-force-zone--right {
     top: 86px;
     right: -260px;
     width: 420px;
     height: 260px;
-  }
-
-  .course-flow-stack--left {
-    bottom: 22px;
-    left: -284px;
-    transform: scale(0.68) rotateX(56deg) rotateZ(-28deg) rotateY(8deg);
   }
 
   .course-flow-force-zone--left {
@@ -1134,16 +1094,21 @@
     height: 260px;
   }
 
-  .course-flow-focus {
-    top: 46%;
-    left: 50%;
-    --focus-range: 28px;
+  .course-pipeline {
+    top: 49%;
+    transform:
+      translate3d(-50%, -50%, 0)
+      scale(0.72)
+      rotateX(45deg)
+      rotateZ(-24deg);
+  }
 
+  .course-pipeline-card.is-focus {
     width: 190px;
     padding: 14px;
   }
 
-  .course-flow-focus strong {
+  .course-pipeline-card.is-focus strong {
     font-size: 23px;
   }
 

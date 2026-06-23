@@ -51,7 +51,8 @@ type Course = {
 }
 
 const PROGRESSIVE_BLOCK_IDS = ['course-intro', 'production', 'deliverables', 'contact', 'footer'] as const
-const COURSE_STACK_CARD_COUNT = 34
+const COURSE_PIPELINE_CARD_COUNT = 45
+const COURSE_PIPELINE_CENTER_INDEX = Math.floor(COURSE_PIPELINE_CARD_COUNT / 2)
 const COURSE_FLOW_TARGET_VELOCITY = 0.00125
 const COURSE_FLOW_ACCELERATION_MS = 180
 const COURSE_FLOW_DETAIL_DURATION_MS = 560
@@ -60,15 +61,20 @@ type ProgressiveBlockId = (typeof PROGRESSIVE_BLOCK_IDS)[number]
 type RevealStyle = CSSProperties & Record<'--reveal-delay', string>
 type StackSide = 'left' | 'right'
 type FlowSnapshot = {
-  position: number
+  offset: number
   velocity: number
 }
-type CourseStackCardStyle = CSSProperties & Record<
-  '--course-accent' | '--stack-index' | '--stack-nudge' | '--stack-brightness',
-  string
->
-type CourseFocusCardStyle = CSSProperties & Record<
-  '--course-accent' | '--focus-travel' | '--focus-velocity',
+type PipelineCard = {
+  id: number
+  courseIndex: number
+}
+type CoursePipelineCardStyle = CSSProperties & Record<
+  | '--course-accent'
+  | '--pipeline-shift'
+  | '--pipeline-distance'
+  | '--pipeline-brightness'
+  | '--pipeline-pressure'
+  | '--pipeline-velocity',
   string
 >
 type CourseDetailOrigin = {
@@ -416,32 +422,38 @@ const courses: Course[] = [
 
 const loopCourse = (index: number) => courses[positiveModulo(index, courses.length)]
 
-const getCourseStackCardStyle = (
+const createInitialPipelineCards = (): PipelineCard[] => (
+  Array.from({ length: COURSE_PIPELINE_CARD_COUNT }, (_, index) => ({
+    id: index,
+    courseIndex: index - COURSE_PIPELINE_CENTER_INDEX,
+  }))
+)
+
+const getPipelineFocusIndex = (offset: number) => (
+  clamp(COURSE_PIPELINE_CENTER_INDEX - Math.round(offset), 0, COURSE_PIPELINE_CARD_COUNT - 1)
+)
+
+const getCoursePipelineCardStyle = (
   course: Course,
   index: number,
-  side: StackSide,
   flow: FlowSnapshot,
-): CourseStackCardStyle => {
-  const sourcePush = side === 'left' ? Math.max(flow.velocity, 0) : Math.max(-flow.velocity, 0)
-  const brightness = clamp(1 - index * 0.011 + sourcePush * 45, 0.58, 1.04)
+  hoverSource: StackSide | null,
+): CoursePipelineCardStyle => {
+  const shift = index - COURSE_PIPELINE_CENTER_INDEX + flow.offset
+  const distance = Math.abs(shift)
+  const isSourceSide = (hoverSource === 'left' && shift < -0.4) || (hoverSource === 'right' && shift > 0.4)
+  const pressure = isSourceSide ? clamp(Math.abs(flow.velocity) * 900, 0, 1) : 0
 
   return {
     '--course-accent': course.accent,
-    '--stack-index': `${index}`,
-    '--stack-nudge': `${clamp(sourcePush * 62000, 0, 42)}px`,
-    '--stack-brightness': `${brightness}`,
+    '--pipeline-shift': `${shift}`,
+    '--pipeline-distance': `${distance}`,
+    '--pipeline-brightness': `${clamp(1.08 - distance * 0.018 + pressure * 0.12, 0.62, 1.12)}`,
+    '--pipeline-pressure': `${pressure}`,
+    '--pipeline-velocity': `${clamp(Math.abs(flow.velocity) * 1200, 0, 1)}`,
+    zIndex: Math.round(1000 - distance * 8),
   }
 }
-
-const getCourseFocusCardStyle = (
-  course: Course,
-  flowFraction: number,
-  velocity: number,
-): CourseFocusCardStyle => ({
-  '--course-accent': course.accent,
-  '--focus-travel': `${(flowFraction - 0.5) * 2}`,
-  '--focus-velocity': `${clamp(Math.abs(velocity) * 1450, 0, 1)}`,
-})
 
 const getCourseDetailStyle = (detail: CourseDetailState): CourseDetailStyle => ({
   '--course-accent': detail.course.accent,
@@ -457,27 +469,22 @@ export default function LandingPage() {
   const navigate = useNavigate()
   const { isAuthenticated } = useAuth()
   const [detailState, setDetailState] = useState<CourseDetailState | null>(null)
-  const [flowSnapshot, setFlowSnapshot] = useState<FlowSnapshot>({ position: 0, velocity: 0 })
+  const [pipelineCards, setPipelineCards] = useState<PipelineCard[]>(createInitialPipelineCards)
+  const [flowSnapshot, setFlowSnapshot] = useState<FlowSnapshot>({ offset: 0, velocity: 0 })
   const [hoverSource, setHoverSource] = useState<StackSide | null>(null)
   const [revealedBlockIds, setRevealedBlockIds] = useState<Set<ProgressiveBlockId>>(() => new Set())
   const detailCloseTimerRef = useRef<number | null>(null)
-  const flowPositionRef = useRef(0)
+  const nextPipelineCardIdRef = useRef(COURSE_PIPELINE_CARD_COUNT)
+  const pipelineCardsRef = useRef(pipelineCards)
+  const flowOffsetRef = useRef(0)
   const flowVelocityRef = useRef(0)
   const focusCardRef = useRef<HTMLButtonElement | null>(null)
   const hoverSourceRef = useRef<StackSide | null>(null)
   const progressiveBlockRefs = useRef(new Map<ProgressiveBlockId, HTMLElement>())
-  const baseCourseIndex = Math.floor(flowSnapshot.position)
-  const activeCourseIndex = positiveModulo(baseCourseIndex, courses.length)
-  const flowFraction = positiveModulo(flowSnapshot.position, 1)
-  const focusCourse = loopCourse(baseCourseIndex)
-  const leftStackCourses = Array.from(
-    { length: COURSE_STACK_CARD_COUNT },
-    (_, index) => loopCourse(baseCourseIndex - index),
-  )
-  const rightStackCourses = Array.from(
-    { length: COURSE_STACK_CARD_COUNT },
-    (_, index) => loopCourse(baseCourseIndex + index + 1),
-  )
+  const focusPipelineIndex = getPipelineFocusIndex(flowSnapshot.offset)
+  const focusPipelineCard = pipelineCards[focusPipelineIndex] ?? pipelineCards[COURSE_PIPELINE_CENTER_INDEX]
+  const focusCourse = loopCourse(focusPipelineCard.courseIndex)
+  const activeCourseIndex = positiveModulo(focusPipelineCard.courseIndex, courses.length)
 
   const revealBlock = useCallback((id: ProgressiveBlockId) => {
     setRevealedBlockIds((current) => {
@@ -511,31 +518,31 @@ export default function LandingPage() {
     navigate(isAuthenticated ? '/dashboard' : '/register')
   }
 
-  const setStackHoverSource = (side: StackSide | null) => {
+  const setStackHoverSource = useCallback((side: StackSide | null) => {
     if (hoverSourceRef.current === side) return
 
     hoverSourceRef.current = side
     setHoverSource(side)
-  }
+  }, [])
 
-  const setStackHoverSourceFromTarget = (target: EventTarget | null) => {
+  const setStackHoverSourceFromTarget = useCallback((target: EventTarget | null) => {
     if (!(target instanceof Element)) {
       setStackHoverSource(null)
       return
     }
 
-    if (target.closest('.course-flow-force-zone--left, .course-flow-stack--left')) {
+    if (target.closest('.course-flow-force-zone--left')) {
       setStackHoverSource('left')
       return
     }
 
-    if (target.closest('.course-flow-force-zone--right, .course-flow-stack--right')) {
+    if (target.closest('.course-flow-force-zone--right')) {
       setStackHoverSource('right')
       return
     }
 
     setStackHoverSource(null)
-  }
+  }, [setStackHoverSource])
 
   const handleCourseFrameMove = (
     event: ReactMouseEvent<HTMLDivElement> | ReactPointerEvent<HTMLDivElement>,
@@ -590,6 +597,30 @@ export default function LandingPage() {
   }
 
   useEffect(() => {
+    pipelineCardsRef.current = pipelineCards
+  }, [pipelineCards])
+
+  useEffect(() => {
+    const handleGlobalPointerMove = (event: PointerEvent) => {
+      setStackHoverSourceFromTarget(document.elementFromPoint(event.clientX, event.clientY))
+    }
+
+    const clearHoverSource = () => {
+      setStackHoverSource(null)
+    }
+
+    window.addEventListener('pointermove', handleGlobalPointerMove, { passive: true })
+    window.addEventListener('pointerleave', clearHoverSource)
+    window.addEventListener('blur', clearHoverSource)
+
+    return () => {
+      window.removeEventListener('pointermove', handleGlobalPointerMove)
+      window.removeEventListener('pointerleave', clearHoverSource)
+      window.removeEventListener('blur', clearHoverSource)
+    }
+  }, [setStackHoverSource, setStackHoverSourceFromTarget])
+
+  useEffect(() => {
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
     if (prefersReducedMotion) return undefined
@@ -615,22 +646,56 @@ export default function LandingPage() {
         flowVelocityRef.current = 0
       }
 
-      flowPositionRef.current += flowVelocityRef.current * deltaTime
+      flowOffsetRef.current += flowVelocityRef.current * deltaTime
 
-      if (Math.abs(flowPositionRef.current) > courses.length * 100) {
-        flowPositionRef.current = positiveModulo(flowPositionRef.current, courses.length)
+      let pipelineChanged = false
+
+      while (flowOffsetRef.current >= 1) {
+        flowOffsetRef.current -= 1
+
+        const currentCards = pipelineCardsRef.current
+        const firstCard = currentCards[0]
+        pipelineCardsRef.current = [
+          {
+            id: nextPipelineCardIdRef.current,
+            courseIndex: firstCard.courseIndex - 1,
+          },
+          ...currentCards.slice(0, -1),
+        ]
+        nextPipelineCardIdRef.current += 1
+        pipelineChanged = true
+      }
+
+      while (flowOffsetRef.current <= -1) {
+        flowOffsetRef.current += 1
+
+        const currentCards = pipelineCardsRef.current
+        const lastCard = currentCards[currentCards.length - 1]
+        pipelineCardsRef.current = [
+          ...currentCards.slice(1),
+          {
+            id: nextPipelineCardIdRef.current,
+            courseIndex: lastCard.courseIndex + 1,
+          },
+        ]
+        nextPipelineCardIdRef.current += 1
+        pipelineChanged = true
+      }
+
+      if (pipelineChanged) {
+        setPipelineCards(pipelineCardsRef.current)
       }
 
       setFlowSnapshot((current) => {
         if (
-          Math.abs(current.position - flowPositionRef.current) < 0.001
+          Math.abs(current.offset - flowOffsetRef.current) < 0.001
           && Math.abs(current.velocity - flowVelocityRef.current) < 0.00001
         ) {
           return current
         }
 
         return {
-          position: flowPositionRef.current,
+          offset: flowOffsetRef.current,
           velocity: flowVelocityRef.current,
         }
       })
@@ -770,67 +835,52 @@ export default function LandingPage() {
             />
 
             <div
-              className={`course-flow-stack course-flow-stack--left${hoverSource === 'left' ? ' is-source' : ''}`}
-              onMouseEnter={() => setStackHoverSource('left')}
-              onMouseLeave={() => setStackHoverSource(null)}
-              onMouseMove={() => setStackHoverSource('left')}
-              onPointerEnter={() => setStackHoverSource('left')}
-              onPointerLeave={() => setStackHoverSource(null)}
-              onPointerMove={() => setStackHoverSource('left')}
-              aria-label="左侧课程堆叠"
+              className={`course-pipeline${hoverSource ? ` is-pushed-from-${hoverSource}` : ''}`}
+              aria-label="连续课程卡片队列"
             >
-              <div className="course-flow-stack__depth" aria-hidden="true">
-                {leftStackCourses.map((course, index) => (
-                  <article
-                    className="course-flow-card"
-                    key={`left-${index}-${course.day}`}
-                    style={getCourseStackCardStyle(course, index, 'left', flowSnapshot)}
-                  >
-                    <span>{course.day}</span>
-                    <strong>{course.title}</strong>
-                    <em>{course.deliverable}</em>
-                  </article>
-                ))}
+              <div className="course-pipeline__floor" aria-hidden="true" />
+              <div className="course-pipeline__cards">
+                {pipelineCards.map((pipelineCard, index) => {
+                  const course = loopCourse(pipelineCard.courseIndex)
+                  const isFocusCard = index === focusPipelineIndex
+                  const cardStyle = getCoursePipelineCardStyle(course, index, flowSnapshot, hoverSource)
+                  const content = (
+                    <>
+                      <span>{course.day}</span>
+                      <strong>{course.title}</strong>
+                      <em>{course.deliverable}</em>
+                    </>
+                  )
+
+                  if (isFocusCard) {
+                    return (
+                      <button
+                        aria-label={`${course.day} ${course.title} 课程详情`}
+                        className="course-pipeline-card is-focus"
+                        key={pipelineCard.id}
+                        ref={focusCardRef}
+                        style={cardStyle}
+                        type="button"
+                        onClick={openFocusedCourse}
+                      >
+                        {content}
+                      </button>
+                    )
+                  }
+
+                  return (
+                    <article
+                      aria-hidden="true"
+                      className="course-pipeline-card"
+                      key={pipelineCard.id}
+                      style={cardStyle}
+                    >
+                      {content}
+                    </article>
+                  )
+                })}
               </div>
             </div>
-
-            <div
-              className={`course-flow-stack course-flow-stack--right${hoverSource === 'right' ? ' is-source' : ''}`}
-              onMouseEnter={() => setStackHoverSource('right')}
-              onMouseLeave={() => setStackHoverSource(null)}
-              onMouseMove={() => setStackHoverSource('right')}
-              onPointerEnter={() => setStackHoverSource('right')}
-              onPointerLeave={() => setStackHoverSource(null)}
-              onPointerMove={() => setStackHoverSource('right')}
-              aria-label="右侧课程堆叠"
-            >
-              <div className="course-flow-stack__depth" aria-hidden="true">
-                {rightStackCourses.map((course, index) => (
-                  <article
-                    className="course-flow-card"
-                    key={`right-${index}-${course.day}`}
-                    style={getCourseStackCardStyle(course, index, 'right', flowSnapshot)}
-                  >
-                    <span>{course.day}</span>
-                    <strong>{course.title}</strong>
-                    <em>{course.deliverable}</em>
-                  </article>
-                ))}
-              </div>
-            </div>
-
-            <button
-              aria-label={`${focusCourse.day} ${focusCourse.title} 课程详情`}
-              className="course-flow-focus"
-              ref={focusCardRef}
-              style={getCourseFocusCardStyle(focusCourse, flowFraction, flowSnapshot.velocity)}
-              type="button"
-              onClick={openFocusedCourse}
-            >
-              <span>{focusCourse.day}</span>
-              <strong>{focusCourse.title}</strong>
-              <em>{focusCourse.deliverable}</em>
-            </button>
 
             <aside className="course-flow-index" aria-label="课程目录">
               <strong>all <span>{courses.length * 261}</span></strong>
