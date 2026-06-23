@@ -31,6 +31,7 @@ import { useAuth } from '../../hooks/useAuth'
 import ProfilePage from '../../pages/profile/ProfilePage'
 import SecurityPage from '../../pages/profile/SecurityPage'
 import DevicesPage from '../../pages/profile/DevicesPage'
+import BrandLogo from '../brand/BrandLogo'
 
 export default function MainLayout() {
   const navigate = useNavigate()
@@ -298,21 +299,32 @@ export default function MainLayout() {
                 borderBottom: `1px solid ${token.colorBorder}`,
               }}
             >
-              {!collapsed && (
-                <Link
-                  to="/"
-                  className="text-base font-semibold"
-                  style={{ color: token.colorTextHeading, whiteSpace: 'nowrap' }}
-                >
-                  新媒体前沿在线试用
+              {collapsed ? (
+                <Link to="/" aria-label="返回工作台">
+                  <BrandLogo compact size={30} />
                 </Link>
+              ) : (
+                <>
+                  <Link
+                    to="/"
+                    aria-label="返回工作台"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      minWidth: 0,
+                      color: token.colorTextHeading,
+                    }}
+                  >
+                    <BrandLogo size={34} />
+                  </Link>
+                  <Button
+                    type="text"
+                    icon={<MenuFoldOutlined />}
+                    onClick={toggleCollapsed}
+                    style={{ marginLeft: 'auto' }}
+                  />
+                </>
               )}
-              <Button
-                type="text"
-                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                onClick={toggleCollapsed}
-                style={{ marginLeft: collapsed ? 0 : 'auto' }}
-              />
             </Flex>
             <Menu
               mode="inline"

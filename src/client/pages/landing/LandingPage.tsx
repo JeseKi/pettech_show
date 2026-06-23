@@ -2,37 +2,39 @@ import { useNavigate } from 'react-router-dom'
 import { Button, Tag, Avatar, Dropdown, Flex, Typography } from 'antd'
 import { RocketOutlined, SafetyOutlined, ThunderboltOutlined, ToolOutlined, GlobalOutlined, MobileOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons'
 import { useAuth } from '../../hooks/useAuth'
+import BrandLogo from '../../components/brand/BrandLogo'
+import { BRAND_NAME, BRAND_TAGLINE } from '../../lib/brand'
 
 const features = [
   {
     icon: <ThunderboltOutlined className="text-3xl text-blue-500" />,
-    title: 'FastAPI + React',
-    desc: '现代化全栈技术栈，开箱即用',
+    title: '内容资产协同',
+    desc: '沉淀素材、选题与知识资产，支撑团队高效创作',
   },
   {
     icon: <SafetyOutlined className="text-3xl text-green-500" />,
-    title: '完整的认证系统',
-    desc: 'JWT + TOTP 双因素认证，设备管理中',
+    title: '安全账号体系',
+    desc: '支持双因素认证、设备管理与管理员权限控制',
   },
   {
     icon: <ToolOutlined className="text-3xl text-purple-500" />,
-    title: '模块化架构',
-    desc: '参考 example_module，快速开发业务模块',
+    title: '业务模块化',
+    desc: '围绕内容生产、选题矩阵与长文生成持续扩展',
   },
   {
     icon: <GlobalOutlined className="text-3xl text-cyan-500" />,
-    title: '暗色/亮色主题',
-    desc: '内置主题切换，Tailwind CSS 4 + Ant Design',
+    title: '精致界面体验',
+    desc: '支持亮色与暗色主题，适配日常办公场景',
   },
   {
     icon: <MobileOutlined className="text-3xl text-orange-500" />,
-    title: '响应式设计',
-    desc: '移动优先，自适应各种屏幕尺寸',
+    title: '多端可用',
+    desc: '桌面与移动屏幕都能稳定访问核心工作流',
   },
   {
     icon: <RocketOutlined className="text-3xl text-red-500" />,
-    title: '快速开发',
-    desc: 'Vite 构建，热更新，开发体验极佳',
+    title: '快速交付',
+    desc: '前后端一体化工程，便于持续迭代和部署',
   },
 ]
 
@@ -78,8 +80,7 @@ export default function LandingPage() {
       <header className="fixed top-0 w-full z-50 bg-[var(--app-elevated-bg)] backdrop-blur-md border-b border-[var(--app-border-color)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="text-xl font-bold tracking-tight">
-            <span className="text-blue-500">Full</span>Stack
-            <span className="text-[var(--app-text-secondary)] text-sm ml-2">Template</span>
+            <BrandLogo showTagline size={36} />
           </div>
           {isAuthenticated ? (
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" arrow>
@@ -103,15 +104,13 @@ export default function LandingPage() {
       {/* Hero Section */}
       <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
-          <Tag color="blue" className="mb-4">🚀 开箱即用的全栈模板</Tag>
+          <Tag color="gold" className="mb-4">{BRAND_TAGLINE}</Tag>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
-            快速启动你的
-            <span className="text-blue-500"> 全栈项目</span>
+            {BRAND_NAME}
           </h1>
           <p className="text-lg sm:text-xl text-[var(--app-text-secondary)] max-w-2xl mx-auto mb-8 leading-relaxed">
-            基于 FastAPI + React 19 的现代化全栈模板，
-            内置完整认证系统、主题切换和模块化架构，
-            让你专注于业务逻辑开发。
+            面向内容创意、选题策划与广告投放协作的工作台，
+            将素材沉淀、知识整理和长文生成集中在一个清晰可靠的界面中。
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             {isAuthenticated ? (
@@ -145,7 +144,7 @@ export default function LandingPage() {
           </div>
           {!isAuthenticated && (
             <p className="mt-4 text-sm text-[var(--app-text-secondary)]">
-              无需信用卡 · 开源免费 · 即刻部署
+              安全登录 · 权限管理 · 即刻协作
             </p>
           )}
         </div>
@@ -172,10 +171,10 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-              为什么选择这个模板？
+              为什么选择{BRAND_NAME}？
             </h2>
             <p className="text-lg text-[var(--app-text-secondary)] max-w-2xl mx-auto">
-              经过实战验证的架构设计，助你快速构建生产级应用
+              让内容资产、创意规划和执行管理保持在同一条工作链路上
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -200,12 +199,12 @@ export default function LandingPage() {
         <div className="max-w-4xl mx-auto text-center">
           <div className="p-10 sm:p-16 rounded-3xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-cyan-500/10 border border-[var(--app-border-color)]">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-              {isAuthenticated ? '继续你的开发之旅？' : '准备好开始了吗？'}
+              {isAuthenticated ? '继续处理今天的工作？' : '准备好开始协作了吗？'}
             </h2>
             <p className="text-lg text-[var(--app-text-secondary)] mb-8 max-w-xl mx-auto">
               {isAuthenticated
-                ? '回到工作台，继续构建你的应用'
-                : '加入开发者社区，使用这个经过验证的全栈模板启动你的下一个项目'}
+                ? '回到工作台，继续推进内容与投放任务'
+                : '创建账号，进入中影广告的内容协作工作台'}
             </p>
             <Button
               type="primary"
@@ -213,7 +212,7 @@ export default function LandingPage() {
               className="h-12 px-8 text-base font-medium"
               onClick={() => navigate(isAuthenticated ? '/dashboard' : '/register')}
             >
-              {isAuthenticated ? '进入工作台' : '立即注册，免费使用'}
+              {isAuthenticated ? '进入工作台' : '立即注册'}
             </Button>
           </div>
         </div>
@@ -222,7 +221,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="py-8 px-4 sm:px-6 lg:px-8 border-t border-[var(--app-border-color)]">
         <div className="max-w-7xl mx-auto text-center text-sm text-[var(--app-text-secondary)]">
-          <p>© 2026 新媒体前沿在线试用. 开源项目，MIT 许可证。</p>
+          <p>© 2026 {BRAND_NAME}. 开源项目，MIT 许可证。</p>
         </div>
       </footer>
     </div>

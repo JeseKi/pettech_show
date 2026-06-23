@@ -21,6 +21,7 @@ import TurnstileWidget from '../../components/auth/TurnstileWidget'
 import { useAuth } from '../../hooks/useAuth'
 import { useRuntimeConfig } from '../../hooks/useRuntimeConfig'
 import { resolveApiErrorMessage } from '../../lib/error'
+import BrandLogo from '../../components/brand/BrandLogo'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -94,6 +95,9 @@ export default function RegisterPage() {
       >
         <Space direction="vertical" size={24} style={{ width: '100%' }}>
           <div>
+            <div style={{ marginBottom: 20 }}>
+              <BrandLogo showTagline size={42} />
+            </div>
             <Typography.Title level={3} style={{ marginBottom: 8 }}>
               创建新账号
             </Typography.Title>
