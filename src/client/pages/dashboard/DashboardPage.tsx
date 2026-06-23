@@ -1,7 +1,21 @@
 import { Button, Card, Col, Flex, Row, Typography } from 'antd'
 import { FileSearchOutlined, FileTextOutlined, RightOutlined, TableOutlined } from '@ant-design/icons'
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { AIWIKI_MODES, DAILY_WRITER_MODES, SEED_MATRIX_MODES } from '../../lib/workflowModes'
+import {
+  AIWIKI_MODES,
+  CAPABILITY_GROUP_META,
+  DAILY_WRITER_MODES,
+  SEED_MATRIX_MODES,
+  VISIBLE_CAPABILITY_ENTRIES,
+  type CapabilityGroupId,
+} from '../../lib/workflowModes'
+
+const capabilityGroupIcons: Record<CapabilityGroupId, ReactNode> = {
+  'competitor-insights': <FileSearchOutlined />,
+  'topic-planning': <TableOutlined />,
+  'script-creation': <FileTextOutlined />,
+}
 
 const entryGroups = [
   {
@@ -19,6 +33,11 @@ const entryGroups = [
     icon: <FileTextOutlined />,
     entries: Object.values(DAILY_WRITER_MODES),
   },
+  ...Object.entries(CAPABILITY_GROUP_META).map(([groupId, meta]) => ({
+    title: meta.title,
+    icon: capabilityGroupIcons[groupId as CapabilityGroupId],
+    entries: VISIBLE_CAPABILITY_ENTRIES.filter((entry) => entry.group === groupId),
+  })).filter((group) => group.entries.length > 0),
 ]
 
 export default function DashboardPage() {

@@ -36,7 +36,7 @@ export default function ClientFormModal({
     >
       <Form form={form} layout="vertical" requiredMark={false}>
         <Form.Item label="应用名称" name="name" rules={[{ required: true, message: '请输入应用名称' }]}>
-          <Input placeholder="例如 Demo OAuth App" />
+          <Input placeholder="例如 中影广告 OAuth App" />
         </Form.Item>
         <Form.Item
           label="Redirect URIs"

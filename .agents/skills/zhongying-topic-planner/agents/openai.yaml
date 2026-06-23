@@ -1,0 +1,7 @@
+interface:
+  display_name: "中影选题策划"
+  short_description: "生成可校验的中影内容选题池"
+  default_prompt: "Use $zhongying-topic-planner to generate a validated topic planning result."
+
+policy:
+  allow_implicit_invocation: true

@@ -15,10 +15,11 @@ import LandingPage from './pages/landing/LandingPage'
 import AiwikiPage from './pages/aiwiki'
 import SeedMatrixPage from './pages/seedMatrix'
 import DailyWriterPage from './pages/dailyWriter'
+import CapabilityEntryPage from './pages/capabilities/CapabilityEntryPage'
 import { AuthProvider, RequireAdmin, RequireAuth } from './providers/AuthProvider'
 import { RuntimeConfigProvider } from './providers/RuntimeConfigProvider'
 import ThemeToggle from './components/theme/ThemeToggle'
-import { AIWIKI_MODES, DAILY_WRITER_MODES, SEED_MATRIX_MODES } from './lib/workflowModes'
+import { AIWIKI_MODES, DAILY_WRITER_MODES, SEED_MATRIX_MODES, VISIBLE_CAPABILITY_ENTRIES } from './lib/workflowModes'
 
 function ThemeToggleGate() {
   const location = useLocation()
@@ -78,6 +79,13 @@ export default function App() {
               <Route path="/daily-writer/single" element={<DailyWriterPage key="writer-single" mode="single" />} />
               <Route path="/daily-writer/batch" element={<DailyWriterPage key="writer-batch" mode="batch" />} />
               <Route path="/daily-writer/five-pack" element={<DailyWriterPage key="writer-five-pack" mode="five-pack" />} />
+              {VISIBLE_CAPABILITY_ENTRIES.map((entry) => (
+                <Route
+                  key={entry.key}
+                  path={entry.path}
+                  element={<CapabilityEntryPage key={entry.key} entry={entry} />}
+                />
+              ))}
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/profile/security" element={<SecurityPage />} />
               <Route path="/profile/devices" element={<DevicesPage />} />
