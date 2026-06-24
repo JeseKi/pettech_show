@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.2",
+    "@mediapipe/tasks-vision": "^0.10.35",
     "@tailwindcss/vite": "^4.1.13",
     "antd": "^5.27.4",
     "axios": "^1.12.2",
