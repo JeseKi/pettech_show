@@ -1,10 +1,11 @@
-import { ApiOutlined, FileSearchOutlined, KeyOutlined, LockOutlined, TeamOutlined } from '@ant-design/icons'
+import { ApiOutlined, AppstoreAddOutlined, FileSearchOutlined, KeyOutlined, LockOutlined, TeamOutlined } from '@ant-design/icons'
 import { Tabs } from 'antd'
 import UserManagementPage from './UserManagementPage'
 import PermissionManagementPage from './PermissionManagementPage'
 import ScopeManagementPage from './ScopeManagementPage'
 import OAuthClientManagementPage from './OAuthClientManagementPage'
 import AiwikiAuditPage from './AiwikiAuditPage'
+import SkillMarketManagementPage from './SkillMarketManagementPage'
 
 const tabItems = [
   {
@@ -46,6 +47,16 @@ const tabItems = [
       </span>
     ),
     children: <OAuthClientManagementPage />,
+  },
+  {
+    key: 'skill-market',
+    label: (
+      <span>
+        <AppstoreAddOutlined />
+        Skill 市场
+      </span>
+    ),
+    children: <SkillMarketManagementPage />,
   },
   {
     key: 'aiwiki-audit',

@@ -12,6 +12,7 @@ from fastapi import HTTPException, status
 from loguru import logger
 from sqlalchemy.orm import Session
 
+from src.server.agent_skills.service import build_mentioned_skill_context
 from src.server.auth.models import User
 from src.server.config import GlobalConfig, global_config
 
@@ -32,18 +33,34 @@ from .schemas import (
 
 async def create_chat_completion(
     payload: ChatCompletionIn,
+    db: Session | None = None,
+    user: User | None = None,
     config: GlobalConfig = global_config,
 ) -> ChatCompletionOut:
-    model, upstream_payload = _build_upstream_payload(payload, config, stream=False)
+    skill_context = _skill_context_from_payload(db, user, payload)
+    model, upstream_payload = _build_upstream_payload(
+        payload,
+        config,
+        stream=False,
+        extra_system_context=skill_context,
+    )
     data = await _post_chat_completion(config, upstream_payload)
     return _parse_completion(data, requested_model=model)
 
 
 def stream_chat_completion(
     payload: ChatCompletionIn,
+    db: Session | None = None,
+    user: User | None = None,
     config: GlobalConfig = global_config,
 ) -> AsyncIterator[str]:
-    _, upstream_payload = _build_upstream_payload(payload, config, stream=True)
+    skill_context = _skill_context_from_payload(db, user, payload)
+    _, upstream_payload = _build_upstream_payload(
+        payload,
+        config,
+        stream=True,
+        extra_system_context=skill_context,
+    )
     return _stream_sse_events(config, upstream_payload)
 
 
@@ -114,6 +131,7 @@ async def stream_persistent_chat_session(
         role="user",
         content=prompt,
     )
+    skill_context = build_mentioned_skill_context(db, user, prompt)
     session = dao.get_session(owner_user_id=user.id, session_id=session.id) or session
     messages = dao.list_messages(owner_user_id=user.id, session_id=session.id)
     completion_payload = ChatCompletionIn(
@@ -125,7 +143,12 @@ async def stream_persistent_chat_session(
         temperature=payload.temperature,
         max_tokens=payload.max_tokens,
     )
-    model, upstream_payload = _build_upstream_payload(completion_payload, config, stream=True)
+    model, upstream_payload = _build_upstream_payload(
+        completion_payload,
+        config,
+        stream=True,
+        extra_system_context=skill_context,
+    )
     yield _sse_event("session", _session_summary_out(
         session,
         dao.count_messages(owner_user_id=user.id, session_id=session.id),
@@ -183,12 +206,13 @@ def _build_upstream_payload(
     config: GlobalConfig,
     *,
     stream: bool,
+    extra_system_context: str = "",
 ) -> tuple[str, dict[str, Any]]:
     model = _resolve_chat_model(payload.model, config)
 
     upstream_payload: dict[str, Any] = {
         "model": model,
-        "messages": _build_messages(payload, config),
+        "messages": _build_messages(payload, config, extra_system_context=extra_system_context),
         "temperature": (
             payload.temperature
             if payload.temperature is not None
@@ -225,17 +249,38 @@ def _resolve_chat_model(model: str | None, config: GlobalConfig) -> str:
 def _build_messages(
     payload: ChatCompletionIn,
     config: GlobalConfig,
+    *,
+    extra_system_context: str = "",
 ) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
-    system_prompt = config.chat_system_prompt.strip()
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
+    system_parts = [
+        part
+        for part in (config.chat_system_prompt.strip(), extra_system_context.strip())
+        if part
+    ]
+    if system_parts:
+        messages.append({"role": "system", "content": "\n\n".join(system_parts)})
 
     messages.extend(
         {"role": message.role, "content": message.content}
         for message in payload.messages
     )
     return messages
+
+
+def _skill_context_from_payload(
+    db: Session | None,
+    user: User | None,
+    payload: ChatCompletionIn,
+) -> str:
+    if db is None or user is None:
+        return ""
+    prompt_text = "\n".join(
+        message.content
+        for message in payload.messages
+        if message.role == "user"
+    )
+    return build_mentioned_skill_context(db, user, prompt_text)
 
 
 async def _post_chat_completion(

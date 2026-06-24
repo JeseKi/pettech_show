@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import { Alert, App, Avatar, Dropdown, Input, Typography, type MenuProps } from 'antd'
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
   Film,
   Image as ImageIcon,
   LayoutGrid,
@@ -11,7 +14,9 @@ import {
   MessageSquareText,
   NotebookPen,
   Plus,
+  Search,
   Send,
+  Store,
   UserRound,
   type LucideIcon,
 } from 'lucide-react'
@@ -27,6 +32,16 @@ import {
   type ChatMessageRecord,
   type ChatSessionSummary,
 } from '../../lib/chat'
+import {
+  addMyAgentSkill,
+  listAgentSkillMarket,
+  listAgentSkillMarketCategories,
+  listMyAgentSkills,
+  removeMyAgentSkill,
+  type AgentSkill,
+  type AgentSkillCategory,
+  type UserAgentSkill,
+} from '../../lib/agentSkills'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import { BRAND_LOGO_SRC, BRAND_NAME } from '../../lib/brand'
 import './ChatHomePage.css'
@@ -46,6 +61,11 @@ type Recommendation = {
   title: string
   to?: string
 }
+
+type SkillCenterMode = 'market' | 'my'
+const SKILL_CATEGORY_ALL = '__all__'
+const SKILL_PAGE_SIZE = 20
+const MENTION_SKILL_PAGE_SIZE = 6
 
 const quickPrompts: QuickPrompt[] = [
   {
@@ -96,14 +116,15 @@ const recommendations: Recommendation[] = [
 function createMessage(role: ChatMessage['role'], content: string): ChatMessage {
   const now = Date.now()
   const isUser = role === 'user'
+  const assistantTitle = '中影广告智能体'
   return {
     content,
     createAt: now,
     id: `${role}-${now}-${Math.random().toString(36).slice(2)}`,
     meta: {
-      avatar: isUser ? '你' : 'AI',
-      backgroundColor: isUser ? '#4f46e5' : '#0ea5e9',
-      title: isUser ? '你' : 'ChatUI',
+      avatar: isUser ? '你' : <img alt={assistantTitle} className="chat-assistant-avatar" src={BRAND_LOGO_SRC} />,
+      backgroundColor: isUser ? '#4f46e5' : '#111827',
+      title: isUser ? '你' : assistantTitle,
     },
     role,
     updateAt: now,
@@ -152,6 +173,7 @@ const renderChatMessage: RenderMessage = ({ editableContent }) => (
 )
 
 const CHAT_HOME_PATH = '/agents'
+const SKILL_MENTION_TRIGGER_PATTERN = /(^|\s)@([A-Za-z0-9_-]*)$/
 
 function chatSessionPath(sessionId: string): string {
   return `${CHAT_HOME_PATH}/chat/${encodeURIComponent(sessionId)}`
@@ -165,6 +187,22 @@ export default function ChatHomePage() {
   const [draft, setDraft] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([])
+  const [marketSkills, setMarketSkills] = useState<AgentSkill[]>([])
+  const [mySkills, setMySkills] = useState<UserAgentSkill[]>([])
+  const [marketSkillCategories, setMarketSkillCategories] = useState<AgentSkillCategory[]>([])
+  const [skillCenterMode, setSkillCenterMode] = useState<SkillCenterMode>('market')
+  const [skillCategory, setSkillCategory] = useState(SKILL_CATEGORY_ALL)
+  const [skillSearchDraft, setSkillSearchDraft] = useState('')
+  const [skillSearch, setSkillSearch] = useState('')
+  const [marketSkillPage, setMarketSkillPage] = useState(1)
+  const [marketSkillTotal, setMarketSkillTotal] = useState(0)
+  const [mySkillPage, setMySkillPage] = useState(1)
+  const [mySkillTotal, setMySkillTotal] = useState(0)
+  const [mentionSkillCandidates, setMentionSkillCandidates] = useState<UserAgentSkill[]>([])
+  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0)
+  const [mentionSkillsLoading, setMentionSkillsLoading] = useState(false)
+  const [skillsLoading, setSkillsLoading] = useState(false)
+  const [skillActionId, setSkillActionId] = useState<string | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [thinking, setThinking] = useState(false)
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
@@ -180,6 +218,110 @@ export default function ChatHomePage() {
     () => [...sessions].sort((a, b) => sessionUpdatedAt(b) - sessionUpdatedAt(a)),
     [sessions],
   )
+  const availableSkillCategories = useMemo(() => {
+    const categories = marketSkillCategories
+      .map((category) => ({ id: category.id, label: category.name }))
+    return [{ id: SKILL_CATEGORY_ALL, label: '全部' }, ...categories]
+  }, [marketSkillCategories])
+  const marketSkillPageCount = Math.max(1, Math.ceil(marketSkillTotal / SKILL_PAGE_SIZE))
+  const mySkillPageCount = Math.max(1, Math.ceil(mySkillTotal / SKILL_PAGE_SIZE))
+  const activeSkillMentionQuery = useMemo(() => {
+    const match = draft.match(SKILL_MENTION_TRIGGER_PATTERN)
+    return match ? match[2].toLowerCase() : null
+  }, [draft])
+  const hasSelectableMentionSkill = activeSkillMentionQuery !== null && !mentionSkillsLoading && mentionSkillCandidates.length > 0
+
+  const loadSkills = useCallback(async () => {
+    setSkillsLoading(true)
+    try {
+      const [nextMarketSkills, nextMySkills, nextCategories] = await Promise.all([
+        listAgentSkillMarket({
+          category: skillCategory === SKILL_CATEGORY_ALL ? undefined : skillCategory,
+          page: marketSkillPage,
+          pageSize: SKILL_PAGE_SIZE,
+          search: skillSearch,
+        }),
+        listMyAgentSkills({
+          page: mySkillPage,
+          pageSize: SKILL_PAGE_SIZE,
+          search: skillSearch,
+        }),
+        listAgentSkillMarketCategories(),
+      ])
+      setMarketSkills(nextMarketSkills.items)
+      setMarketSkillTotal(nextMarketSkills.total)
+      setMySkills(nextMySkills.items)
+      setMySkillTotal(nextMySkills.total)
+      setMarketSkillCategories(nextCategories)
+      if (skillCategory !== SKILL_CATEGORY_ALL && !nextCategories.some((category) => category.id === skillCategory)) {
+        setSkillCategory(SKILL_CATEGORY_ALL)
+      }
+    } catch (err) {
+      message.error(resolveErrorMessage(err))
+    } finally {
+      setSkillsLoading(false)
+    }
+  }, [marketSkillPage, message, mySkillPage, skillCategory, skillSearch])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const nextSearch = skillSearchDraft.trim()
+      setSkillSearch((current) => {
+        if (current === nextSearch) {
+          return current
+        }
+        setMarketSkillPage(1)
+        setMySkillPage(1)
+        return nextSearch
+      })
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [skillSearchDraft])
+
+  useEffect(() => {
+    if (activeSkillMentionQuery === null || !user?.id) {
+      setMentionSkillCandidates([])
+      setSelectedMentionIndex(0)
+      return
+    }
+
+    let cancelled = false
+    setMentionSkillsLoading(true)
+    void listMyAgentSkills({
+      page: 1,
+      pageSize: MENTION_SKILL_PAGE_SIZE,
+      search: activeSkillMentionQuery,
+    })
+      .then((page) => {
+        if (!cancelled) {
+          setMentionSkillCandidates(page.items)
+          setSelectedMentionIndex(0)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMentionSkillCandidates([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setMentionSkillsLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeSkillMentionQuery, user?.id])
+
+  useEffect(() => {
+    setSelectedMentionIndex((current) => {
+      if (mentionSkillCandidates.length === 0) {
+        return 0
+      }
+      return Math.min(current, mentionSkillCandidates.length - 1)
+    })
+  }, [mentionSkillCandidates.length])
 
   useEffect(() => () => {
     streamAbortRef.current?.abort()
@@ -187,6 +329,11 @@ export default function ChatHomePage() {
       cancelAnimationFrame(streamFrameRef.current)
     }
   }, [])
+
+  useEffect(() => {
+    if (!user?.id) return
+    void loadSkills()
+  }, [loadSkills, user?.id])
 
   useEffect(() => {
     let cancelled = false
@@ -374,6 +521,97 @@ export default function ChatHomePage() {
     })
   }
 
+  const addSkillToAgent = async (skill: AgentSkill) => {
+    setSkillActionId(skill.id)
+    try {
+      await addMyAgentSkill(skill.id)
+      await loadSkills()
+      message.success('Skill 已添加到智能体')
+    } catch (err) {
+      message.error(resolveErrorMessage(err))
+    } finally {
+      setSkillActionId(null)
+    }
+  }
+
+  const removeSkillFromAgent = async (skill: AgentSkill | UserAgentSkill) => {
+    setSkillActionId(skill.id)
+    try {
+      await removeMyAgentSkill(skill.id)
+      await loadSkills()
+      message.success('Skill 已从智能体移除')
+    } catch (err) {
+      message.error(resolveErrorMessage(err))
+    } finally {
+      setSkillActionId(null)
+    }
+  }
+
+  const insertSkillMention = (skill: AgentSkill | UserAgentSkill) => {
+    const mention = `${skill.mention} `
+    setDraft((current) => {
+      const prefix = current.trimEnd()
+      return prefix ? `${prefix} ${mention}` : mention
+    })
+    setError(null)
+  }
+
+  const selectMentionCandidate = (skill: UserAgentSkill) => {
+    setDraft((current) => {
+      if (!SKILL_MENTION_TRIGGER_PATTERN.test(current)) {
+        const prefix = current.trimEnd()
+        return prefix ? `${prefix} ${skill.mention} ` : `${skill.mention} `
+      }
+      return current.replace(SKILL_MENTION_TRIGGER_PATTERN, `$1${skill.mention} `)
+    })
+    setError(null)
+  }
+
+  const confirmSelectedMentionCandidate = () => {
+    if (!hasSelectableMentionSkill) {
+      return false
+    }
+    const skill = mentionSkillCandidates[selectedMentionIndex] ?? mentionSkillCandidates[0]
+    if (!skill) {
+      return false
+    }
+    selectMentionCandidate(skill)
+    return true
+  }
+
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!hasSelectableMentionSkill) {
+      return
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      event.stopPropagation()
+      setSelectedMentionIndex((current) => (current + 1) % mentionSkillCandidates.length)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      event.stopPropagation()
+      setSelectedMentionIndex((current) => (
+        current - 1 < 0 ? mentionSkillCandidates.length - 1 : current - 1
+      ))
+    }
+  }
+
+  const handleComposerPressEnter = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (activeSkillMentionQuery === null) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  const handleComposerSend = () => {
+    if (activeSkillMentionQuery !== null) {
+      confirmSelectedMentionCandidate()
+      return
+    }
+    void sendPrompt()
+  }
+
   const sendPrompt = async (value = draft) => {
     const prompt = value.trim()
     if (!prompt || thinking) return
@@ -520,12 +758,83 @@ export default function ChatHomePage() {
     void logout().then(() => navigate('/login', { replace: true }))
   }
 
+  const changeSkillCategory = (categoryId: string) => {
+    setSkillCategory(categoryId)
+    setMarketSkillPage(1)
+  }
+
+  const renderSkillPagination = (mode: SkillCenterMode) => {
+    const isMarket = mode === 'market'
+    const page = isMarket ? marketSkillPage : mySkillPage
+    const pageCount = isMarket ? marketSkillPageCount : mySkillPageCount
+    const total = isMarket ? marketSkillTotal : mySkillTotal
+    const setPage = isMarket ? setMarketSkillPage : setMySkillPage
+    if (total <= SKILL_PAGE_SIZE && page === 1) {
+      return null
+    }
+    return (
+      <div className="chat-skill-pagination">
+        <button
+          aria-label="上一页"
+          disabled={skillsLoading || page <= 1}
+          onClick={() => setPage((current) => Math.max(1, current - 1))}
+          type="button"
+        >
+          <ChevronLeft size={14} />
+        </button>
+        <span>{page} / {pageCount}</span>
+        <button
+          aria-label="下一页"
+          disabled={skillsLoading || page >= pageCount}
+          onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+          type="button"
+        >
+          <ChevronRight size={14} />
+        </button>
+      </div>
+    )
+  }
+
   const renderComposer = (floating = false) => (
     <div className={floating ? 'chat-composer chat-composer-floating' : 'chat-composer'}>
+      {activeSkillMentionQuery !== null && (
+        <div className="chat-skill-mention-popover" role="listbox">
+          {mentionSkillsLoading ? (
+            <p className="chat-skill-mention-empty">搜索中...</p>
+          ) : mentionSkillCandidates.length > 0 ? (
+            mentionSkillCandidates.map((skill, index) => (
+              <button
+                aria-selected={index === selectedMentionIndex}
+                className={index === selectedMentionIndex ? 'chat-skill-mention-option is-active' : 'chat-skill-mention-option'}
+                key={skill.id}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  selectMentionCandidate(skill)
+                }}
+                onMouseEnter={() => setSelectedMentionIndex(index)}
+                role="option"
+                type="button"
+              >
+                <span>
+                  <strong>{skill.name}</strong>
+                  <small>{skill.mention}</small>
+                </span>
+                <Tag color="info" size="small">{skill.category_label}</Tag>
+              </button>
+            ))
+          ) : (
+            <p className="chat-skill-mention-empty">
+              {mySkills.length > 0 ? '没有匹配的 Skill' : '暂无已添加 Skill'}
+            </p>
+          )}
+        </div>
+      )}
       <ChatInputAreaInner
         className="chat-composer-input"
         onInput={setDraft}
-        onSend={() => void sendPrompt()}
+        onKeyDown={handleComposerKeyDown}
+        onPressEnter={handleComposerPressEnter}
+        onSend={handleComposerSend}
         placeholder="开始一段灵感对话..."
         value={draft}
       />
@@ -536,12 +845,60 @@ export default function ChatHomePage() {
           disabled={!canSend}
           icon={Send}
           loading={thinking}
-          onClick={() => void sendPrompt()}
+          onClick={handleComposerSend}
           type="primary"
         />
       </div>
     </div>
   )
+
+  const renderSkillCard = (skill: AgentSkill | UserAgentSkill, source: SkillCenterMode) => {
+    const actionLoading = skillActionId === skill.id
+    return (
+      <article className="chat-skill-card" key={`${source}-${skill.id}`}>
+        <div className="chat-skill-card-head">
+          <div>
+            <Typography.Text className="chat-skill-title">{skill.name}</Typography.Text>
+            <Typography.Text className="chat-skill-mention">{skill.mention}</Typography.Text>
+          </div>
+          {skill.visibility === 'admin' && <Tag color="warning" size="small">管理员</Tag>}
+        </div>
+        <p>{skill.description}</p>
+        <div className="chat-skill-tags">
+          <Tag color="info" size="small">{skill.category_label}</Tag>
+          {skill.tags.slice(0, 2).map((tag) => (
+            <Tag key={tag} size="small">{tag}</Tag>
+          ))}
+        </div>
+        <div className="chat-skill-actions">
+          {source === 'my' ? (
+            <>
+              <button type="button" onClick={() => insertSkillMention(skill)}>
+                @ 使用
+              </button>
+              <button type="button" disabled={actionLoading} onClick={() => void removeSkillFromAgent(skill)}>
+                移除
+              </button>
+            </>
+          ) : skill.added ? (
+            <>
+              <button type="button" onClick={() => insertSkillMention(skill)}>
+                <Check size={13} />
+                已添加
+              </button>
+              <button type="button" disabled={actionLoading} onClick={() => void removeSkillFromAgent(skill)}>
+                移除
+              </button>
+            </>
+          ) : (
+            <button type="button" disabled={actionLoading} onClick={() => void addSkillToAgent(skill)}>
+              添加到智能体
+            </button>
+          )}
+        </div>
+      </article>
+    )
+  }
 
   return (
     <LobeThemeProvider
@@ -646,6 +1003,75 @@ export default function ChatHomePage() {
             ) : (
               <p className="chat-session-empty">暂无会话</p>
             )}
+
+            <section className="chat-skill-panel" aria-label="技能中心">
+              <div className="chat-skill-panel-header">
+                <div>
+                  <Typography.Text className="chat-skill-kicker">Skill Center</Typography.Text>
+                  <Typography.Text className="chat-skill-panel-title">技能中心</Typography.Text>
+                </div>
+                <button type="button" onClick={() => void loadSkills()} disabled={skillsLoading}>
+                  <Store size={14} />
+                </button>
+              </div>
+
+              <div className="chat-skill-tabs">
+                <button
+                  className={skillCenterMode === 'market' ? 'is-active' : ''}
+                  type="button"
+                  onClick={() => setSkillCenterMode('market')}
+                >
+                  全部
+                </button>
+                <button
+                  className={skillCenterMode === 'my' ? 'is-active' : ''}
+                  type="button"
+                  onClick={() => setSkillCenterMode('my')}
+                >
+                  我的
+                </button>
+              </div>
+
+              <label className="chat-skill-search">
+                <Search size={14} />
+                <input
+                  onChange={(event) => setSkillSearchDraft(event.target.value)}
+                  placeholder="搜索 Skill"
+                  type="search"
+                  value={skillSearchDraft}
+                />
+              </label>
+
+              {skillCenterMode === 'market' && availableSkillCategories.length > 1 && (
+                <div className="chat-skill-categories">
+                  {availableSkillCategories.map((category) => (
+                    <button
+                      key={category.id}
+                      className={skillCategory === category.id ? 'is-active' : ''}
+                      type="button"
+                      onClick={() => changeSkillCategory(category.id)}
+                    >
+                      {category.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="chat-skill-list">
+                {skillsLoading ? (
+                  <p className="chat-skill-empty">加载中...</p>
+                ) : skillCenterMode === 'market' ? (
+                  marketSkills.length > 0
+                    ? marketSkills.map((skill) => renderSkillCard(skill, 'market'))
+                    : <p className="chat-skill-empty">暂无可用 Skill</p>
+                ) : mySkills.length > 0 ? (
+                  mySkills.map((skill) => renderSkillCard(skill, 'my'))
+                ) : (
+                  <p className="chat-skill-empty">还没有添加 Skill</p>
+                )}
+              </div>
+              {skillCenterMode === 'market' ? renderSkillPagination('market') : renderSkillPagination('my')}
+            </section>
           </aside>
 
           <div className={hasConversation ? 'chat-home-main has-conversation' : 'chat-home-main'}>

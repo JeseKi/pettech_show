@@ -38,6 +38,7 @@ from src.server.daily_writer.router import router as daily_writer_router
 from src.server.capability_jobs.router import router as capability_jobs_router
 from src.server.interactive_movie.router import router as interactive_movie_router
 from src.server.chat.router import router as chat_router
+from src.server.agent_skills.router import router as agent_skills_router
 
 # --- 配置与常量 ---
 PROJECT_ROOT = Path(global_config.project_root)
@@ -81,6 +82,9 @@ async def lifespan(_: FastAPI):
         from src.server.capability_jobs.service import sync_job_records as sync_capability_records
 
         sync_capability_records(db)
+        from src.server.agent_skills.service import ensure_skill_market_root
+
+        ensure_skill_market_root()
     finally:
         db.close()
 
@@ -209,6 +213,7 @@ app.include_router(daily_writer_router)
 app.include_router(capability_jobs_router)
 app.include_router(interactive_movie_router)
 app.include_router(chat_router)
+app.include_router(agent_skills_router)
 app.include_router(admin_router)
 app.include_router(scope_management_router)
 if global_config.app_env == "dev":

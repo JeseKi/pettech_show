@@ -9,12 +9,13 @@ import pytest
 
 from src.server.auth import service as auth_service
 from src.server.auth.models import User
+from src.server.auth.schemas import UserRole
 from src.server.chat import service as chat_service
 from src.server.config import global_config
 
 
-def _create_user(test_db_session, username: str) -> User:
-    user = User(username=username, email=f"{username}@example.com")
+def _create_user(test_db_session, username: str, *, role: UserRole = UserRole.USER) -> User:
+    user = User(username=username, email=f"{username}@example.com", role=role)
     user.set_password("Password123")
     test_db_session.add(user)
     test_db_session.commit()
@@ -31,6 +32,28 @@ def _auth_headers(user: User) -> dict[str, str]:
         }
     )
     return {"Authorization": f"Bearer {token}"}
+
+
+def _create_skill_taxonomy(test_client, admin: User):
+    category_resp = test_client.post(
+        "/api/agent-skills/admin/categories",
+        headers=_auth_headers(admin),
+        json={
+            "id": "store-operations",
+            "name": "门店运营",
+            "description": "门店运营类 Skill",
+        },
+    )
+    assert category_resp.status_code == HTTPStatus.CREATED, category_resp.text
+    tag_resp = test_client.post(
+        "/api/agent-skills/admin/tags",
+        headers=_auth_headers(admin),
+        json={
+            "id": "store-operations",
+            "name": "门店运营",
+        },
+    )
+    assert tag_resp.status_code == HTTPStatus.CREATED, tag_resp.text
 
 
 def test_chat_completion_requires_authentication(test_client):
@@ -226,6 +249,73 @@ def test_persistent_chat_stream_stores_server_messages_and_uses_server_history(
     delete_resp = test_client.delete(f"/api/chat/sessions/{session_id}", headers=headers)
     assert delete_resp.status_code == HTTPStatus.NO_CONTENT, delete_resp.text
     assert test_client.get("/api/chat/sessions", headers=headers).json() == []
+
+
+def test_persistent_chat_injects_only_added_mentioned_skill(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    monkeypatch.setattr(global_config, "project_root", str(tmp_path))
+    admin = _create_user(test_db_session, "chat_skill_admin", role=UserRole.ADMIN)
+    user = _create_user(test_db_session, "chat_skill_owner")
+    headers = _auth_headers(user)
+    _create_skill_taxonomy(test_client, admin)
+    create_resp = test_client.post(
+        "/api/agent-skills/admin/market",
+        headers=_auth_headers(admin),
+        json={
+            "id": "pet-review-reply",
+            "name": "宠物客户评价回复",
+            "description": "客服处理评价和差评",
+            "category_id": "store-operations",
+            "tag_ids": ["store-operations"],
+            "visibility": "public",
+            "skill_markdown": "# 宠物客户评价回复\n\n请生成专业回复。",
+        },
+    )
+    assert create_resp.status_code == HTTPStatus.CREATED, create_resp.text
+    other_resp = test_client.post(
+        "/api/agent-skills/admin/market",
+        headers=_auth_headers(admin),
+        json={
+            "id": "pet-sales-script",
+            "name": "到店转化话术",
+            "description": "销售转化和私域成交",
+            "category_id": "store-operations",
+            "tag_ids": ["store-operations"],
+            "visibility": "public",
+            "skill_markdown": "# 到店转化话术\n\n请生成销售话术。",
+        },
+    )
+    assert other_resp.status_code == HTTPStatus.CREATED, other_resp.text
+    add_resp = test_client.post("/api/agent-skills/my/pet-review-reply", headers=headers)
+    assert add_resp.status_code == HTTPStatus.CREATED, add_resp.text
+    captured_payloads: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "skill-model")
+    monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+
+    async def fake_stream_chat_events(_config, payload: dict[str, Any]):
+        captured_payloads.append(payload)
+        yield "delta", {"content": "已应用技能"}
+        yield "done", {}
+
+    monkeypatch.setattr(chat_service, "_stream_chat_events", fake_stream_chat_events)
+
+    resp = test_client.post(
+        "/api/chat/sessions/stream",
+        headers=headers,
+        json={"content": "@pet-review-reply @pet-sales-script 帮我回复这条差评"},
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    system_content = captured_payloads[0]["messages"][0]["content"]
+    assert "系统提示" in system_content
+    assert "# 宠物客户评价回复" in system_content
+    assert "# 到店转化话术" not in system_content
 
 
 def test_chat_stream_returns_sse_error_for_unread_upstream_status(

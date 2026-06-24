@@ -41,9 +41,10 @@ router = APIRouter(prefix="/api/chat", tags=["Chat"])
 )
 async def chat_completion(
     payload: ChatCompletionIn,
-    _: User = Security(get_current_user, scopes=[SCOPE_PROFILE_READ]),
+    db: Session = Depends(get_db),
+    current_user: User = Security(get_current_user, scopes=[SCOPE_PROFILE_READ]),
 ):
-    return await create_chat_completion(payload)
+    return await create_chat_completion(payload, db, current_user)
 
 
 @router.post(
@@ -52,10 +53,11 @@ async def chat_completion(
 )
 async def chat_completion_stream(
     payload: ChatCompletionIn,
-    _: User = Security(get_current_user, scopes=[SCOPE_PROFILE_READ]),
+    db: Session = Depends(get_db),
+    current_user: User = Security(get_current_user, scopes=[SCOPE_PROFILE_READ]),
 ):
     return StreamingResponse(
-        stream_chat_completion(payload),
+        stream_chat_completion(payload, db, current_user),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
