@@ -190,6 +190,49 @@ class GlobalConfig(BaseSettings):
         title="互动电影视频上传大小限制 MB",
     )
 
+    chat_api_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        title="Chat API Base URL",
+        description="OpenAI-compatible API base URL",
+    )
+
+    chat_api_key: str = Field(
+        default="",
+        title="Chat API Key",
+    )
+
+    chat_model: str = Field(
+        default="gpt-4o-mini",
+        title="Chat 默认模型",
+    )
+
+    chat_system_prompt: str = Field(
+        default=(
+            "你是中影广告的互动影游创作助手，擅长把用户想法整理成"
+            "剧本、分镜、角色、选择节点和可进入工作空间执行的下一步。"
+        ),
+        title="Chat 系统提示词",
+    )
+
+    chat_temperature: float = Field(
+        default=0.7,
+        ge=0,
+        le=2,
+        title="Chat 默认 temperature",
+    )
+
+    chat_max_tokens: int = Field(
+        default=1200,
+        ge=1,
+        title="Chat 默认最大输出 token",
+    )
+
+    chat_timeout_seconds: float = Field(
+        default=45,
+        ge=1,
+        title="Chat API 超时时间",
+    )
+
     aiwiki_opencode_command: str = Field(
         default="opencode",
         title="AI Wiki OpenCode 命令",

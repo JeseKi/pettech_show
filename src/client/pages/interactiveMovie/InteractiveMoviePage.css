@@ -116,7 +116,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 4px;
-  padding: 10px 42px 10px 12px;
+  padding: 10px 72px 10px 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
@@ -142,10 +142,10 @@
   white-space: nowrap;
 }
 
+.movie-project-rename,
 .movie-project-delete {
   position: absolute;
   top: 8px;
-  right: 8px;
   display: inline-flex;
   width: 28px;
   height: 28px;
@@ -164,10 +164,26 @@
     transform 180ms ease;
 }
 
+.movie-project-rename {
+  right: 38px;
+}
+
+.movie-project-delete {
+  right: 8px;
+}
+
+.movie-project-item:hover .movie-project-rename,
+.movie-project-item:focus-within .movie-project-rename,
+.movie-project-rename:focus-visible,
 .movie-project-item:hover .movie-project-delete,
 .movie-project-item:focus-within .movie-project-delete,
 .movie-project-delete:focus-visible {
   opacity: 1;
+}
+
+.movie-project-rename:hover {
+  background: rgba(56, 189, 248, 0.16);
+  color: #bae6fd;
 }
 
 .movie-project-delete:hover {
@@ -234,6 +250,7 @@
   padding: 0;
 }
 
+.workspace-collapsed .movie-project-rename,
 .workspace-collapsed .movie-project-delete {
   display: none;
 }

@@ -1,7 +1,7 @@
 """normalize interactive movie media public urls
 
-Revision ID: 2026062403
-Revises: 2026062402
+Revision ID: 2026062404
+Revises: 2026062403
 Create Date: 2026-06-24
 
 """
@@ -15,8 +15,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "2026062403"
-down_revision: Union[str, Sequence[str], None] = "2026062402"
+revision: str = "2026062404"
+down_revision: Union[str, Sequence[str], None] = "2026062403"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

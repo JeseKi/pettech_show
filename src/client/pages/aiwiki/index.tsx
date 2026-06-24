@@ -1014,12 +1014,12 @@ async function buildLocalPreview(file: File, extension: string): Promise<AiwikiF
   }
   if (extension === '.xlsx') {
     const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
-    const sheets = workbook.SheetNames.slice(0, 20).map((name) => {
+    const sheets = workbook.SheetNames.slice(0, 20).map((name: string) => {
       const sheet = workbook.Sheets[name]
       const range = sheet['!ref'] ? XLSX.utils.decode_range(sheet['!ref']) : null
       const rowCount = range ? range.e.r - range.s.r + 1 : 0
       const columnCount = range ? range.e.c - range.s.c + 1 : 0
-      const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, raw: false, defval: '' }).slice(0, 200)
+      const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, raw: false, defval: '' }).slice(0, 200) as string[][]
       const width = Math.min(Math.max(columnCount, ...rows.map((row) => row.length), 1), 50)
       return {
         name,
