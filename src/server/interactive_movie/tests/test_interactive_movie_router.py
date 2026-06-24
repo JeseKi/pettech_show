@@ -68,7 +68,7 @@ def test_upload_scene_video_to_s3(
     assert payload["object_key"].startswith("videos/")
     assert payload["object_key"].endswith(".mp4")
     assert payload["storage_uri"].startswith("s3://movie-bucket/movie-assets/videos/")
-    assert payload["url"].startswith("https://cdn.example.com/movie-assets/videos/")
+    assert payload["url"].startswith("https://cdn.example.com/movie-bucket/movie-assets/videos/")
     assert fake_client.put_calls[0]["Bucket"] == "movie-bucket"
     assert fake_client.put_calls[0]["Body"] == b"video-data"
     assert fake_client.put_calls[0]["ContentType"] == "video/mp4"

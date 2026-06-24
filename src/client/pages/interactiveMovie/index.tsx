@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
+import { isAxiosError } from 'axios'
 import {
   App,
   Button,
@@ -46,7 +47,7 @@ import {
   renameInteractiveMovieProject,
   uploadInteractiveMovieVideo,
 } from '../../lib/interactiveMovie'
-import type { InteractiveMovieProjectPatch, PromptTemplate } from '../../lib/interactiveMovie'
+import type { InteractiveMovieProjectDetail, InteractiveMovieProjectPatch, PromptTemplate } from '../../lib/interactiveMovie'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import './InteractiveMoviePage.css'
 
@@ -156,6 +157,7 @@ type InteractionState =
 const STORAGE_KEY = 'pettech.interactiveMovie.workspace.v1'
 const CLOUD_REPLICA_PREFIX = 'pettech.interactiveMovie.cloudReplica.'
 const DRAFT_REPLICA_PREFIX = 'pettech.interactiveMovie.draftReplica.'
+const MISSING_PROJECT_DETAIL = '互动电影项目不存在'
 const NODE_WIDTH = 292
 const NODE_HEIGHT = 236
 const MIN_ZOOM = 0.25
@@ -342,6 +344,14 @@ const normalizeProjectChoices = (project: InteractiveMovieProject): InteractiveM
 const cloudReplicaKey = (projectId: string) => `${CLOUD_REPLICA_PREFIX}${projectId}`
 const draftReplicaKey = (projectId: string) => `${DRAFT_REPLICA_PREFIX}${projectId}`
 
+const hasCloudCopy = (project: InteractiveMovieProject) => Boolean(project.version && project.contentHash)
+
+const isMissingCloudProjectError = (error: unknown) => {
+  if (!isAxiosError(error) || error.response?.status !== 404) return false
+  const payload = error.response.data as { detail?: unknown } | undefined
+  return payload?.detail === MISSING_PROJECT_DETAIL
+}
+
 const readProjectReplica = (key: string): InteractiveMovieProject | null => {
   if (typeof window === 'undefined') return null
   try {
@@ -351,6 +361,30 @@ const readProjectReplica = (key: string): InteractiveMovieProject | null => {
     window.localStorage.removeItem(key)
     return null
   }
+}
+
+const removeProjectReplicas = (projectId: string) => {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(cloudReplicaKey(projectId))
+  window.localStorage.removeItem(draftReplicaKey(projectId))
+}
+
+const cleanupProjectReplicasOutside = (projectIdsToKeep: Set<string>) => {
+  if (typeof window === 'undefined') return
+  const staleProjectIds = new Set<string>()
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index)
+    if (!key) continue
+    if (key.startsWith(CLOUD_REPLICA_PREFIX)) {
+      const projectId = key.slice(CLOUD_REPLICA_PREFIX.length)
+      if (!projectIdsToKeep.has(projectId)) staleProjectIds.add(projectId)
+    }
+    if (key.startsWith(DRAFT_REPLICA_PREFIX)) {
+      const projectId = key.slice(DRAFT_REPLICA_PREFIX.length)
+      if (!projectIdsToKeep.has(projectId)) staleProjectIds.add(projectId)
+    }
+  }
+  staleProjectIds.forEach(removeProjectReplicas)
 }
 
 const writeProjectReplica = (key: string, project: InteractiveMovieProject) => {
@@ -543,18 +577,47 @@ export default function InteractiveMoviePage() {
         const summaries = await listInteractiveMovieProjects()
         if (cancelled) return
         if (summaries.length === 0) {
-          const localProject = activeProject ?? createDefaultProject()
+          const localProject = workspace.projects.find((project) => !hasCloudCopy(project))
+          if (!localProject) {
+            const project = createDefaultProject('互动电影草稿')
+            cleanupProjectReplicasOutside(new Set([project.id]))
+            writeProjectReplica(draftReplicaKey(project.id), project)
+            setWorkspace({ activeProjectId: project.id, projects: [project] })
+            setSyncMessage('云端暂无项目')
+            return
+          }
+          cleanupProjectReplicasOutside(new Set([localProject.id]))
           const created = await createInteractiveMovieProject(localProject.title, localProject)
           if (cancelled) return
           const project = withCloudMeta(created.document, created.version, created.content_hash, created.updated_at)
+          cleanupProjectReplicasOutside(new Set([project.id]))
           writeProjectReplica(cloudReplicaKey(project.id), project)
           writeProjectReplica(draftReplicaKey(project.id), project)
           setWorkspace({ activeProjectId: project.id, projects: [project] })
           setSyncMessage('已连接云端')
           return
         }
-        const details = await Promise.all(summaries.map((summary) => getInteractiveMovieProject<InteractiveMovieProject>(summary.id)))
+        const detailResults = await Promise.all(summaries.map(async (summary) => {
+          try {
+            return await getInteractiveMovieProject<InteractiveMovieProject>(summary.id)
+          } catch (error) {
+            if (isMissingCloudProjectError(error)) {
+              removeProjectReplicas(summary.id)
+              return null
+            }
+            throw error
+          }
+        }))
         if (cancelled) return
+        const details = detailResults.filter((detail): detail is InteractiveMovieProjectDetail<InteractiveMovieProject> => detail !== null)
+        if (details.length === 0) {
+          const project = createDefaultProject('互动电影草稿')
+          cleanupProjectReplicasOutside(new Set([project.id]))
+          writeProjectReplica(draftReplicaKey(project.id), project)
+          setWorkspace({ activeProjectId: project.id, projects: [project] })
+          setSyncMessage('云端暂无项目')
+          return
+        }
         const projects = details.map((detail) => {
           const cloudProject = withCloudMeta(detail.document, detail.version, detail.content_hash, detail.updated_at)
           writeProjectReplica(cloudReplicaKey(cloudProject.id), cloudProject)
@@ -568,6 +631,7 @@ export default function InteractiveMoviePage() {
           writeProjectReplica(draftReplicaKey(cloudProject.id), cloudProject)
           return cloudProject
         })
+        cleanupProjectReplicasOutside(new Set(projects.map((project) => project.id)))
         const activeId = projects.some((project) => project.id === workspace.activeProjectId)
           ? workspace.activeProjectId
           : projects[0].id
@@ -655,6 +719,21 @@ export default function InteractiveMoviePage() {
     setWorkspace((current) => ({ ...current, activeProjectId: projectId }))
   }
 
+  const cleanupMissingCloudProject = useCallback((projectId: string) => {
+    removeProjectReplicas(projectId)
+    setWorkspace((current) => {
+      const remaining = current.projects.filter((item) => item.id !== projectId)
+      if (remaining.length > 0) {
+        const nextActiveId = current.activeProjectId === projectId ? remaining[0].id : current.activeProjectId
+        return { activeProjectId: nextActiveId, projects: remaining }
+      }
+      const nextProject = createDefaultProject('互动电影草稿')
+      writeProjectReplica(draftReplicaKey(nextProject.id), nextProject)
+      return { activeProjectId: nextProject.id, projects: [nextProject] }
+    })
+    setSyncMessage('云端项目不存在，已清理本地副本')
+  }, [])
+
   const confirmDeleteProject = (project: InteractiveMovieProject) => {
     modal.confirm({
       title: `删除项目「${project.title}」？`,
@@ -664,12 +743,10 @@ export default function InteractiveMoviePage() {
       cancelText: '取消',
       async onOk() {
         try {
-          const hasCloudCopy = Boolean(project.version && project.contentHash)
-          if (hasCloudCopy) {
+          if (hasCloudCopy(project)) {
             await deleteInteractiveMovieProject(project.id)
           }
-          window.localStorage.removeItem(cloudReplicaKey(project.id))
-          window.localStorage.removeItem(draftReplicaKey(project.id))
+          removeProjectReplicas(project.id)
           setWorkspace((current) => {
             const remaining = current.projects.filter((item) => item.id !== project.id)
             if (remaining.length > 0) {
@@ -683,6 +760,11 @@ export default function InteractiveMoviePage() {
           setSyncMessage('项目已删除')
           message.success('项目已删除')
         } catch (error) {
+          if (isMissingCloudProjectError(error)) {
+            cleanupMissingCloudProject(project.id)
+            message.warning('云端项目不存在，已清理本地副本')
+            return
+          }
           message.error(resolveErrorMessage(error))
           throw error
         }
@@ -1016,13 +1098,18 @@ export default function InteractiveMoviePage() {
       setSyncMessage('已保存到云端')
       message.success('已保存到云端')
     } catch (error) {
+      if (isMissingCloudProjectError(error)) {
+        cleanupMissingCloudProject(draft.id)
+        message.warning('云端项目不存在，已清理本地副本')
+        return
+      }
       const text = resolveErrorMessage(error)
       setSyncMessage(text)
       message.error(text)
     } finally {
       setSaving(false)
     }
-  }, [activeProject, message, saving, workspace])
+  }, [activeProject, cleanupMissingCloudProject, message, saving, workspace])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1064,7 +1151,11 @@ export default function InteractiveMoviePage() {
           projects: current.projects.map((item) => (item.id === project.id ? project : item)),
         }))
         setSyncMessage('已自动同步云端')
-      } catch {
+      } catch (error) {
+        if (isMissingCloudProjectError(error)) {
+          cleanupMissingCloudProject(activeProject.id)
+          return
+        }
         setSyncMessage('云端同步检查失败')
       } finally {
         setSyncing(false)
@@ -1074,7 +1165,7 @@ export default function InteractiveMoviePage() {
       void syncOnce()
     }, 60_000)
     return () => window.clearInterval(timer)
-  }, [activeProject, cloudReady, saving, syncing])
+  }, [activeProject, cleanupMissingCloudProject, cloudReady, saving, syncing])
 
   const uploadSceneVideo = async (scene: SceneNode, file: File) => {
     setUploadBySceneId((current) => ({
