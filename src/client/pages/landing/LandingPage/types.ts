@@ -8,6 +8,10 @@ export type Course = {
   format: string
   deliverable: string
   capability: string
+  intro: string
+  principles: string[]
+  implementationRoute: string[]
+  advantages: string[]
   accent: string
   gains: string[]
   goals: string[]

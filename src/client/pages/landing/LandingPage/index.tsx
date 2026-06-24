@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../hooks/useAuth'
 import { CourseModal } from './CourseModal'
@@ -53,25 +53,50 @@ export default function LandingPage() {
     `${className} landing-reveal${revealedBlockIds.has(id) ? ' is-revealed' : ''}`
   ), [revealedBlockIds])
 
-  useEffect(() => {
-    const previousHtmlOverflowY = document.documentElement.style.overflowY
-    const previousBodyOverflowY = document.body.style.overflowY
+  useLayoutEffect(() => {
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const unlockDelay = prefersReducedMotion ? 0 : INTRO_UNLOCK_DELAY_MS
+    const landingScrollbarClassName = 'pettech-landing-scrollbar'
+    const scrollKeys = new Set([' ', 'ArrowDown', 'ArrowUp', 'End', 'Home', 'PageDown', 'PageUp'])
+    let scrollLocked = true
+    const preventScroll = (event: Event) => {
+      if (!scrollLocked) return
+      event.preventDefault()
+    }
+    const preventScrollKeys = (event: KeyboardEvent) => {
+      if (!scrollLocked || !scrollKeys.has(event.key)) return
+      event.preventDefault()
+    }
+    const keepIntroAtTop = () => {
+      if (!scrollLocked || window.scrollY === 0) return
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    }
 
+    document.documentElement.classList.add(landingScrollbarClassName)
+    document.body.classList.add(landingScrollbarClassName)
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-    document.documentElement.style.overflowY = 'hidden'
-    document.body.style.overflowY = 'hidden'
+    window.addEventListener('wheel', preventScroll, { passive: false })
+    window.addEventListener('touchmove', preventScroll, { passive: false })
+    window.addEventListener('keydown', preventScrollKeys)
+    window.addEventListener('scroll', keepIntroAtTop, { passive: true })
 
     const unlockTimer = window.setTimeout(() => {
-      document.documentElement.style.overflowY = previousHtmlOverflowY
-      document.body.style.overflowY = previousBodyOverflowY
+      scrollLocked = false
+      window.removeEventListener('wheel', preventScroll)
+      window.removeEventListener('touchmove', preventScroll)
+      window.removeEventListener('keydown', preventScrollKeys)
+      window.removeEventListener('scroll', keepIntroAtTop)
     }, unlockDelay)
 
     return () => {
+      scrollLocked = false
       window.clearTimeout(unlockTimer)
-      document.documentElement.style.overflowY = previousHtmlOverflowY
-      document.body.style.overflowY = previousBodyOverflowY
+      window.removeEventListener('wheel', preventScroll)
+      window.removeEventListener('touchmove', preventScroll)
+      window.removeEventListener('keydown', preventScrollKeys)
+      window.removeEventListener('scroll', keepIntroAtTop)
+      document.documentElement.classList.remove(landingScrollbarClassName)
+      document.body.classList.remove(landingScrollbarClassName)
     }
   }, [])
 

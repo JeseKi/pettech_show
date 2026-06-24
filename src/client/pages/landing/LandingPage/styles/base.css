@@ -1,3 +1,35 @@
+.pettech-landing-scrollbar {
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(184, 255, 103, 0.64) rgba(5, 7, 6, 0.92);
+  scrollbar-width: thin;
+}
+
+html.pettech-landing-scrollbar::-webkit-scrollbar,
+body.pettech-landing-scrollbar::-webkit-scrollbar {
+  width: 11px;
+}
+
+html.pettech-landing-scrollbar::-webkit-scrollbar-track,
+body.pettech-landing-scrollbar::-webkit-scrollbar-track {
+  background:
+    linear-gradient(180deg, rgba(184, 255, 103, 0.08), rgba(56, 189, 248, 0.06)),
+    #050706;
+}
+
+html.pettech-landing-scrollbar::-webkit-scrollbar-thumb,
+body.pettech-landing-scrollbar::-webkit-scrollbar-thumb {
+  background:
+    linear-gradient(180deg, rgba(184, 255, 103, 0.9), rgba(45, 212, 191, 0.72));
+  border: 3px solid #050706;
+  border-radius: 999px;
+}
+
+html.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover,
+body.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover {
+  background:
+    linear-gradient(180deg, #b8ff67, #6ee7f9);
+}
+
 .landing-page *,
 .landing-page *::before,
 .landing-page *::after {
@@ -10,6 +42,32 @@
   background: #050505;
   font-family: Inter, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
   overflow-x: clip;
+  scrollbar-color: rgba(184, 255, 103, 0.64) rgba(5, 7, 6, 0.92);
+  scrollbar-width: thin;
+}
+
+.landing-page ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.landing-page ::-webkit-scrollbar-track {
+  background:
+    linear-gradient(180deg, rgba(184, 255, 103, 0.08), rgba(56, 189, 248, 0.06)),
+    rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+}
+
+.landing-page ::-webkit-scrollbar-thumb {
+  background:
+    linear-gradient(180deg, rgba(184, 255, 103, 0.88), rgba(45, 212, 191, 0.72));
+  border: 2px solid #0a0f0c;
+  border-radius: 999px;
+}
+
+.landing-page ::-webkit-scrollbar-thumb:hover {
+  background:
+    linear-gradient(180deg, #b8ff67, #6ee7f9);
 }
 
 @keyframes landingNavIn {
@@ -203,4 +261,3 @@
   letter-spacing: 0;
   text-transform: uppercase;
 }
-

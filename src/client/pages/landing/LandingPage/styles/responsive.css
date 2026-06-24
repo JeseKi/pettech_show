@@ -58,6 +58,15 @@
     grid-template-columns: repeat(4, 1fr);
     gap: 10px;
   }
+
+  .course-modal__hero,
+  .course-modal__resume {
+    grid-template-columns: 1fr;
+  }
+
+  .course-modal__evidence {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -71,7 +80,7 @@
     font-size: 42px;
   }
 
-  .course-modal__panel h2 {
+  .course-modal__identity h2 {
     font-size: 40px;
   }
 }
@@ -154,8 +163,7 @@
 
   .capability-grid,
   .result-strip,
-  .tool-flow__items,
-  .course-modal__columns {
+  .tool-flow__items {
     grid-template-columns: 1fr;
   }
 
@@ -167,8 +175,31 @@
     padding: 28px;
   }
 
-  .course-modal__columns section:last-child {
-    grid-column: auto;
+  .course-modal__hero,
+  .course-modal__resume,
+  .course-modal__resume-item,
+  .course-modal__evidence {
+    grid-template-columns: 1fr;
+  }
+
+  .course-modal__snapshot {
+    grid-template-columns: 1fr;
+  }
+
+  .course-modal__resume {
+    gap: 22px;
+  }
+
+  .course-modal__system {
+    padding: 16px 0 16px 16px;
+  }
+
+  .course-modal__resume-item {
+    gap: 10px;
+  }
+
+  .course-modal__resume-copy {
+    padding-left: 18px;
   }
 
   .landing-footer {

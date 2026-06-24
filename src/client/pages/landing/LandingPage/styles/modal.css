@@ -28,10 +28,14 @@
 
 .course-modal__panel {
   position: relative;
-  width: min(900px, 100%);
+  width: min(1080px, 100%);
   max-height: min(760px, calc(100vh - 36px));
   padding: 48px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-color: color-mix(in srgb, var(--course-accent), #2dd4bf 28%) rgba(255, 255, 255, 0.08);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
   color: #f5f7f1;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--course-accent), transparent 94%), transparent 28%),
@@ -45,6 +49,28 @@
   transform-origin: 50% 48%;
   animation: courseModalPanelIn 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
   will-change: transform, opacity, filter;
+}
+
+.course-modal__panel::-webkit-scrollbar {
+  width: 10px;
+}
+
+.course-modal__panel::-webkit-scrollbar-track {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--course-accent), transparent 88%), transparent),
+    rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+}
+
+.course-modal__panel::-webkit-scrollbar-thumb {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--course-accent), white 8%),
+      color-mix(in srgb, var(--course-accent), #2dd4bf 34%)
+    );
+  border: 2px solid #0a0f0c;
+  border-radius: 999px;
 }
 
 .course-modal[data-state="closing"] .course-modal__panel {
@@ -62,8 +88,9 @@
   background:
     linear-gradient(90deg, transparent, color-mix(in srgb, var(--course-accent), transparent 78%), transparent),
     repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 34px);
+  background-position: -120% 0, 0 0;
+  background-size: 220% 100%, auto;
   opacity: 0;
-  transform: translateX(-54%);
   animation: courseModalSweep 620ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
 }
 
@@ -73,23 +100,21 @@
 }
 
 .course-modal[data-state="open"] .course-modal__panel > span,
-.course-modal[data-state="open"] .course-modal__panel h2,
-.course-modal[data-state="open"] .course-modal__panel > p,
-.course-modal[data-state="open"] .course-modal__meta,
-.course-modal[data-state="open"] .course-modal__columns {
+.course-modal[data-state="open"] .course-modal__hero,
+.course-modal[data-state="open"] .course-modal__resume,
+.course-modal[data-state="open"] .course-modal__evidence {
   animation: courseModalContentIn 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.course-modal[data-state="open"] .course-modal__panel h2 {
+.course-modal[data-state="open"] .course-modal__hero {
   animation-delay: 40ms;
 }
 
-.course-modal[data-state="open"] .course-modal__panel > p,
-.course-modal[data-state="open"] .course-modal__meta {
+.course-modal[data-state="open"] .course-modal__resume {
   animation-delay: 80ms;
 }
 
-.course-modal[data-state="open"] .course-modal__columns {
+.course-modal[data-state="open"] .course-modal__evidence {
   animation-delay: 120ms;
 }
 
@@ -109,66 +134,187 @@
   border-radius: 8px;
 }
 
-.course-modal__panel > span {
+.course-modal__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 28px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid color-mix(in srgb, var(--course-accent), transparent 78%);
+}
+
+.course-modal__identity > span {
   color: var(--course-accent);
   font-size: 13px;
   font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.course-modal__panel h2 {
+.course-modal__identity h2 {
   margin: 18px 0 14px;
   font-size: 54px;
   line-height: 1.02;
   letter-spacing: 0;
 }
 
-.course-modal__panel > p {
+.course-modal__identity p {
   max-width: 720px;
+  margin: 0;
   color: rgba(245, 247, 241, 0.72);
   font-size: 18px;
   line-height: 1.78;
 }
 
-.course-modal__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 24px 0;
-}
-
-.course-modal__meta strong {
-  padding: 9px 11px;
-  color: #0a0f0c;
-  background: var(--course-accent);
-  border-radius: 6px;
-}
-
-.course-modal__columns {
+.course-modal__snapshot {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-
-.course-modal__columns section {
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid color-mix(in srgb, var(--course-accent), white 12%, transparent 76%);
+  gap: 12px;
+  align-content: start;
+  padding: 18px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--course-accent), transparent 86%), transparent 62%),
+    rgba(255, 255, 255, 0.045);
+  border: 1px solid color-mix(in srgb, var(--course-accent), white 8%, transparent 74%);
   border-radius: 8px;
 }
 
-.course-modal__columns section:last-child {
-  grid-column: 1 / -1;
+.course-modal__snapshot div {
+  display: grid;
+  gap: 5px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.course-modal__columns h3 {
-  margin: 0 0 16px;
+.course-modal__snapshot div:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.course-modal__snapshot span,
+.course-modal__system span,
+.course-modal__resume-label span {
+  color: rgba(245, 247, 241, 0.52);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.course-modal__snapshot strong {
+  color: #f5f7f1;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.course-modal__resume {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 30px;
+  margin-top: 30px;
+}
+
+.course-modal__system {
+  align-self: start;
+  padding: 20px 0 20px 18px;
+  border-left: 4px solid var(--course-accent);
+}
+
+.course-modal__system h3 {
+  margin: 12px 0 12px;
+  color: #f5f7f1;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.course-modal__system p {
+  margin: 0;
+  color: rgba(245, 247, 241, 0.64);
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+.course-modal__story {
+  display: grid;
+  gap: 2px;
+}
+
+.course-modal__resume-item {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 22px;
+}
+
+.course-modal__resume-label {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.course-modal__resume-label strong {
   color: color-mix(in srgb, var(--course-accent), white 18%);
+  font-size: 18px;
+  line-height: 1.2;
 }
 
-.course-modal__columns p {
-  margin: 10px 0 0;
+.course-modal__resume-copy {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 0 0 24px 24px;
+  border-left: 1px solid color-mix(in srgb, var(--course-accent), transparent 70%);
+}
+
+.course-modal__resume-item:last-child .course-modal__resume-copy {
+  padding-bottom: 0;
+}
+
+.course-modal__resume-copy::before {
+  position: absolute;
+  top: 1px;
+  left: -6px;
+  width: 11px;
+  height: 11px;
+  background: var(--course-accent);
+  border-radius: 999px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--course-accent), transparent 84%);
+  content: "";
+}
+
+.course-modal__resume-copy p {
+  margin: 0;
   color: rgba(245, 247, 241, 0.68);
-  line-height: 1.65;
+  font-size: 15px;
+  line-height: 1.72;
+}
+
+.course-modal__evidence {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 34px;
+  padding-top: 22px;
+  border-top: 1px solid color-mix(in srgb, var(--course-accent), transparent 80%);
+}
+
+.course-modal__evidence section {
+  min-width: 0;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.course-modal__evidence h3 {
+  margin: 0 0 12px;
+  color: var(--course-accent);
+  font-size: 15px;
+}
+
+.course-modal__evidence p {
+  margin: 8px 0 0;
+  color: rgba(245, 247, 241, 0.66);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 @keyframes courseModalBackdropIn {
@@ -217,7 +363,7 @@
 @keyframes courseModalSweep {
   0% {
     opacity: 0;
-    transform: translateX(-62%);
+    background-position: -120% 0, 0 0;
   }
 
   28% {
@@ -226,7 +372,7 @@
 
   100% {
     opacity: 0;
-    transform: translateX(62%);
+    background-position: 220% 0, 0 0;
   }
 }
 
@@ -249,10 +395,9 @@
   .course-modal__panel,
   .course-modal__panel::before,
   .course-modal[data-state="open"] .course-modal__panel > span,
-  .course-modal[data-state="open"] .course-modal__panel h2,
-  .course-modal[data-state="open"] .course-modal__panel > p,
-  .course-modal[data-state="open"] .course-modal__meta,
-  .course-modal[data-state="open"] .course-modal__columns {
+  .course-modal[data-state="open"] .course-modal__hero,
+  .course-modal[data-state="open"] .course-modal__resume,
+  .course-modal[data-state="open"] .course-modal__evidence {
     animation: none;
   }
 }
