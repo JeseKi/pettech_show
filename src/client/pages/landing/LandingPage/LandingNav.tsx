@@ -6,10 +6,9 @@ import { navGroups } from './pageData'
 type LandingNavProps = {
   isAuthenticated: boolean
   onAuthAction: () => void
-  onConsult: () => void
 }
 
-export function LandingNav({ isAuthenticated, onAuthAction, onConsult }: LandingNavProps) {
+export function LandingNav({ isAuthenticated, onAuthAction }: LandingNavProps) {
   return (
     <header className="landing-nav">
       <a className="landing-brand" href="#courses" aria-label={`${BRAND_NAME}首页`}>
@@ -33,15 +32,11 @@ export function LandingNav({ isAuthenticated, onAuthAction, onConsult }: Landing
             </div>
           </div>
         ))}
-        <a href="#contact">预约咨询</a>
       </nav>
       <div className="landing-nav__actions">
-        <button type="button" onClick={onAuthAction}>
+        <button className="is-primary" type="button" onClick={onAuthAction}>
           {isAuthenticated ? <LayoutDashboard size={17} /> : <LogIn size={17} />}
-          {isAuthenticated ? '进入工作台' : '登录'}
-        </button>
-        <button className="is-primary" type="button" onClick={onConsult}>
-          预约咨询
+          {isAuthenticated ? '进入工作台' : '登录查看功能'}
         </button>
       </div>
     </header>

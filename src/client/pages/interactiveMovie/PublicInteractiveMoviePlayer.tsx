@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Empty, Spin, Typography } from 'antd'
 import { PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import { Link, useParams } from 'react-router-dom'
@@ -39,6 +39,15 @@ type PublicMovieDocument = {
   choices: ChoiceEdge[]
 }
 
+type BootPreloadState = {
+  status: 'idle' | 'loading' | 'ready'
+  loaded: number
+  total: number
+  message: string
+}
+
+const PRELOAD_TIMEOUT_MS = 15000
+
 export default function PublicInteractiveMoviePlayer() {
   const { projectId } = useParams<{ projectId?: string }>()
   const [document, setDocument] = useState<PublicMovieDocument | null>(null)
@@ -48,6 +57,26 @@ export default function PublicInteractiveMoviePlayer() {
   const [lineIndex, setLineIndex] = useState(0)
   const [choicesVisible, setChoicesVisible] = useState(false)
   const [ended, setEnded] = useState(false)
+  const [gameStarted, setGameStarted] = useState(false)
+  const [bootPreload, setBootPreload] = useState<BootPreloadState>({
+    status: 'idle',
+    loaded: 0,
+    total: 0,
+    message: '正在准备影游',
+  })
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const preloadPromiseByUrlRef = useRef(new Map<string, Promise<void>>())
+  const preloadedUrlRef = useRef(new Set<string>())
+  const preloadedVideoByUrlRef = useRef(new Map<string, HTMLVideoElement>())
+
+  useEffect(() => (
+    () => {
+      resetPreloadedVideos(preloadedVideoByUrlRef.current)
+      preloadPromiseByUrlRef.current = new Map()
+      preloadedUrlRef.current = new Set()
+      preloadedVideoByUrlRef.current = new Map()
+    }
+  ), [])
 
   useEffect(() => {
     let cancelled = false
@@ -59,6 +88,12 @@ export default function PublicInteractiveMoviePlayer() {
       }
       setLoading(true)
       setNotFound(false)
+      setGameStarted(false)
+      setBootPreload({ status: 'idle', loaded: 0, total: 0, message: '正在准备影游' })
+      resetPreloadedVideos(preloadedVideoByUrlRef.current)
+      preloadPromiseByUrlRef.current = new Map()
+      preloadedUrlRef.current = new Set()
+      preloadedVideoByUrlRef.current = new Map()
       try {
         const result = await getInteractiveMoviePublicProject<PublicMovieDocument>(projectId)
         if (cancelled) return
@@ -89,9 +124,79 @@ export default function PublicInteractiveMoviePlayer() {
   const outgoingChoices = (document?.choices ?? []).filter((choice) => (
     choice.fromSceneId === scene?.id && sceneMap.has(choice.toSceneId)
   ))
-  const videoUrl = scene?.media.kind === 'video' ? scene.media.url : undefined
+  const videoUrl = getSceneVideoUrl(scene)
   const hasVideo = Boolean(videoUrl)
   const currentLine = scene?.script.lines[lineIndex]
+
+  useEffect(() => {
+    if (!document || !scene?.id || gameStarted) return
+
+    let cancelled = false
+    const urls = collectSceneAndNextVideoUrls(document, scene.id)
+
+    if (urls.length === 0) {
+      setBootPreload({ status: 'ready', loaded: 0, total: 0, message: '准备完成' })
+      return undefined
+    }
+
+    let settledCount = 0
+    setBootPreload({
+      status: 'loading',
+      loaded: 0,
+      total: urls.length,
+      message: '正在加载起始视频和第一层分支',
+    })
+
+    void Promise.all(
+      urls.map((url) => preloadVideo(
+        url,
+        preloadPromiseByUrlRef.current,
+        preloadedUrlRef.current,
+        preloadedVideoByUrlRef.current,
+      ).finally(() => {
+        settledCount += 1
+        if (!cancelled) {
+          setBootPreload({
+            status: 'loading',
+            loaded: settledCount,
+            total: urls.length,
+            message: '正在加载起始视频和第一层分支',
+          })
+        }
+      })),
+    ).then(() => {
+      if (!cancelled) {
+        setBootPreload({
+          status: 'ready',
+          loaded: urls.length,
+          total: urls.length,
+          message: '加载完成',
+        })
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [document, gameStarted, scene?.id])
+
+  useEffect(() => {
+    if (!document || !scene?.id || !gameStarted) return
+    const urls = collectSceneAndNextVideoUrls(document, scene.id)
+    urls.forEach((url) => {
+      void preloadVideo(
+        url,
+        preloadPromiseByUrlRef.current,
+        preloadedUrlRef.current,
+        preloadedVideoByUrlRef.current,
+      )
+    })
+  }, [document, gameStarted, scene?.id])
+
+  useEffect(() => {
+    if (!gameStarted || !videoUrl) return
+    void videoRef.current?.play().catch(() => undefined)
+  }, [gameStarted, scene?.id, videoUrl])
 
   const finishScene = () => {
     if (outgoingChoices.length > 0) {
@@ -118,22 +223,30 @@ export default function PublicInteractiveMoviePlayer() {
     setEnded(false)
   }
 
+  const startGame = () => {
+    setGameStarted(true)
+    setLineIndex(0)
+    setChoicesVisible(false)
+    setEnded(false)
+  }
+
   const restart = () => {
     const nextStartScene = document ? findStartScene(document) : null
     setSceneId(nextStartScene?.id ?? '')
     setLineIndex(0)
     setChoicesVisible(false)
     setEnded(false)
+    setGameStarted(false)
   }
 
   useEffect(() => {
-    if (!document || !scene || choicesVisible || ended || hasVideo || currentLine) return
+    if (!gameStarted || !document || !scene || choicesVisible || ended || hasVideo || currentLine) return
     if (outgoingChoices.length > 0) {
       setChoicesVisible(true)
       return
     }
     setEnded(true)
-  }, [choicesVisible, currentLine, document, ended, hasVideo, outgoingChoices.length, scene])
+  }, [choicesVisible, currentLine, document, ended, gameStarted, hasVideo, outgoingChoices.length, scene])
 
   if (loading) {
     return (
@@ -159,14 +272,16 @@ export default function PublicInteractiveMoviePlayer() {
   return (
     <main className="movie-public-page">
       <section className={hasVideo ? 'movie-public-stage has-video' : 'movie-public-stage'}>
-        {!choicesVisible && !ended && videoUrl && (
+        {gameStarted && !choicesVisible && !ended && videoUrl && (
           <video
             key={scene.id}
+            ref={videoRef}
             src={videoUrl}
             poster={scene.media.posterUrl}
             className="movie-public-video"
             controls
             autoPlay
+            preload="auto"
             playsInline
             onEnded={finishScene}
           />
@@ -176,7 +291,33 @@ export default function PublicInteractiveMoviePlayer() {
           <Typography.Text className="movie-public-kicker">{document.title}</Typography.Text>
           <Typography.Title level={2}>{scene.title}</Typography.Title>
         </div>
-        {choicesVisible && (
+        {!gameStarted && (
+          <div className="movie-public-loader">
+            <div className="movie-public-loader-mark" aria-hidden="true" />
+            <Typography.Title level={3}>正在加载影游</Typography.Title>
+            <Typography.Text className="movie-public-loader-text">
+              {bootPreload.message}
+              {bootPreload.total > 0 ? ` ${bootPreload.loaded}/${bootPreload.total}` : ''}
+            </Typography.Text>
+            <div className="movie-public-loader-bar" aria-hidden="true">
+              <span
+                style={{
+                  transform: `scaleX(${bootPreload.total > 0 ? bootPreload.loaded / bootPreload.total : 1})`,
+                }}
+              />
+            </div>
+            <Button
+              size="large"
+              type="primary"
+              icon={<PlayCircleOutlined />}
+              disabled={bootPreload.status !== 'ready'}
+              onClick={startGame}
+            >
+              开始游戏
+            </Button>
+          </div>
+        )}
+        {gameStarted && choicesVisible && (
           <div className="movie-public-choices">
             {outgoingChoices.map((choice) => (
               <Button key={choice.id} size="large" onClick={() => choose(choice)}>
@@ -185,14 +326,14 @@ export default function PublicInteractiveMoviePlayer() {
             ))}
           </div>
         )}
-        {!choicesVisible && !ended && !hasVideo && currentLine && (
+        {gameStarted && !choicesVisible && !ended && !hasVideo && currentLine && (
           <button type="button" className="movie-public-dialogue" onClick={advanceDialogue}>
             <span className="movie-dialogue-speaker">{currentLine.speaker || '角色'}</span>
             <span className="movie-dialogue-text">{currentLine.text}</span>
             <span className="movie-dialogue-next">点击继续</span>
           </button>
         )}
-        {ended && (
+        {gameStarted && ended && (
           <div className="movie-public-ended">
             <PlayCircleOutlined />
             <Typography.Title level={3}>剧终</Typography.Title>
@@ -206,4 +347,79 @@ export default function PublicInteractiveMoviePlayer() {
 
 function findStartScene(document: PublicMovieDocument) {
   return document.scenes.find((scene) => scene.role === 'start') ?? document.scenes[0] ?? null
+}
+
+function getSceneVideoUrl(scene?: SceneNode | null) {
+  if (scene?.media.kind !== 'video') return undefined
+  const url = scene.media.url?.trim()
+  return url || undefined
+}
+
+function collectSceneAndNextVideoUrls(document: PublicMovieDocument, sceneId: string) {
+  const sceneMap = new Map(document.scenes.map((scene) => [scene.id, scene]))
+  const currentScene = sceneMap.get(sceneId)
+  const urls = new Set<string>()
+  const currentUrl = getSceneVideoUrl(currentScene)
+  if (currentUrl) urls.add(currentUrl)
+
+  document.choices
+    .filter((choice) => choice.fromSceneId === sceneId)
+    .forEach((choice) => {
+      const nextUrl = getSceneVideoUrl(sceneMap.get(choice.toSceneId))
+      if (nextUrl) urls.add(nextUrl)
+    })
+
+  return Array.from(urls)
+}
+
+function preloadVideo(
+  url: string,
+  promiseByUrl: Map<string, Promise<void>>,
+  preloadedUrls: Set<string>,
+  videoByUrl: Map<string, HTMLVideoElement>,
+) {
+  if (preloadedUrls.has(url)) return Promise.resolve()
+
+  const existingPromise = promiseByUrl.get(url)
+  if (existingPromise) return existingPromise
+
+  const promise = new Promise<void>((resolve) => {
+    const video = globalThis.document.createElement('video')
+    let timeoutId = 0
+    let settled = false
+
+    const settle = () => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timeoutId)
+      video.removeEventListener('loadeddata', settle)
+      video.removeEventListener('canplaythrough', settle)
+      video.removeEventListener('error', settle)
+      preloadedUrls.add(url)
+      resolve()
+    }
+
+    video.preload = 'auto'
+    video.muted = true
+    video.playsInline = true
+    video.addEventListener('loadeddata', settle)
+    video.addEventListener('canplaythrough', settle)
+    video.addEventListener('error', settle)
+    timeoutId = window.setTimeout(settle, PRELOAD_TIMEOUT_MS)
+    video.src = url
+    video.load()
+    videoByUrl.set(url, video)
+  })
+
+  promiseByUrl.set(url, promise)
+  return promise
+}
+
+function resetPreloadedVideos(videoByUrl: Map<string, HTMLVideoElement>) {
+  videoByUrl.forEach((video) => {
+    video.pause()
+    video.removeAttribute('src')
+    video.load()
+  })
+  videoByUrl.clear()
 }

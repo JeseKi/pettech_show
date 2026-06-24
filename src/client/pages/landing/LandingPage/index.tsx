@@ -16,7 +16,10 @@ import { INTRO_UNLOCK_DELAY_MS, PROGRESSIVE_BLOCK_IDS, type Course, type Progres
 import { isProgressiveBlockId } from './utils'
 import './styles.css'
 
-const SCROLL_HINT_IDLE_MS = 3000
+const SCROLL_HINT_IDLE_MS = 10000
+const SCROLL_HINT_SCROLL_STEP_MIN_PX = 360
+const SCROLL_HINT_TARGET_OFFSET_PX = 88
+const SCROLL_HINT_REARM_MS = 10000
 
 export default function LandingPage() {
   const navigate = useNavigate()
@@ -25,18 +28,25 @@ export default function LandingPage() {
   const [revealedBlockIds, setRevealedBlockIds] = useState<Set<ProgressiveBlockId>>(() => new Set())
   const [showScrollHint, setShowScrollHint] = useState(false)
   const progressiveBlockRefs = useRef(new Map<ProgressiveBlockId, HTMLElement>())
-  const scrollHintTimerRef = useRef(0)
+  const lastScrollYRef = useRef(0)
+  const lastScrollActivityAtRef = useRef(Date.now())
 
   const goToWorkspace = useCallback(() => {
     navigate(isAuthenticated ? '/dashboard' : '/login')
   }, [isAuthenticated, navigate])
 
-  const goToConsult = useCallback(() => {
-    document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [])
-
   const scrollToNextViewport = useCallback(() => {
-    window.scrollBy({ top: Math.max(window.innerHeight * 0.72, 360), behavior: 'smooth' })
+    const currentScrollY = getLandingScrollTop()
+    const minimumTargetY = currentScrollY + Math.max(window.innerHeight * 0.72, SCROLL_HINT_SCROLL_STEP_MIN_PX)
+    const nextSection = getLandingScrollSections().find((node) => (
+      getElementPageTop(node) > currentScrollY + SCROLL_HINT_TARGET_OFFSET_PX
+    ))
+    const nextTargetY = nextSection ? getElementPageTop(nextSection) - SCROLL_HINT_TARGET_OFFSET_PX : minimumTargetY
+    const targetY = Math.max(currentScrollY + SCROLL_HINT_SCROLL_STEP_MIN_PX, Math.min(nextTargetY, minimumTargetY))
+
+    lastScrollActivityAtRef.current = Date.now() + SCROLL_HINT_REARM_MS - SCROLL_HINT_IDLE_MS
+    setShowScrollHint(false)
+    scrollLandingTo(targetY)
   }, [])
 
   const revealBlock = useCallback((id: ProgressiveBlockId) => {
@@ -155,27 +165,45 @@ export default function LandingPage() {
 
   useEffect(() => {
     const isNearPageBottom = () => (
-      window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 24
+      window.innerHeight + getLandingScrollTop() >= getLandingPageContentBottom() - 24
     )
-    const scheduleScrollHint = () => {
-      if (scrollHintTimerRef.current) window.clearTimeout(scrollHintTimerRef.current)
+    const isPageScrollable = () => getLandingPageContentBottom() > window.innerHeight + 24
+    const updateScrollHint = () => {
+      const hasBeenIdle = Date.now() - lastScrollActivityAtRef.current >= SCROLL_HINT_IDLE_MS
+      setShowScrollHint(isPageScrollable() && hasBeenIdle && !isNearPageBottom())
+    }
+    const recordScrollActivity = () => {
+      lastScrollActivityAtRef.current = Date.now()
       setShowScrollHint(false)
-      if (isNearPageBottom()) return
-
-      scrollHintTimerRef.current = window.setTimeout(() => {
-        scrollHintTimerRef.current = 0
-        setShowScrollHint(!isNearPageBottom())
-      }, SCROLL_HINT_IDLE_MS)
+    }
+    const recordScroll = () => {
+      const nextScrollY = getLandingScrollTop()
+      if (Math.abs(nextScrollY - lastScrollYRef.current) > 2) {
+        recordScrollActivity()
+      }
+      lastScrollYRef.current = nextScrollY
+    }
+    const recordScrollKey = (event: KeyboardEvent) => {
+      if (![' ', 'ArrowDown', 'ArrowUp', 'End', 'Home', 'PageDown', 'PageUp'].includes(event.key)) return
+      recordScrollActivity()
     }
 
-    scheduleScrollHint()
-    window.addEventListener('scroll', scheduleScrollHint, { passive: true })
-    window.addEventListener('resize', scheduleScrollHint)
+    lastScrollYRef.current = getLandingScrollTop()
+    lastScrollActivityAtRef.current = Date.now()
+    const intervalId = window.setInterval(updateScrollHint, 250)
+    window.addEventListener('scroll', recordScroll, { passive: true })
+    window.addEventListener('wheel', recordScrollActivity, { passive: true })
+    window.addEventListener('touchmove', recordScrollActivity, { passive: true })
+    window.addEventListener('keydown', recordScrollKey)
+    window.addEventListener('resize', updateScrollHint)
 
     return () => {
-      if (scrollHintTimerRef.current) window.clearTimeout(scrollHintTimerRef.current)
-      window.removeEventListener('scroll', scheduleScrollHint)
-      window.removeEventListener('resize', scheduleScrollHint)
+      window.clearInterval(intervalId)
+      window.removeEventListener('scroll', recordScroll)
+      window.removeEventListener('wheel', recordScrollActivity)
+      window.removeEventListener('touchmove', recordScrollActivity)
+      window.removeEventListener('keydown', recordScrollKey)
+      window.removeEventListener('resize', updateScrollHint)
     }
   }, [])
 
@@ -184,42 +212,36 @@ export default function LandingPage() {
       <LandingNav
         isAuthenticated={isAuthenticated}
         onAuthAction={goToWorkspace}
-        onConsult={goToConsult}
       />
       <CourseStack autoPlayEnabled={activeCourse === null} onCourseOpen={setActiveCourse} />
       <CourseIntroSection
         progressiveClassName={progressiveClassName}
         registerProgressiveBlock={registerProgressiveBlock}
         goToWorkspace={goToWorkspace}
-        goToConsult={goToConsult}
         isAuthenticated={isAuthenticated}
       />
       <ProductionSection
         progressiveClassName={progressiveClassName}
         registerProgressiveBlock={registerProgressiveBlock}
         goToWorkspace={goToWorkspace}
-        goToConsult={goToConsult}
         isAuthenticated={isAuthenticated}
       />
       <DeliverablesSection
         progressiveClassName={progressiveClassName}
         registerProgressiveBlock={registerProgressiveBlock}
         goToWorkspace={goToWorkspace}
-        goToConsult={goToConsult}
         isAuthenticated={isAuthenticated}
       />
       <ContactSection
         progressiveClassName={progressiveClassName}
         registerProgressiveBlock={registerProgressiveBlock}
         goToWorkspace={goToWorkspace}
-        goToConsult={goToConsult}
         isAuthenticated={isAuthenticated}
       />
       <LandingFooter
         progressiveClassName={progressiveClassName}
         registerProgressiveBlock={registerProgressiveBlock}
         goToWorkspace={goToWorkspace}
-        goToConsult={goToConsult}
         isAuthenticated={isAuthenticated}
       />
       <button
@@ -234,4 +256,50 @@ export default function LandingPage() {
       <CourseModal activeCourse={activeCourse} onClose={() => setActiveCourse(null)} />
     </main>
   )
+}
+
+function getLandingPage() {
+  return document.querySelector<HTMLElement>('.landing-page')
+}
+
+function getLandingScrollTop() {
+  return Math.max(
+    window.scrollY,
+    document.documentElement.scrollTop,
+    document.body.scrollTop,
+  )
+}
+
+function getElementPageTop(node: HTMLElement) {
+  return node.getBoundingClientRect().top + getLandingScrollTop()
+}
+
+function getLandingPageContentBottom() {
+  const landingPage = getLandingPage()
+  const landingPageBottom = landingPage ? getElementPageTop(landingPage) + landingPage.offsetHeight : 0
+
+  return Math.max(
+    document.documentElement.scrollHeight,
+    document.body.scrollHeight,
+    landingPage?.scrollHeight ?? 0,
+    landingPageBottom,
+  )
+}
+
+function getLandingScrollSections() {
+  const landingPage = getLandingPage()
+  if (!landingPage) return []
+
+  return Array.from(landingPage.querySelectorAll<HTMLElement>('section[id], footer'))
+}
+
+function scrollLandingTo(top: number) {
+  const maxTop = Math.max(0, getLandingPageContentBottom() - window.innerHeight)
+  const nextTop = Math.min(Math.max(0, top), maxTop)
+  const options: ScrollToOptions = { top: nextTop, left: 0, behavior: 'smooth' }
+
+  window.scrollTo(options)
+  document.scrollingElement?.scrollTo(options)
+  document.documentElement.scrollTo(options)
+  document.body.scrollTo(options)
 }

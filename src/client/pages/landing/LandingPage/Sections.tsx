@@ -1,4 +1,4 @@
-import { ArrowRight, CalendarDays, PackageCheck, Target } from 'lucide-react'
+import { ArrowRight, PackageCheck, Target } from 'lucide-react'
 import { BRAND_NAME } from '../../../lib/brand'
 import { audience, deliverables, productionFlow, productionSteps } from './pageData'
 import type { ProgressiveBlockId } from './types'
@@ -8,7 +8,6 @@ type LandingSectionProps = {
   progressiveClassName: (id: ProgressiveBlockId, className: string) => string
   registerProgressiveBlock: (id: ProgressiveBlockId) => (node: HTMLElement | null) => void
   goToWorkspace: () => void
-  goToConsult: () => void
   isAuthenticated: boolean
 }
 
@@ -143,7 +142,6 @@ export function ContactSection({
   progressiveClassName,
   registerProgressiveBlock,
   goToWorkspace,
-  goToConsult,
   isAuthenticated,
 }: LandingSectionProps) {
   return (
@@ -153,16 +151,12 @@ export function ContactSection({
       ref={registerProgressiveBlock('contact')}
       data-reveal-id="contact"
     >
-      <CalendarDays size={34} />
-      <h2>想把宠物行业内容生产做成可持续系统？</h2>
-      <p>预约咨询，了解内容生产系统、7 天训练营和适合你业务的落地方式。</p>
+      <h2>把宠物行业内容生产放进工作台</h2>
+      <p>登录后查看内容生产系统、课程训练路径和可复用的业务资产。</p>
       <div>
-        <button type="button" onClick={goToConsult}>
-          预约咨询
-          <ArrowRight size={18} />
-        </button>
         <button type="button" onClick={goToWorkspace}>
           {isAuthenticated ? '进入工作台' : '登录查看功能'}
+          <ArrowRight size={18} />
         </button>
       </div>
     </section>
