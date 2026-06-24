@@ -6,9 +6,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import shutil
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from loguru import logger
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -18,9 +19,23 @@ from src.server.auth.schemas import UserRole
 
 from ..dao import AiwikiJobDAO
 from ..parser import parse_aiwiki_result
-from ..schemas import AiwikiResultOut, JobListOut, JobOut
+from ..models import AiwikiAuditLog
+from ..schemas import (
+    AiwikiAuditLogListOut,
+    AiwikiAuditLogOut,
+    AiwikiResultOut,
+    AiwikiStatsOut,
+    JobListOut,
+    JobOut,
+)
 from .constants import ALLOWED_EXTENSIONS
-from .files import convert_to_markdown, safe_filename
+from .files import (
+    build_file_preview,
+    category_for_extension,
+    convert_to_markdown,
+    default_mime_type,
+    safe_filename,
+)
 from .logs import append_log
 from .opencode import prepare_opencode_config, prepare_skills, run_opencode
 from .persistence import (
@@ -36,7 +51,7 @@ from .persistence import (
 )
 from .progress import initial_progress, progress_marked_complete, write_progress
 from .queue_state import get_queue
-from .serializers import job_out_from_manifest, job_summary_from_model
+from .serializers import job_out_from_manifest, job_summary_from_model, parse_uploaded_files
 
 
 async def create_job(
@@ -52,19 +67,8 @@ async def create_job(
             detail="请至少上传一个文件",
         )
 
-    now = datetime.now(timezone.utc)
-    job_id = new_job_id(now)
-    workdir = job_workdir(job_id)
-    uploads_dir = workdir / "uploads"
-    raw_date = now.strftime("%y%m%d")
-    raw_dir = workdir / "raw" / raw_date
-    logs_dir = workdir / "logs"
-    uploads_dir.mkdir(parents=True, exist_ok=False)
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    logs_dir.mkdir(parents=True, exist_ok=True)
-
     total_size = 0
-    saved_files: list[dict[str, Any]] = []
+    validated_files: list[dict[str, Any]] = []
     max_bytes = global_config.aiwiki_max_upload_mb * 1024 * 1024
 
     for index, file in enumerate(files, start=1):
@@ -83,18 +87,49 @@ async def create_job(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=f"上传总大小不能超过 {global_config.aiwiki_max_upload_mb}MB",
             )
+        validated_files.append(
+            {
+                "filename": original_name,
+                "extension": extension,
+                "content": content,
+                "content_type": file.content_type,
+            }
+        )
 
+    now = datetime.now(timezone.utc)
+    job_id = new_job_id(now)
+    workdir = job_workdir(job_id)
+    uploads_dir = workdir / "uploads"
+    raw_date = now.strftime("%y%m%d")
+    raw_dir = workdir / "raw" / raw_date
+    logs_dir = workdir / "logs"
+    uploads_dir.mkdir(parents=True, exist_ok=False)
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_files: list[dict[str, Any]] = []
+    for index, item in enumerate(validated_files, start=1):
+        original_name = str(item["filename"])
+        extension = str(item["extension"])
+        content = item["content"]
         upload_path = uploads_dir / original_name
         upload_path.write_bytes(content)
         raw_text = convert_to_markdown(upload_path, content, extension)
         raw_name = f"{raw_date}_{index}_{Path(original_name).stem}.md"
         raw_path = raw_dir / safe_filename(raw_name)
         raw_path.write_text(raw_text, encoding="utf-8")
+        preview = build_file_preview(original_name, content, extension)
         saved_files.append(
             {
                 "filename": original_name,
                 "size_bytes": len(content),
+                "upload_path": upload_path.relative_to(workdir).as_posix(),
                 "raw_path": raw_path.relative_to(workdir).as_posix(),
+                "extension": extension,
+                "mime_type": item["content_type"] or default_mime_type(extension),
+                "category": category_for_extension(extension),
+                "preview_status": "ready",
+                "preview": preview,
             }
         )
 
@@ -115,6 +150,33 @@ async def create_job(
     }
     write_progress(workdir, initial_progress())
     write_manifest(workdir, manifest)
+    dao = AiwikiJobDAO(db)
+    for item in saved_files:
+        dao.append_audit_log(
+            actor_user_id=current_user.id,
+            actor_username=current_user.username,
+            action="upload",
+            job_id=job_id,
+            target_filename=str(item["filename"]),
+            message=f"{current_user.username} 上传了 {item['filename']}",
+            metadata={
+                "size_bytes": item["size_bytes"],
+                "extension": item["extension"],
+                "category": item["category"],
+            },
+        )
+    dao.append_audit_log(
+        actor_user_id=current_user.id,
+        actor_username=current_user.username,
+        action="execute",
+        job_id=job_id,
+        target_filename=", ".join(str(item["filename"]) for item in saved_files),
+        message=f"{current_user.username} 执行了知识库生成任务",
+        metadata={
+            "job_id": job_id,
+            "filenames": [item["filename"] for item in saved_files],
+        },
+    )
     upsert_job_from_manifest(db, workdir, manifest)
     session_factory = build_session_factory(db)
     get_queue().enqueue(job_id, lambda: _run_job(job_id, workdir, session_factory))
@@ -132,7 +194,7 @@ def list_jobs(
     normalized_limit = max(1, min(limit, 100))
     normalized_offset = max(0, offset)
     dao = AiwikiJobDAO(db)
-    owner_filter = None if _is_admin(current_user) else current_user.id
+    owner_filter = current_user.id
     items = [
         job_summary_from_model(job, dao.owner_username(job.owner_user_id))
         for job in dao.list(
@@ -142,11 +204,16 @@ def list_jobs(
             status=status,
         )
     ]
+    stats = build_stats(
+        jobs=dao.list_for_stats(owner_user_id=owner_filter, status=status),
+        display_count=sum(len(item.files) for item in items),
+    )
     return JobListOut(
         items=items,
         total=dao.count(owner_user_id=owner_filter, status=status),
         limit=normalized_limit,
         offset=normalized_offset,
+        stats=stats,
     )
 
 
@@ -187,6 +254,64 @@ def get_result(db: Session, job_id: str, current_user: User) -> AiwikiResultOut:
     return result
 
 
+def get_file(db: Session, job_id: str, file_index: int, current_user: User) -> FileResponse:
+    workdir = existing_job_workdir(job_id, db)
+    job = AiwikiJobDAO(db).get(job_id)
+    if job is None or not _can_access_job(current_user, job.owner_user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    manifest = read_manifest(workdir)
+    manifest_files = manifest.get("files")
+    files: list[dict[str, Any]] = [
+        item for item in manifest_files if isinstance(item, dict)
+    ] if isinstance(manifest_files, list) else []
+    if file_index < 0 or file_index >= len(files) or not isinstance(files[file_index], dict):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文件不存在")
+    file_info = files[file_index]
+    upload_path = file_info.get("upload_path")
+    if not isinstance(upload_path, str) or not upload_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文件不存在")
+    path = (workdir / upload_path).resolve()
+    try:
+        path.relative_to(workdir.resolve())
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件路径非法")
+    if not path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文件不存在")
+    return FileResponse(
+        path,
+        media_type=str(file_info.get("mime_type") or "application/octet-stream"),
+        filename=str(file_info.get("filename") or path.name),
+    )
+
+
+def list_audit_logs(
+    db: Session,
+    *,
+    current_user: User,
+    scope: str,
+    limit: int,
+    offset: int,
+) -> AiwikiAuditLogListOut:
+    normalized_scope: Literal["mine", "all"] = "all" if scope == "all" else "mine"
+    if normalized_scope == "all" and not _is_admin(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="只有管理员可以查看全部操作日志")
+    normalized_limit = max(1, min(limit, 100))
+    normalized_offset = max(0, offset)
+    actor_filter = None if normalized_scope == "all" else current_user.id
+    dao = AiwikiJobDAO(db)
+    return AiwikiAuditLogListOut(
+        items=[audit_log_out(log) for log in dao.list_audit_logs(
+            limit=normalized_limit,
+            offset=normalized_offset,
+            actor_user_id=actor_filter,
+        )],
+        total=dao.count_audit_logs(actor_user_id=actor_filter),
+        limit=normalized_limit,
+        offset=normalized_offset,
+        scope=normalized_scope,
+    )
+
+
 def delete_job(db: Session, job_id: str, current_user: User) -> None:
     workdir = existing_job_workdir(job_id, db)
     dao = AiwikiJobDAO(db)
@@ -198,6 +323,19 @@ def delete_job(db: Session, job_id: str, current_user: User) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="任务正在执行，完成或失败后才能删除",
         )
+    dao.append_audit_log(
+        actor_user_id=current_user.id,
+        actor_username=current_user.username,
+        action="delete",
+        job_id=job.id,
+        target_filename=", ".join(
+            item.get("filename", "")
+            for item in parse_manifest_files(workdir)
+            if isinstance(item, dict)
+        ) or job.id,
+        message=f"{current_user.username} 删除了知识库任务 {job.id}",
+        metadata={"job_id": job.id},
+    )
     _delete_child_seed_matrices(db, job_id)
     dao.delete(job)
     shutil.rmtree(workdir, ignore_errors=True)
@@ -225,6 +363,53 @@ def _delete_child_seed_matrices(db: Session, source_aiwiki_job_id: str) -> None:
         child_workdir = Path(child.workdir)
         dao.delete(child)
         shutil.rmtree(child_workdir, ignore_errors=True)
+
+
+def parse_manifest_files(workdir: Path) -> list[dict[str, Any]]:
+    try:
+        manifest = read_manifest(workdir)
+    except Exception:
+        return []
+    files = manifest.get("files")
+    return [item for item in files if isinstance(item, dict)] if isinstance(files, list) else []
+
+
+def audit_log_out(log: AiwikiAuditLog) -> AiwikiAuditLogOut:
+    from .serializers import parse_json_dict
+
+    return AiwikiAuditLogOut(
+        id=log.id,
+        actor_user_id=log.actor_user_id,
+        actor_username=log.actor_username,
+        action=log.action,
+        job_id=log.job_id,
+        target_filename=log.target_filename,
+        message=log.message,
+        metadata=parse_json_dict(log.metadata_json),
+        created_at=log.created_at,
+    )
+
+
+def build_stats(*, jobs: list[Any], display_count: int) -> AiwikiStatsOut:
+    graphic_text_count = 0
+    document_count = 0
+    total_count = 0
+    for job in jobs:
+        for file in parse_uploaded_files(getattr(job, "files_json", "[]")):
+            total_count += 1
+            category = file.category or category_for_extension(
+                file.extension or Path(file.filename).suffix.lower()
+            )
+            if category == "graphic_text":
+                graphic_text_count += 1
+            else:
+                document_count += 1
+    return AiwikiStatsOut(
+        graphic_text_count=graphic_text_count,
+        document_count=document_count,
+        display_count=display_count,
+        total_count=total_count,
+    )
 
 
 def sync_job_records(db: Session) -> None:
@@ -340,7 +525,7 @@ def _is_admin(user: User) -> bool:
 
 
 def _can_access_job(user: User, owner_user_id: int | None) -> bool:
-    return _is_admin(user) or owner_user_id == user.id
+    return owner_user_id == user.id or _is_admin(user)
 
 
 def _default_admin_user_id(db: Session) -> int | None:

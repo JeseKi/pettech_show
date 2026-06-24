@@ -15,6 +15,12 @@ class UploadedFileOut(BaseModel):
     filename: str
     size_bytes: int
     raw_path: str
+    upload_path: str | None = None
+    extension: str | None = None
+    mime_type: str | None = None
+    category: Literal["graphic_text", "document"] | None = None
+    preview_status: Literal["ready", "failed"] | None = None
+    preview: dict[str, Any] = Field(default_factory=dict)
 
 
 class JobOut(BaseModel):
@@ -45,11 +51,39 @@ class JobSummaryOut(BaseModel):
     summary: dict[str, Any] = Field(default_factory=dict)
 
 
+class AiwikiStatsOut(BaseModel):
+    graphic_text_count: int = 0
+    document_count: int = 0
+    display_count: int = 0
+    total_count: int = 0
+
+
 class JobListOut(BaseModel):
     items: list[JobSummaryOut]
     total: int
     limit: int
     offset: int
+    stats: AiwikiStatsOut = Field(default_factory=AiwikiStatsOut)
+
+
+class AiwikiAuditLogOut(BaseModel):
+    id: int
+    actor_user_id: int
+    actor_username: str
+    action: str
+    job_id: str | None = None
+    target_filename: str
+    message: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class AiwikiAuditLogListOut(BaseModel):
+    items: list[AiwikiAuditLogOut]
+    total: int
+    limit: int
+    offset: int
+    scope: Literal["mine", "all"]
 
 
 class MaterialOut(BaseModel):

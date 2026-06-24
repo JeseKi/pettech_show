@@ -14,6 +14,15 @@ export const INTERACTIVE_MOVIE_TOOL = {
   buttonText: '进入编辑器',
 }
 
+export const KNOWLEDGE_BASE_TOOL = {
+  key: 'knowledge-base',
+  path: '/knowledge-base',
+  navLabel: '知识库',
+  title: '知识库',
+  description: '沉淀上传文件、即时预览、可视化资产结构，并保留操作审计日志。',
+  buttonText: '进入知识库',
+}
+
 export const AIWIKI_MODES: Record<AiwikiModeId, {
   key: string
   path: string

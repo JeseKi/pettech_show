@@ -35,17 +35,17 @@ import SecurityPage from '../../pages/profile/SecurityPage'
 import DevicesPage from '../../pages/profile/DevicesPage'
 import BrandLogo from '../brand/BrandLogo'
 import {
-  AIWIKI_MODES,
   CAPABILITY_GROUP_META,
   DAILY_WRITER_MODES,
   INTERACTIVE_MOVIE_TOOL,
+  KNOWLEDGE_BASE_TOOL,
   SEED_MATRIX_MODES,
   VISIBLE_CAPABILITY_ENTRIES,
   type CapabilityGroupId,
 } from '../../lib/workflowModes'
 
 const workflowEntries = [
-  ...Object.values(AIWIKI_MODES),
+  KNOWLEDGE_BASE_TOOL,
   ...Object.values(SEED_MATRIX_MODES),
   ...Object.values(DAILY_WRITER_MODES),
   INTERACTIVE_MOVIE_TOOL,
@@ -135,15 +135,6 @@ export default function MainLayout() {
         label: <Link to="/dashboard">首页</Link>,
       },
       {
-        key: 'aiwiki-group',
-        icon: <FileSearchOutlined />,
-        label: 'AI Wiki',
-        children: Object.values(AIWIKI_MODES).map((entry) => ({
-          key: entry.key,
-          label: <Link to={entry.path}>{entry.navLabel}</Link>,
-        })),
-      },
-      {
         key: 'seed-matrix-group',
         icon: <TableOutlined />,
         label: '选题矩阵',
@@ -166,6 +157,10 @@ export default function MainLayout() {
         icon: <VideoCameraOutlined />,
         label: '工具',
         children: [
+          {
+            key: KNOWLEDGE_BASE_TOOL.key,
+            label: <Link to={KNOWLEDGE_BASE_TOOL.path}>{KNOWLEDGE_BASE_TOOL.navLabel}</Link>,
+          },
           {
             key: INTERACTIVE_MOVIE_TOOL.key,
             label: <Link to={INTERACTIVE_MOVIE_TOOL.path}>{INTERACTIVE_MOVIE_TOOL.navLabel}</Link>,

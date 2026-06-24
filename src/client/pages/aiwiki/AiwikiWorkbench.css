@@ -1,0 +1,616 @@
+.aiwiki-workbench {
+  min-height: 100vh;
+  background: #f4f7fb;
+  color: #172033;
+  display: grid;
+  grid-template-columns: 286px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.aiwiki-sidebar {
+  min-height: 100vh;
+  background: #101827;
+  color: #eef4ff;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 14px;
+  position: relative;
+}
+
+.aiwiki-collapse {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #dbeafe;
+  background: transparent;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  align-self: flex-end;
+}
+
+.aiwiki-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+}
+
+.aiwiki-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #0f766e;
+  color: #ecfeff;
+  flex: 0 0 auto;
+}
+
+.aiwiki-brand-text {
+  min-width: 0;
+}
+
+.aiwiki-kicker {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.aiwiki-sidebar .aiwiki-kicker {
+  color: #9fb4d3;
+}
+
+.aiwiki-sidebar-title,
+.aiwiki-title,
+.aiwiki-panel-title {
+  margin: 0 !important;
+  letter-spacing: 0;
+}
+
+.aiwiki-sidebar-title {
+  color: #ffffff !important;
+}
+
+.aiwiki-upload-button {
+  margin-top: 4px;
+}
+
+.aiwiki-filter-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.aiwiki-file-list {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.aiwiki-file-list .ant-list-item {
+  border-block-end: 0 !important;
+  padding: 4px 0 !important;
+}
+
+.aiwiki-file-item {
+  width: 100%;
+  min-height: 58px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #dce8fb;
+  border-radius: 8px;
+  padding: 9px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 8px;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aiwiki-file-item:hover,
+.aiwiki-file-item.is-active {
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, 0.16);
+}
+
+.aiwiki-file-icon {
+  color: #5eead4;
+  font-size: 20px;
+}
+
+.aiwiki-file-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.aiwiki-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #ffffff;
+}
+
+.aiwiki-file-meta {
+  color: #aebfd6;
+  font-size: 12px;
+}
+
+.aiwiki-local-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #f59e0b;
+}
+
+.aiwiki-dashboard-link {
+  color: #c9d7ed;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  min-height: 36px;
+}
+
+.aiwiki-dashboard-link:hover {
+  color: #ffffff;
+}
+
+.aiwiki-main {
+  min-width: 0;
+  min-height: 100vh;
+  max-height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.aiwiki-topbar {
+  min-height: 76px;
+  padding: 16px 22px;
+  background: #ffffff;
+  border-bottom: 1px solid #dbe3ef;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.aiwiki-heading {
+  min-width: 0;
+}
+
+.aiwiki-title {
+  color: #172033 !important;
+}
+
+.aiwiki-top-actions {
+  flex: 0 0 auto;
+}
+
+.aiwiki-canvas {
+  min-height: 0;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 390px);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.aiwiki-stat-strip,
+.aiwiki-format-strip,
+.aiwiki-stage,
+.aiwiki-panel-section {
+  background: #ffffff;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+}
+
+.aiwiki-stat-strip {
+  grid-column: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  overflow: hidden;
+}
+
+.aiwiki-stat-strip .ant-statistic {
+  padding: 14px 16px;
+  border-right: 1px solid #e6edf6;
+}
+
+.aiwiki-stat-strip .ant-statistic:last-child {
+  border-right: 0;
+}
+
+.aiwiki-format-strip {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.aiwiki-format-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  border-radius: 8px;
+}
+
+.aiwiki-stage {
+  grid-column: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.aiwiki-result-scroll {
+  height: 100%;
+  overflow: auto;
+  padding: 14px;
+}
+
+.aiwiki-file-graph {
+  height: 100%;
+  min-height: 460px;
+  position: relative;
+  background:
+    linear-gradient(#eef3fb 1px, transparent 1px),
+    linear-gradient(90deg, #eef3fb 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.aiwiki-graph-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+}
+
+.aiwiki-graph-svg {
+  width: 100%;
+  height: 100%;
+  min-height: 460px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.aiwiki-graph-edge {
+  stroke: #9aa9bc;
+  stroke-width: 2;
+}
+
+.aiwiki-graph-node {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #172033;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  padding: 6px 10px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.25;
+  overflow: hidden;
+}
+
+button.aiwiki-graph-node {
+  cursor: move;
+}
+
+.aiwiki-graph-node {
+  cursor: move;
+}
+
+.aiwiki-graph-node span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.aiwiki-graph-node.root {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.aiwiki-graph-node.group.document {
+  background: #eff6ff;
+  border-color: #60a5fa;
+  color: #1d4ed8;
+}
+
+.aiwiki-graph-node.group.spreadsheet {
+  background: #fff7ed;
+  border-color: #fb923c;
+  color: #9a3412;
+}
+
+.aiwiki-graph-node.extension {
+  background: #f8fafc;
+  font-weight: 700;
+}
+
+.aiwiki-graph-node.file {
+  background: #ffffff;
+}
+
+.aiwiki-graph-node.file.pending {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.aiwiki-graph-node.is-active {
+  outline: 3px solid rgba(20, 184, 166, 0.28);
+  border-color: #0f766e;
+}
+
+.aiwiki-graph-empty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.aiwiki-upload-progress {
+  position: absolute;
+  left: 28px;
+  bottom: 28px;
+  width: min(420px, calc(100% - 460px));
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
+  z-index: 3;
+}
+
+.aiwiki-right-panel {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1.35fr) minmax(260px, 0.9fr);
+  gap: 14px;
+}
+
+.aiwiki-panel-section {
+  min-height: 0;
+  padding: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.aiwiki-panel-kicker {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.aiwiki-preview-meta {
+  min-height: 24px;
+}
+
+.aiwiki-preview-body {
+  min-height: 0;
+  flex: 1;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: auto;
+  position: relative;
+  background: #f8fafc;
+}
+
+.aiwiki-preview-uploading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: rgba(248, 250, 252, 0.82);
+  display: grid;
+  place-items: center;
+}
+
+.aiwiki-markdown-preview,
+.aiwiki-text-preview {
+  margin: 0;
+  padding: 14px;
+  color: #172033;
+}
+
+.aiwiki-markdown-preview {
+  background: #ffffff;
+  min-height: 100%;
+}
+
+.aiwiki-markdown-preview :where(h1, h2, h3) {
+  margin-top: 0.8em;
+  margin-bottom: 0.45em;
+  letter-spacing: 0;
+}
+
+.aiwiki-text-preview {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.55;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.aiwiki-sheet-preview {
+  min-width: 100%;
+  padding: 12px;
+}
+
+.aiwiki-pdf-loading {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #64748b;
+}
+
+.aiwiki-pdf-preview {
+  width: 100%;
+  height: 100%;
+  min-height: 440px;
+  border: 0;
+  background: #ffffff;
+}
+
+.aiwiki-task-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aiwiki-audit-section {
+  overflow: hidden;
+}
+
+.aiwiki-audit-list {
+  min-height: 0;
+  overflow: auto;
+}
+
+.aiwiki-audit-list .ant-list-item {
+  padding: 9px 0 !important;
+}
+
+.aiwiki-audit-message {
+  color: #172033;
+  font-size: 13px;
+}
+
+.aiwiki-audit-time {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.aiwiki-opencode-log {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e5edf7;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.aiwiki-clickable-file-tag {
+  cursor: pointer;
+}
+
+.is-sidebar-collapsed {
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+
+.is-sidebar-collapsed .aiwiki-sidebar {
+  padding-inline: 10px;
+}
+
+.is-sidebar-collapsed .aiwiki-brand-text,
+.is-sidebar-collapsed .aiwiki-filter-stack,
+.is-sidebar-collapsed .aiwiki-file-list,
+.is-sidebar-collapsed .aiwiki-dashboard-link span,
+.is-sidebar-collapsed .aiwiki-sidebar .ant-btn span:not(.anticon) {
+  display: none;
+}
+
+.is-sidebar-collapsed .aiwiki-sidebar .ant-btn {
+  width: 48px;
+  padding-inline: 0;
+}
+
+.is-sidebar-collapsed .aiwiki-dashboard-link {
+  justify-content: center;
+}
+
+@media (max-width: 1180px) {
+  .aiwiki-workbench {
+    grid-template-columns: 248px minmax(0, 1fr);
+  }
+
+  .aiwiki-canvas {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: auto;
+  }
+
+  .aiwiki-right-panel {
+    grid-column: 1;
+    grid-row: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(420px, auto);
+  }
+
+  .aiwiki-upload-progress {
+    width: min(420px, calc(100% - 56px));
+  }
+}
+
+@media (max-width: 780px) {
+  .aiwiki-workbench,
+  .is-sidebar-collapsed {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .aiwiki-sidebar {
+    min-height: auto;
+    max-height: none;
+  }
+
+  .aiwiki-main {
+    max-height: none;
+    min-height: auto;
+  }
+
+  .aiwiki-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .aiwiki-stat-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .aiwiki-stat-strip .ant-statistic:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .aiwiki-right-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .aiwiki-file-graph,
+  .aiwiki-graph-svg {
+    min-height: 420px;
+  }
+}

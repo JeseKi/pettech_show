@@ -13,7 +13,7 @@ from src.server.auth.dependencies import get_current_user
 from src.server.auth.models import User
 from src.server.database import get_db
 from . import service
-from .schemas import AiwikiResultOut, JobListOut, JobOut
+from .schemas import AiwikiAuditLogListOut, AiwikiResultOut, JobListOut, JobOut
 
 router = APIRouter(prefix="/api/aiwiki", tags=["AI Wiki"])
 
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/aiwiki", tags=["AI Wiki"])
     summary="创建 AI Wiki 生成任务",
 )
 async def create_aiwiki_job(
-    files: Annotated[list[UploadFile], File(description="支持 .docx、.md、.txt")],
+    files: Annotated[list[UploadFile], File(description="支持 Markdown、TXT、XLSX、PDF")],
     generate_search_assets: Annotated[
         bool, Form(description="是否生成搜索入口和 wiki/search-intents 关键词池")
     ] = True,
@@ -85,6 +85,40 @@ async def get_aiwiki_result(
     current_user: User = Depends(get_current_user),
 ):
     return service.get_result(db, job_id, current_user)
+
+
+@router.get(
+    "/jobs/{job_id}/files/{file_index}",
+    summary="获取 AI Wiki 上传原文件",
+)
+async def get_aiwiki_file(
+    job_id: str,
+    file_index: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return service.get_file(db, job_id, file_index, current_user)
+
+
+@router.get(
+    "/audit-logs",
+    response_model=AiwikiAuditLogListOut,
+    summary="列出 AI Wiki 知识库操作日志",
+)
+async def list_aiwiki_audit_logs(
+    scope: Annotated[str, Query(pattern="^(mine|all)$")] = "mine",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return service.list_audit_logs(
+        db,
+        current_user=current_user,
+        scope=scope,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.delete(

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { AiwikiJob, AiwikiJobSummary, AiwikiProgressEvent } from '../../lib/aiwiki'
 
-export const ACCEPTED_TYPES = '.docx,.md,.txt'
+export const ACCEPTED_TYPES = '.md,.markdown,.txt,.xlsx,.pdf'
 export const ACTIVE_STATUSES = new Set(['queued', 'running'])
 
 export function textOf(value: unknown): string {

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-ALLOWED_EXTENSIONS = {".md", ".txt", ".docx"}
+ALLOWED_EXTENSIONS = {".md", ".markdown", ".txt", ".xlsx", ".pdf"}
 LOG_TAIL_LINES = 80
 PROGRESS_FILE_NAME = "progress.json"
 PROGRESS_COMPLETE_EVENT = {
