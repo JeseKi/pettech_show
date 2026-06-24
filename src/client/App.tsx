@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import MainLayout from './components/layout/MainLayout'
 import ProfilePage from './pages/profile/ProfilePage'
 import SecurityPage from './pages/profile/SecurityPage'
@@ -11,6 +11,7 @@ import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import OAuthAuthorizePage from './pages/auth/OAuthAuthorizePage'
 import OAuthDeviceAuthorizePage from './pages/auth/OAuthDeviceAuthorizePage'
 import LandingPage from './pages/landing/LandingPage'
+import DashboardPage from './pages/dashboard/DashboardPage'
 import ChatHomePage from './pages/chatHome'
 import AiwikiPage from './pages/aiwiki'
 import SeedMatrixPage from './pages/seedMatrix'
@@ -22,14 +23,13 @@ import { RuntimeConfigProvider } from './providers/RuntimeConfigProvider'
 import ThemeToggle from './components/theme/ThemeToggle'
 import GestureControlSidebar from './components/gesture/GestureControlSidebar'
 import { DAILY_WRITER_MODES, SEED_MATRIX_MODES, VISIBLE_CAPABILITY_ENTRIES } from './lib/workflowModes'
-import { useAuth } from './hooks/useAuth'
 
 function ThemeToggleGate() {
   const location = useLocation()
   if (
     location.pathname === '/'
-    || location.pathname === '/dashboard'
-    || location.pathname.startsWith('/dashboard/chat/')
+    || location.pathname === '/agents'
+    || location.pathname.startsWith('/agents/chat/')
     || location.pathname === '/landing'
     || location.pathname === '/interactive-movie'
     || location.pathname === '/knowledge-base'
@@ -43,20 +43,17 @@ function GestureControlGate() {
   const location = useLocation()
   if (
     location.pathname === '/'
-    || location.pathname === '/dashboard'
-    || location.pathname.startsWith('/dashboard/chat/')
+    || location.pathname === '/agents'
+    || location.pathname.startsWith('/agents/chat/')
   ) {
     return null
   }
   return <GestureControlSidebar />
 }
 
-function RootPage() {
-  const { isAuthenticated, loading } = useAuth()
-  if (loading) {
-    return null
-  }
-  return isAuthenticated ? <ChatHomePage /> : <LandingPage />
+function LegacyChatSessionRedirect() {
+  const { sessionId } = useParams<{ sessionId?: string }>()
+  return <Navigate to={sessionId ? `/agents/chat/${encodeURIComponent(sessionId)}` : '/agents'} replace />
 }
 
 export default function App() {
@@ -66,7 +63,7 @@ export default function App() {
         <AuthProvider>
           <>
             <Routes>
-            <Route path="/" element={<RootPage />} />
+            <Route path="/" element={<LandingPage />} />
             <Route path="/landing" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
@@ -105,7 +102,7 @@ export default function App() {
               }
             />
             <Route
-              path="/dashboard"
+              path="/agents"
               element={
                 <RequireAuth>
                   <ChatHomePage />
@@ -113,13 +110,14 @@ export default function App() {
               }
             />
             <Route
-              path="/dashboard/chat/:sessionId"
+              path="/agents/chat/:sessionId"
               element={
                 <RequireAuth>
                   <ChatHomePage />
                 </RequireAuth>
               }
             />
+            <Route path="/dashboard/chat/:sessionId" element={<LegacyChatSessionRedirect />} />
             <Route
               element={
               <RequireAuth>
@@ -131,6 +129,7 @@ export default function App() {
               <Route path="/aiwiki/materials" element={<Navigate to="/knowledge-base" replace />} />
               <Route path="/aiwiki/search-assets" element={<Navigate to="/knowledge-base" replace />} />
               <Route path="/aiwiki/full" element={<Navigate to="/knowledge-base" replace />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/seed-matrices" element={<Navigate to={SEED_MATRIX_MODES.standard.path} replace />} />
               <Route path="/seed-matrices/standard" element={<SeedMatrixPage key="seed-standard" mode="standard" />} />
               <Route path="/seed-matrices/batch" element={<SeedMatrixPage key="seed-batch" mode="batch" />} />

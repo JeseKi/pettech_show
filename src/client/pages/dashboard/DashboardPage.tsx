@@ -1,8 +1,9 @@
 import { Button, Card, Col, Flex, Row, Typography } from 'antd'
-import { FileSearchOutlined, FileTextOutlined, RightOutlined, TableOutlined, VideoCameraOutlined } from '@ant-design/icons'
+import { FileSearchOutlined, FileTextOutlined, MessageOutlined, RightOutlined, TableOutlined, VideoCameraOutlined } from '@ant-design/icons'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  AGENT_TOOL,
   AIWIKI_MODES,
   CAPABILITY_GROUP_META,
   DAILY_WRITER_MODES,
@@ -19,6 +20,11 @@ const capabilityGroupIcons: Record<CapabilityGroupId, ReactNode> = {
 }
 
 const entryGroups = [
+  {
+    title: '智能体',
+    icon: <MessageOutlined />,
+    entries: [AGENT_TOOL],
+  },
   {
     title: 'AI Wiki',
     icon: <FileSearchOutlined />,

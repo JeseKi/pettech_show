@@ -24,7 +24,7 @@ import {
   DownOutlined,
   EditOutlined,
   FullscreenOutlined,
-  HomeOutlined,
+  MessageOutlined,
   PlusOutlined,
   PlayCircleOutlined,
   SaveOutlined,
@@ -1194,10 +1194,6 @@ export default function InteractiveMoviePage() {
             </div>
           ))}
         </div>
-        <Link to="/dashboard" className="movie-dashboard-link">
-          <HomeOutlined />
-          <span>返回首页</span>
-        </Link>
       </aside>
 
       <main className="movie-editor-shell">
@@ -1214,6 +1210,16 @@ export default function InteractiveMoviePage() {
               />
             </div>
           </Flex>
+          <nav className="movie-top-nav" aria-label="主导航">
+            <Link className="movie-top-nav-item" to="/agents">
+              <MessageOutlined />
+              <span>智能体</span>
+            </Link>
+            <Link className="movie-top-nav-item is-active" to="/interactive-movie">
+              <VideoCameraOutlined />
+              <span>工作空间</span>
+            </Link>
+          </nav>
           <Space wrap>
             <Tag className="movie-status-tag">{syncing ? '同步检查中' : syncMessage}</Tag>
             <Button icon={<SaveOutlined />} loading={saving} onClick={() => void saveDraft()}>保存</Button>

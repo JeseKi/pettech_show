@@ -35,6 +35,7 @@ import SecurityPage from '../../pages/profile/SecurityPage'
 import DevicesPage from '../../pages/profile/DevicesPage'
 import BrandLogo from '../brand/BrandLogo'
 import {
+  AGENT_TOOL,
   CAPABILITY_GROUP_META,
   DAILY_WRITER_MODES,
   INTERACTIVE_MOVIE_TOOL,
@@ -45,6 +46,7 @@ import {
 } from '../../lib/workflowModes'
 
 const workflowEntries = [
+  AGENT_TOOL,
   KNOWLEDGE_BASE_TOOL,
   ...Object.values(SEED_MATRIX_MODES),
   ...Object.values(DAILY_WRITER_MODES),
@@ -157,6 +159,10 @@ export default function MainLayout() {
         icon: <VideoCameraOutlined />,
         label: '工具',
         children: [
+          {
+            key: AGENT_TOOL.key,
+            label: <Link to={AGENT_TOOL.path}>{AGENT_TOOL.navLabel}</Link>,
+          },
           {
             key: KNOWLEDGE_BASE_TOOL.key,
             label: <Link to={KNOWLEDGE_BASE_TOOL.path}>{KNOWLEDGE_BASE_TOOL.navLabel}</Link>,

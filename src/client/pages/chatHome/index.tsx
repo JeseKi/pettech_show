@@ -5,7 +5,6 @@ import { DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   Film,
-  Home,
   Image as ImageIcon,
   LayoutGrid,
   LogOut,
@@ -152,7 +151,7 @@ const renderChatMessage: RenderMessage = ({ editableContent }) => (
   </div>
 )
 
-const CHAT_HOME_PATH = '/dashboard'
+const CHAT_HOME_PATH = '/agents'
 
 function chatSessionPath(sessionId: string): string {
   return `${CHAT_HOME_PATH}/chat/${encodeURIComponent(sessionId)}`
@@ -553,14 +552,14 @@ export default function ChatHomePage() {
     >
       <main className="chat-home-page">
         <header className="chat-home-nav">
-          <Link className="chat-home-brand" to="/dashboard" aria-label={`${BRAND_NAME} 首页`}>
+          <Link className="chat-home-brand" to="/" aria-label={`${BRAND_NAME} 首页`}>
             <img src={BRAND_LOGO_SRC} alt={`${BRAND_NAME} Logo`} />
             <span>{BRAND_NAME}</span>
           </Link>
 
           <nav className="chat-home-nav-items" aria-label="主导航">
-            <NavItem active icon={<Home size={17} />} to="/dashboard">
-              主页
+            <NavItem active icon={<MessageSquareText size={17} />} to="/agents">
+              智能体
             </NavItem>
             <NavItem icon={<LayoutGrid size={17} />} to="/interactive-movie">
               工作空间

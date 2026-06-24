@@ -5,6 +5,15 @@ export type SeedMatrixModeId = 'standard' | 'batch' | 'high-frequency' | 'hook-d
 export type DailyWriterModeId = 'single' | 'batch' | 'five-pack'
 export type CapabilityGroupId = 'competitor-insights' | 'topic-planning' | 'script-creation'
 
+export const AGENT_TOOL = {
+  key: 'agents',
+  path: '/agents',
+  navLabel: '智能体',
+  title: '智能体',
+  description: '进入创作助手，围绕互动影游、角色、剧本和分镜进行持续对话。',
+  buttonText: '打开智能体',
+}
+
 export const INTERACTIVE_MOVIE_TOOL = {
   key: 'interactive-movie',
   path: '/interactive-movie',

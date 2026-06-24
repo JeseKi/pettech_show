@@ -12,6 +12,7 @@
     #08090b;
   background-size: 38px 38px;
   color: #f7f7f8;
+  animation: chat-route-enter 0.5s ease both;
 }
 
 .chat-home-page::before {
@@ -78,14 +79,41 @@
   font-size: 15px;
   font-weight: 600;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
+    background-color 0.5s ease,
+    color 0.5s ease,
+    transform 0.5s ease;
 }
 
 .chat-home-nav-item:hover,
 .chat-home-nav-item.is-active {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
+}
+
+.chat-home-nav-item:hover {
+  transform: translateY(-1px);
+}
+
+@keyframes chat-route-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-home-page {
+    animation: none;
+  }
+
+  .chat-home-nav-item {
+    transition: none;
+  }
 }
 
 .chat-home-user {
