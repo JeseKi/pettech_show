@@ -158,12 +158,12 @@
 
   .course-stack-mobile__viewport::before {
     left: 0;
-    background: linear-gradient(90deg, #050505, transparent);
+    background: linear-gradient(90deg, var(--app-bg), transparent);
   }
 
   .course-stack-mobile__viewport::after {
     right: 0;
-    background: linear-gradient(270deg, #050505, transparent);
+    background: linear-gradient(270deg, var(--app-bg), transparent);
   }
 
   .course-stack-mobile__track {

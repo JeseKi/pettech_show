@@ -1,23 +1,34 @@
 import { App as AntdApp, ConfigProvider, theme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import App from '../../App'
-import { useThemeMode } from '../../hooks/useThemeMode'
 
 export default function ThemedApp() {
-  const { resolvedTheme } = useThemeMode()
-  const isDark = resolvedTheme === 'dark'
-
   return (
     <ConfigProvider
       locale={zhCN}
       theme={{
-        algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
+        algorithm: theme.darkAlgorithm,
         token: {
-          colorPrimary: isDark ? '#60a5fa' : '#1668dc',
+          colorPrimary: '#b8ff67',
+          colorInfo: '#6ee7f9',
+          colorSuccess: '#2dd4bf',
+          colorWarning: '#facc15',
+          colorError: '#fb7185',
           borderRadius: 8,
-          colorBgBase: isDark ? '#0f172a' : '#ffffff',
-          colorBgLayout: isDark ? '#0b1220' : '#f5f7fb',
-          colorTextBase: isDark ? '#e5eefc' : '#111827',
+          colorBgBase: '#050706',
+          colorBgLayout: '#050706',
+          colorBgContainer: '#0d120f',
+          colorBgElevated: '#111712',
+          colorBorder: 'rgba(213, 255, 169, 0.16)',
+          colorBorderSecondary: 'rgba(255, 255, 255, 0.09)',
+          colorFillAlter: 'rgba(255, 255, 255, 0.055)',
+          colorFillSecondary: 'rgba(184, 255, 103, 0.12)',
+          colorFillQuaternary: 'rgba(255, 255, 255, 0.045)',
+          colorTextBase: '#f5f7f1',
+          colorTextSecondary: 'rgba(245, 247, 241, 0.68)',
+          colorTextTertiary: 'rgba(245, 247, 241, 0.46)',
+          boxShadow: '0 22px 56px rgba(0, 0, 0, 0.36)',
+          boxShadowSecondary: '0 16px 40px rgba(0, 0, 0, 0.3)',
           fontFamily:
             "'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, -apple-system, sans-serif",
         },
@@ -26,13 +37,22 @@ export default function ThemedApp() {
             controlHeight: 40,
             fontWeight: 600,
             paddingInline: 16,
+            primaryColor: '#091008',
           },
           Layout: {
-            headerBg: isDark ? '#101826' : '#ffffff',
+            headerBg: '#080d0a',
+            siderBg: '#080d0a',
             bodyBg: 'transparent',
           },
           Card: {
-            borderRadiusLG: 12,
+            borderRadiusLG: 8,
+            colorBgContainer: '#0d120f',
+            colorBorderSecondary: 'rgba(255, 255, 255, 0.09)',
+          },
+          Menu: {
+            darkItemBg: 'transparent',
+            darkItemSelectedBg: 'rgba(184, 255, 103, 0.14)',
+            darkItemSelectedColor: '#f5f7f1',
           },
         },
       }}

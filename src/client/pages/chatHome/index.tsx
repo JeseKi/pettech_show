@@ -11,7 +11,6 @@ import {
   Crown,
   Film,
   Image as ImageIcon,
-  LayoutGrid,
   LogOut,
   MessageSquareText,
   NotebookPen,
@@ -56,6 +55,7 @@ import {
 } from '../../lib/agentMarket'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import { BRAND_LOGO_SRC, BRAND_NAME } from '../../lib/brand'
+import BrandNavPill from '../../components/brand/BrandNavPill'
 import './ChatHomePage.css'
 
 type QuickPrompt = {
@@ -190,7 +190,7 @@ function createMessage(role: ChatMessage['role'], content: string, agent?: Agent
     id: `${role}-${now}-${Math.random().toString(36).slice(2)}`,
     meta: {
       avatar: isUser ? '你' : assistantAvatar(display),
-      backgroundColor: isUser ? '#4f46e5' : (display.isDefault ? '#111827' : '#0f766e'),
+      backgroundColor: isUser ? '#2dd4bf' : (display.isDefault ? '#111712' : '#2dd4bf'),
       title: isUser ? '你' : display.name,
     },
     role,
@@ -212,25 +212,6 @@ function createMessageFromRecord(record: ChatMessageRecord, agent?: AgentMessage
 function sessionUpdatedAt(session: ChatSessionSummary): number {
   const updatedAt = Date.parse(session.updated_at)
   return Number.isFinite(updatedAt) ? updatedAt : 0
-}
-
-function NavItem({
-  active,
-  children,
-  icon,
-  to,
-}: {
-  active?: boolean
-  children: ReactNode
-  icon: ReactNode
-  to: string
-}) {
-  return (
-    <Link className={active ? 'chat-home-nav-item is-active' : 'chat-home-nav-item'} to={to}>
-      {icon}
-      <span>{children}</span>
-    </Link>
-  )
 }
 
 const renderChatMessage: RenderMessage = ({ editableContent }) => (
@@ -1423,14 +1404,7 @@ export default function ChatHomePage() {
             <span>{BRAND_NAME}</span>
           </Link>
 
-          <nav className="chat-home-nav-items" aria-label="主导航">
-            <NavItem active icon={<MessageSquareText size={17} />} to="/agents">
-              智能体
-            </NavItem>
-            <NavItem icon={<LayoutGrid size={17} />} to="/interactive-movie">
-              工作空间
-            </NavItem>
-          </nav>
+          <BrandNavPill activeKey="agents" className="chat-home-nav-items" />
 
           <div className="chat-home-user">
             <Dropdown

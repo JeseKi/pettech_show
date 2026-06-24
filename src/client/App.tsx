@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
+import { BrowserRouter as Router, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import MainLayout from './components/layout/MainLayout'
 import ProfilePage from './pages/profile/ProfilePage'
 import SecurityPage from './pages/profile/SecurityPage'
@@ -22,25 +22,8 @@ import CapabilityEntryPage from './pages/capabilities/CapabilityEntryPage'
 import GestureControlPage from './pages/gestureControl'
 import { AuthProvider, RequireAdmin, RequireAuth } from './providers/AuthProvider'
 import { RuntimeConfigProvider } from './providers/RuntimeConfigProvider'
-import ThemeToggle from './components/theme/ThemeToggle'
 import { GestureControlProvider } from './components/gesture/GestureControlProvider'
 import { DAILY_WRITER_MODES, GESTURE_CONTROL_TOOL, SEED_MATRIX_MODES, VISIBLE_CAPABILITY_ENTRIES } from './lib/workflowModes'
-
-function ThemeToggleGate() {
-  const location = useLocation()
-  if (
-    location.pathname === '/'
-    || location.pathname === '/agents'
-    || location.pathname.startsWith('/agents/chat/')
-    || location.pathname === '/landing'
-    || location.pathname === '/interactive-movie'
-    || location.pathname.startsWith('/interactive-movie/play/')
-    || location.pathname === '/knowledge-base'
-  ) {
-    return null
-  }
-  return <ThemeToggle />
-}
 
 function LegacyChatSessionRedirect() {
   const { sessionId } = useParams<{ sessionId?: string }>()
@@ -154,7 +137,6 @@ export default function App() {
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
-              <ThemeToggleGate />
             </>
           </GestureControlProvider>
         </AuthProvider>

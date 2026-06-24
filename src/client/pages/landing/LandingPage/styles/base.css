@@ -15,21 +15,21 @@ html.pettech-landing-scrollbar::-webkit-scrollbar-track,
 body.pettech-landing-scrollbar::-webkit-scrollbar-track {
   background:
     linear-gradient(180deg, rgba(184, 255, 103, 0.08), rgba(56, 189, 248, 0.06)),
-    #050706;
+    var(--app-bg);
 }
 
 html.pettech-landing-scrollbar::-webkit-scrollbar-thumb,
 body.pettech-landing-scrollbar::-webkit-scrollbar-thumb {
   background:
     linear-gradient(180deg, rgba(184, 255, 103, 0.9), rgba(45, 212, 191, 0.72));
-  border: 3px solid #050706;
+  border: 3px solid var(--app-bg);
   border-radius: 999px;
 }
 
 html.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover,
 body.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover {
   background:
-    linear-gradient(180deg, #b8ff67, #6ee7f9);
+    linear-gradient(180deg, var(--app-accent), var(--app-accent-cyan));
 }
 
 .landing-page *,
@@ -40,8 +40,8 @@ body.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover {
 
 .landing-page {
   min-height: 100vh;
-  color: #f5f7f1;
-  background: #050505;
+  color: var(--app-text-primary);
+  background: var(--app-bg);
   font-family: Inter, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
   overflow-x: clip;
   scrollbar-color: rgba(184, 255, 103, 0.64) rgba(5, 7, 6, 0.92);
@@ -63,13 +63,13 @@ body.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover {
 .landing-page ::-webkit-scrollbar-thumb {
   background:
     linear-gradient(180deg, rgba(184, 255, 103, 0.88), rgba(45, 212, 191, 0.72));
-  border: 2px solid #0a0f0c;
+  border: 2px solid var(--app-bg-soft);
   border-radius: 999px;
 }
 
 .landing-page ::-webkit-scrollbar-thumb:hover {
   background:
-    linear-gradient(180deg, #b8ff67, #6ee7f9);
+    linear-gradient(180deg, var(--app-accent), var(--app-accent-cyan));
 }
 
 @keyframes landingNavIn {
@@ -115,7 +115,7 @@ body.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover {
   width: min(1180px, calc(100vw - 32px));
   min-height: 62px;
   padding: 10px 12px 10px 18px;
-  color: #eef7eb;
+  color: var(--app-text-primary);
   pointer-events: auto;
   background: rgba(5, 7, 6, 0.76);
   border: 1px solid rgba(213, 255, 169, 0.18);
@@ -155,7 +155,7 @@ body.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover {
 
 .landing-nav__links > a:hover,
 .landing-nav__item:hover > a {
-  color: #ffffff;
+  color: var(--app-text-primary);
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -223,7 +223,7 @@ body.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover {
   gap: 8px;
   min-height: 42px;
   padding: 0 15px;
-  color: #eef7eb;
+  color: var(--app-text-primary);
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 8px;
@@ -242,9 +242,9 @@ body.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover {
 .landing-nav__actions .is-primary,
 .landing-button--primary,
 .final-cta button {
-  color: #091008;
-  background: #b8ff67;
-  border-color: #b8ff67;
+  color: var(--app-text-inverse);
+  background: var(--app-accent);
+  border-color: var(--app-accent);
   font-weight: 800;
 }
 
@@ -265,7 +265,7 @@ body.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover {
   height: 46px;
   padding: 0;
   place-items: center;
-  color: #0a0f0c;
+  color: var(--app-bg-soft);
   pointer-events: none;
   cursor: pointer;
   background:
@@ -308,7 +308,7 @@ body.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover {
 
 .landing-eyebrow {
   margin: 0 0 18px;
-  color: #b8ff67;
+  color: var(--app-accent);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0;

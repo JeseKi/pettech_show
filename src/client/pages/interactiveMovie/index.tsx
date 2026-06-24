@@ -29,7 +29,6 @@ import {
   FullscreenOutlined,
   GlobalOutlined,
   LinkOutlined,
-  MessageOutlined,
   PlusOutlined,
   PoweroffOutlined,
   PlayCircleOutlined,
@@ -40,7 +39,6 @@ import {
   ZoomInOutlined,
   ZoomOutOutlined,
 } from '@ant-design/icons'
-import { Link } from 'react-router-dom'
 import {
   closeInteractiveMoviePublication,
   createInteractiveMovieProject,
@@ -63,6 +61,7 @@ import type {
   PromptTemplate,
 } from '../../lib/interactiveMovie'
 import { resolveErrorMessage } from '../../lib/errorMessage'
+import BrandNavPill from '../../components/brand/BrandNavPill'
 import './InteractiveMoviePage.css'
 
 type SceneRole = 'start' | 'middle' | 'ending'
@@ -1588,16 +1587,7 @@ export default function InteractiveMoviePage() {
               />
             </div>
           </Flex>
-          <nav className="movie-top-nav" aria-label="主导航">
-            <Link className="movie-top-nav-item" to="/agents">
-              <MessageOutlined />
-              <span>智能体</span>
-            </Link>
-            <Link className="movie-top-nav-item is-active" to="/interactive-movie">
-              <VideoCameraOutlined />
-              <span>工作空间</span>
-            </Link>
-          </nav>
+          <BrandNavPill activeKey="interactive-movie" className="movie-top-nav" />
           <Space wrap>
             <Tag className="movie-status-tag">{syncing ? '同步检查中' : syncMessage}</Tag>
             {activeProject.isPublished && (

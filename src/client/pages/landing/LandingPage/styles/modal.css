@@ -33,14 +33,14 @@
   padding: 48px;
   overflow-x: hidden;
   overflow-y: auto;
-  scrollbar-color: color-mix(in srgb, var(--course-accent), #2dd4bf 28%) rgba(255, 255, 255, 0.08);
+  scrollbar-color: color-mix(in srgb, var(--course-accent), var(--app-accent-teal) 28%) rgba(255, 255, 255, 0.08);
   scrollbar-gutter: stable;
   scrollbar-width: thin;
-  color: #f5f7f1;
+  color: var(--app-text-primary);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--course-accent), transparent 94%), transparent 28%),
     linear-gradient(315deg, rgba(110, 231, 249, 0.045), transparent 34%),
-    #0a0f0c;
+    var(--app-bg-soft);
   border: 1px solid color-mix(in srgb, var(--course-accent), transparent 76%);
   border-radius: 8px;
   box-shadow:
@@ -67,9 +67,9 @@
     linear-gradient(
       180deg,
       color-mix(in srgb, var(--course-accent), white 8%),
-      color-mix(in srgb, var(--course-accent), #2dd4bf 34%)
+      color-mix(in srgb, var(--course-accent), var(--app-accent-teal) 34%)
     );
-  border: 2px solid #0a0f0c;
+  border: 2px solid var(--app-bg-soft);
   border-radius: 999px;
 }
 
@@ -127,7 +127,7 @@
   width: 40px;
   height: 40px;
   place-items: center;
-  color: #f5f7f1;
+  color: var(--app-text-primary);
   cursor: pointer;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -200,7 +200,7 @@
 }
 
 .course-modal__snapshot strong {
-  color: #f5f7f1;
+  color: var(--app-text-primary);
   font-size: 15px;
   line-height: 1.45;
 }
@@ -220,7 +220,7 @@
 
 .course-modal__system h3 {
   margin: 12px 0 12px;
-  color: #f5f7f1;
+  color: var(--app-text-primary);
   font-size: 24px;
   line-height: 1.2;
 }

@@ -7,11 +7,13 @@
   min-height: 100vh;
   overflow-x: hidden;
   background:
+    radial-gradient(circle at 18% 18%, rgba(184, 255, 103, 0.08), transparent 30%),
+    radial-gradient(circle at 86% 4%, rgba(110, 231, 249, 0.07), transparent 30%),
     linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    #08090b;
-  background-size: 38px 38px;
-  color: #f7f7f8;
+    var(--app-bg);
+  background-size: auto, auto, 38px 38px, 38px 38px, auto;
+  color: var(--app-text-primary);
   animation: chat-route-enter 0.5s ease both;
 }
 
@@ -38,7 +40,7 @@
   height: 68px;
   padding: 0 32px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(8, 9, 11, 0.86);
+  background: rgba(5, 7, 6, 0.86);
   backdrop-filter: blur(18px);
 }
 
@@ -47,7 +49,7 @@
   align-items: center;
   min-width: 0;
   gap: 10px;
-  color: #f7f7f8;
+  color: var(--app-text-primary);
   font-size: 15px;
   font-weight: 650;
 }
@@ -59,13 +61,12 @@
 }
 
 .chat-home-nav-items {
+  justify-self: center;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.045);
+  border-color: var(--app-border-subtle);
 }
 
 .chat-home-nav-item {
@@ -87,7 +88,7 @@
 .chat-home-nav-item:hover,
 .chat-home-nav-item.is-active {
   background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  color: var(--app-text-primary);
 }
 
 .chat-home-nav-item:hover {
@@ -238,8 +239,8 @@
 }
 
 .chat-session-rename:hover {
-  background: rgba(56, 189, 248, 0.14);
-  color: #bae6fd;
+  background: rgba(184, 255, 103, 0.14);
+  color: var(--app-accent-cyan);
 }
 
 .chat-session-delete:hover {
@@ -266,7 +267,7 @@
 .chat-session-item.is-active {
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.095);
-  color: #fff;
+  color: var(--app-text-primary);
 }
 
 .chat-new-session-button:disabled,
@@ -295,9 +296,9 @@
   min-height: 34px;
   margin-bottom: 8px;
   padding: 0 10px;
-  border: 1px solid rgba(125, 211, 252, 0.18);
+  border: 1px solid rgba(184, 255, 103, 0.18);
   border-radius: 8px;
-  background: rgba(56, 189, 248, 0.1);
+  background: rgba(184, 255, 103, 0.1);
 }
 
 .chat-agent-current span {
@@ -307,7 +308,7 @@
 
 .chat-agent-current strong {
   overflow: hidden;
-  color: #e0f2fe;
+  color: var(--app-accent-strong);
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -335,9 +336,9 @@
 }
 
 .chat-skill-panel-header button:hover {
-  border-color: rgba(125, 211, 252, 0.28);
-  background: rgba(56, 189, 248, 0.12);
-  color: #fff;
+  border-color: rgba(184, 255, 103, 0.28);
+  background: rgba(184, 255, 103, 0.12);
+  color: var(--app-text-primary);
 }
 
 .chat-skill-kicker,
@@ -419,9 +420,9 @@
 
 .chat-skill-tabs button.is-active,
 .chat-skill-categories button.is-active {
-  border-color: rgba(125, 211, 252, 0.3);
-  background: rgba(56, 189, 248, 0.14);
-  color: #e0f2fe;
+  border-color: rgba(184, 255, 103, 0.3);
+  background: rgba(184, 255, 103, 0.14);
+  color: var(--app-accent-strong);
 }
 
 .chat-skeleton {
@@ -566,9 +567,9 @@
 
 .chat-installed-item:hover,
 .chat-installed-item.is-active {
-  border-color: rgba(125, 211, 252, 0.28);
-  background: rgba(56, 189, 248, 0.12);
-  color: #fff;
+  border-color: rgba(184, 255, 103, 0.28);
+  background: rgba(184, 255, 103, 0.12);
+  color: var(--app-text-primary);
 }
 
 .chat-installed-item:disabled {
@@ -669,8 +670,8 @@
 
 .chat-agent-card:hover,
 .chat-agent-card.is-active {
-  border-color: rgba(125, 211, 252, 0.28);
-  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(184, 255, 103, 0.28);
+  background: rgba(184, 255, 103, 0.12);
 }
 
 .chat-agent-card:hover {
@@ -791,9 +792,9 @@
 }
 
 .chat-skill-actions button:hover {
-  border-color: rgba(125, 211, 252, 0.28);
-  background: rgba(56, 189, 248, 0.12);
-  color: #fff;
+  border-color: rgba(184, 255, 103, 0.28);
+  background: rgba(184, 255, 103, 0.12);
+  color: var(--app-text-primary);
 }
 
 .chat-skill-actions button:disabled {
@@ -831,9 +832,9 @@
 }
 
 .chat-skill-pagination button:hover:not(:disabled) {
-  border-color: rgba(125, 211, 252, 0.28);
-  background: rgba(56, 189, 248, 0.12);
-  color: #fff;
+  border-color: rgba(184, 255, 103, 0.28);
+  background: rgba(184, 255, 103, 0.12);
+  color: var(--app-text-primary);
 }
 
 .chat-skill-pagination button:disabled {
@@ -843,18 +844,18 @@
 
 .chat-capability-modal .ant-modal-content,
 .chat-capability-modal .ant-modal-header {
-  background: #101114;
-  color: #f7f7f8;
+  background: var(--app-bg-elevated);
+  color: var(--app-text-primary);
 }
 
 .chat-capability-modal .ant-modal-content {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--app-border-subtle);
   box-shadow: 0 28px 72px rgba(0, 0, 0, 0.52);
 }
 
 .chat-capability-modal .ant-modal-title,
 .chat-capability-modal .ant-modal-close {
-  color: #f7f7f8;
+  color: var(--app-text-primary);
 }
 
 .chat-capability-modal .ant-modal-body {
@@ -889,8 +890,8 @@
 
 .chat-capability-modal-tabs button.is-active,
 .chat-capability-modal-tabs button:hover {
-  background: rgba(56, 189, 248, 0.14);
-  color: #e0f2fe;
+  background: rgba(184, 255, 103, 0.14);
+  color: var(--app-accent-strong);
 }
 
 .chat-capability-modal-section .chat-skill-search {
@@ -937,7 +938,7 @@
   border-radius: 50%;
   background:
     repeating-linear-gradient(-12deg, #f5f5f5 0 7px, transparent 7px 13px),
-    conic-gradient(from 110deg, #e8f4ff, #fafafa, #9dd6ff, #f7f7f8);
+    conic-gradient(from 110deg, #e8f4ff, #fafafa, #9dd6ff, var(--app-text-primary));
   box-shadow: 0 0 26px rgba(255, 255, 255, 0.18);
 }
 
@@ -1009,12 +1010,12 @@
 .chat-skill-mention-option:focus-visible,
 .chat-skill-mention-option.is-active {
   border-color: rgba(125, 211, 252, 0.24);
-  background: rgba(56, 189, 248, 0.12);
+  background: rgba(184, 255, 103, 0.12);
   outline: none;
 }
 
 .chat-skill-mention-option.is-active {
-  color: #fff;
+  color: var(--app-text-primary);
 }
 
 .chat-skill-mention-option span {
@@ -1033,7 +1034,7 @@
 }
 
 .chat-skill-mention-option strong {
-  color: #f8fafc;
+  color: var(--app-text-primary);
   font-size: 13px;
   font-weight: 700;
 }
@@ -1117,7 +1118,7 @@
 .chat-prompt-chip:hover {
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  color: var(--app-text-primary);
 }
 
 .chat-message-panel {
@@ -1254,7 +1255,7 @@
 .chat-message-markdown :where(code) {
   border-radius: 5px;
   background: rgba(255, 255, 255, 0.08);
-  color: #f8fafc;
+  color: var(--app-text-primary);
 }
 
 .chat-message-markdown :where(pre) {
@@ -1266,12 +1267,12 @@
 
 .chat-message-markdown :where(blockquote) {
   padding-inline-start: 12px;
-  border-inline-start: 3px solid rgba(125, 211, 252, 0.55);
+  border-inline-start: 3px solid rgba(184, 255, 103, 0.55);
   color: rgba(247, 247, 248, 0.72);
 }
 
 .chat-message-markdown :where(a) {
-  color: #7dd3fc;
+  color: var(--app-accent-cyan);
 }
 
 .chat-message-markdown :where(table) {
@@ -1349,8 +1350,8 @@
   padding: 22px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
-  color: #fff;
-  background: #111217;
+  color: var(--app-text-primary);
+  background: var(--app-bg-elevated);
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.26);
 }
 
@@ -1390,7 +1391,7 @@
 
 .chat-recommend-content h3 {
   margin: 0;
-  color: #fff;
+  color: var(--app-text-primary);
   font-size: 18px;
   line-height: 1.28;
 }
@@ -1404,23 +1405,23 @@
 
 .chat-card-workspace {
   --card-art:
-    linear-gradient(135deg, rgba(100, 181, 246, 0.9), rgba(15, 23, 42, 0.2) 38%, rgba(168, 85, 247, 0.55)),
+    linear-gradient(135deg, rgba(184, 255, 103, 0.78), rgba(10, 16, 12, 0.25) 40%, rgba(110, 231, 249, 0.48)),
     repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 18px),
-    linear-gradient(120deg, #0f172a, #1e293b 45%, #082f49);
+    linear-gradient(120deg, #08100c, #163f34 45%, #083344);
 }
 
 .chat-card-script {
   --card-art:
-    linear-gradient(135deg, rgba(45, 212, 191, 0.8), rgba(10, 12, 16, 0.25) 42%, rgba(244, 114, 182, 0.58)),
+    linear-gradient(135deg, rgba(45, 212, 191, 0.82), rgba(10, 12, 16, 0.25) 42%, rgba(184, 255, 103, 0.42)),
     repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.07) 0 1px, transparent 1px 22px),
-    linear-gradient(120deg, #111827, #134e4a 52%, #172554);
+    linear-gradient(120deg, #0d120f, #134e4a 52%, #052e2b);
 }
 
 .chat-card-role {
   --card-art:
-    linear-gradient(135deg, rgba(250, 204, 21, 0.65), rgba(10, 12, 16, 0.22) 42%, rgba(96, 165, 250, 0.72)),
+    linear-gradient(135deg, rgba(250, 204, 21, 0.52), rgba(10, 12, 16, 0.22) 42%, rgba(110, 231, 249, 0.55)),
     radial-gradient(circle at 70% 22%, rgba(255, 255, 255, 0.25), transparent 18%),
-    linear-gradient(120deg, #18181b, #365314 42%, #111827);
+    linear-gradient(120deg, #10140f, #365314 42%, #083344);
 }
 
 @media (max-width: 860px) {

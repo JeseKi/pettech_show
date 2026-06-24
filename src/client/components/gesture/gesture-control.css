@@ -16,7 +16,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 6px 7px 6px 10px;
-  background: rgba(6, 11, 9, 0.86);
+  background: rgba(5, 7, 6, 0.86);
   border: 1px solid rgba(213, 255, 169, 0.18);
   border-bottom: 0;
   border-radius: 8px 8px 0 0;
@@ -53,16 +53,16 @@
 }
 
 .gesture-control-panel__icon-button:hover {
-  color: #091008;
-  background: #b8ff67;
-  border-color: #b8ff67;
+  color: var(--app-text-inverse);
+  background: var(--app-accent);
+  border-color: var(--app-accent);
 }
 
 .gesture-control-panel__body {
   display: grid;
   gap: 10px;
   padding: 10px;
-  background: rgba(6, 11, 9, 0.78);
+  background: rgba(5, 7, 6, 0.78);
   border: 1px solid rgba(213, 255, 169, 0.18);
   border-radius: 0 0 8px 8px;
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.34);
@@ -82,9 +82,9 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #091008;
-  background: #b8ff67;
-  border: 1px solid #b8ff67;
+  color: var(--app-text-inverse);
+  background: var(--app-accent);
+  border: 1px solid var(--app-accent);
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
@@ -110,7 +110,7 @@
 }
 
 .gesture-control-panel.is-tracking .gesture-control-panel__status strong {
-  color: #7dd3fc;
+  color: var(--app-accent-cyan);
 }
 
 .gesture-control-panel__status small {
@@ -178,7 +178,7 @@
 
 .gesture-control-cursor.is-hover {
   background:
-    radial-gradient(circle at 50% 50%, #091008 0 22%, transparent 23%),
+    radial-gradient(circle at 50% 50%, var(--app-text-inverse) 0 22%, transparent 23%),
     rgba(184, 255, 103, 0.9);
   box-shadow:
     0 0 0 8px rgba(184, 255, 103, 0.14),
@@ -200,7 +200,7 @@
 .gesture-control-cursor.is-swiping {
   width: 28px;
   height: 28px;
-  border-color: #7dd3fc;
+  border-color: var(--app-accent-cyan);
   background: rgba(56, 189, 248, 0.24);
   box-shadow:
     0 0 0 10px rgba(56, 189, 248, 0.14),

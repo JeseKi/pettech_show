@@ -75,7 +75,7 @@
 .result-strip article,
 .capability-grid article,
 .tool-flow__items article {
-  color: #f5f7f1;
+  color: var(--app-text-primary);
   background: rgba(255, 255, 255, 0.045);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
@@ -87,7 +87,7 @@
 }
 
 .result-strip span {
-  color: #b8ff67;
+  color: var(--app-accent);
   font-size: 36px;
   font-weight: 900;
 }
@@ -121,7 +121,7 @@
 }
 
 .capability-grid svg {
-  color: #b8ff67;
+  color: var(--app-accent);
 }
 
 .tool-flow {
@@ -150,7 +150,7 @@
   width: fit-content;
   padding: 8px 10px;
   color: #0b1209;
-  background: #b8ff67;
+  background: var(--app-accent);
   border-radius: 6px;
   font-size: 14px;
   font-weight: 800;
@@ -189,7 +189,7 @@
 
 .final-cta svg {
   margin-bottom: 22px;
-  color: #b8ff67;
+  color: var(--app-accent);
 }
 
 .final-cta h2 {
@@ -218,6 +218,6 @@
   margin: 0;
   padding: 30px max(28px, calc((100% - 1120px) / 2)) 42px;
   color: rgba(245, 247, 241, 0.46);
-  background: #050505;
+  background: var(--app-bg);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }

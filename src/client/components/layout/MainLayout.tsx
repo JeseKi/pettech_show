@@ -303,7 +303,7 @@ export default function MainLayout() {
         : '')
 
   return (
-    <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>
+    <Layout style={{ minHeight: '100vh', background: 'var(--app-bg)' }}>
       <Sider
         ref={siderRef}
         trigger={null}
@@ -321,8 +321,10 @@ export default function MainLayout() {
           zIndex: 100,
           overflowX: 'hidden',
           overflowY: 'auto',
-          background: token.colorBgElevated,
+          background: 'rgba(5, 7, 6, 0.9)',
+          borderRight: '1px solid var(--app-border-subtle)',
           boxShadow: 'var(--app-header-shadow)',
+          backdropFilter: 'blur(18px)',
         }}
         className={isMobile && collapsed ? 'hidden' : ''}
       >
@@ -338,7 +340,7 @@ export default function MainLayout() {
               style={{
                 height: 56,
                 paddingInline: collapsed ? 0 : 16,
-                borderBottom: `1px solid ${token.colorBorder}`,
+                borderBottom: '1px solid var(--app-border-subtle)',
               }}
             >
               {collapsed ? (
@@ -369,11 +371,12 @@ export default function MainLayout() {
               )}
             </Flex>
             <Menu
-              mode="inline"
-              selectedKeys={selectedKeys}
-              items={menuItems}
-              style={{
-                background: 'transparent',
+                mode="inline"
+                theme="dark"
+                selectedKeys={selectedKeys}
+                items={menuItems}
+                style={{
+                  background: 'transparent',
                 borderRight: 'none',
                 padding: '8px 0',
               }}
@@ -385,7 +388,7 @@ export default function MainLayout() {
             style={{
               paddingInline: collapsed ? 0 : 16,
               paddingBlock: 12,
-              borderTop: `1px solid ${token.colorBorder}`,
+              borderTop: '1px solid var(--app-border-subtle)',
             }}
           >
             {collapsed ? (
@@ -532,8 +535,9 @@ export default function MainLayout() {
             alignItems: 'center',
             paddingInline: 16,
             paddingBlock: 12,
-            background: token.colorBgLayout,
-            borderBottom: `1px solid ${token.colorBorder}`,
+            background: 'rgba(5, 7, 6, 0.78)',
+            borderBottom: '1px solid var(--app-border-subtle)',
+            backdropFilter: 'blur(18px)',
           }}
         >
           {isMobile && (
@@ -577,7 +581,7 @@ export default function MainLayout() {
             right: 0,
             bottom: 0,
             zIndex: 99,
-            background: 'rgba(0,0,0,0.5)',
+            background: 'rgba(0, 0, 0, 0.58)',
           }}
           onClick={toggleCollapsed}
         />
