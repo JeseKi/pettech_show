@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import type { Course } from './types'
 
 const COURSE_MODAL_EXIT_MS = 280
+const COURSE_MODAL_SCROLL_KEYS = new Set([' ', 'ArrowDown', 'ArrowUp', 'End', 'Home', 'PageDown', 'PageUp'])
 
 type CourseModalStyle = CSSProperties & Record<'--course-accent', string>
 
@@ -15,6 +16,8 @@ export function CourseModal({ activeCourse, onClose }: CourseModalProps) {
   const [displayCourse, setDisplayCourse] = useState<Course | null>(activeCourse)
   const [modalState, setModalState] = useState<'open' | 'closing'>('open')
   const closeTimerRef = useRef(0)
+  const panelRef = useRef<HTMLElement | null>(null)
+  const touchYRef = useRef(0)
 
   useEffect(() => {
     if (closeTimerRef.current) {
@@ -40,6 +43,60 @@ export function CourseModal({ activeCourse, onClose }: CourseModalProps) {
       if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current)
     }
   }, [activeCourse, displayCourse])
+
+  useEffect(() => {
+    if (!displayCourse) return undefined
+
+    const scrollPanelBy = (deltaY: number) => {
+      const panel = panelRef.current
+      if (!panel || deltaY === 0) return
+      panel.scrollTop += deltaY
+    }
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      scrollPanelBy(event.deltaY)
+    }
+    const handleTouchStart = (event: TouchEvent) => {
+      touchYRef.current = event.touches[0]?.clientY ?? 0
+    }
+    const handleTouchMove = (event: TouchEvent) => {
+      const currentY = event.touches[0]?.clientY ?? touchYRef.current
+      const deltaY = touchYRef.current - currentY
+      touchYRef.current = currentY
+      event.preventDefault()
+      scrollPanelBy(deltaY)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!COURSE_MODAL_SCROLL_KEYS.has(event.key)) return
+      const panel = panelRef.current
+      if (!panel) return
+
+      event.preventDefault()
+      const pageStep = Math.max(panel.clientHeight - 80, 120)
+      const keyScrollMap: Record<string, number> = {
+        ' ': event.shiftKey ? -pageStep : pageStep,
+        ArrowDown: 64,
+        ArrowUp: -64,
+        PageDown: pageStep,
+        PageUp: -pageStep,
+        End: panel.scrollHeight,
+        Home: -panel.scrollHeight,
+      }
+      scrollPanelBy(keyScrollMap[event.key] ?? 0)
+    }
+
+    window.addEventListener('wheel', handleWheel, { capture: true, passive: false })
+    window.addEventListener('touchstart', handleTouchStart, { capture: true, passive: true })
+    window.addEventListener('touchmove', handleTouchMove, { capture: true, passive: false })
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+
+    return () => {
+      window.removeEventListener('wheel', handleWheel, true)
+      window.removeEventListener('touchstart', handleTouchStart, true)
+      window.removeEventListener('touchmove', handleTouchMove, true)
+      window.removeEventListener('keydown', handleKeyDown, true)
+    }
+  }, [displayCourse])
 
   if (!displayCourse) return null
 
@@ -69,7 +126,7 @@ export function CourseModal({ activeCourse, onClose }: CourseModalProps) {
       style={modalStyle}
     >
       <button className="course-modal__backdrop" type="button" onClick={onClose} aria-label="关闭课程详情" />
-      <article className="course-modal__panel" data-lenis-prevent>
+      <article className="course-modal__panel" data-lenis-prevent ref={panelRef}>
         <button className="course-modal__close" type="button" onClick={onClose} aria-label="关闭">
           <X size={20} />
         </button>
