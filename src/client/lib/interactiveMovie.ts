@@ -22,6 +22,11 @@ export type InteractiveMovieProjectSummary = {
   updated_at: string
   scene_count: number
   choice_count: number
+  is_published: boolean
+  published_release_id?: string | null
+  published_version_no?: number | null
+  published_at?: string | null
+  public_path?: string | null
 }
 
 export type InteractiveMovieProjectDetail<TDocument> = {
@@ -31,6 +36,11 @@ export type InteractiveMovieProjectDetail<TDocument> = {
   content_hash: string
   updated_at: string
   document: TDocument
+  is_published: boolean
+  published_release_id?: string | null
+  published_version_no?: number | null
+  published_at?: string | null
+  public_path?: string | null
 }
 
 export type InteractiveMovieSyncState = {
@@ -54,6 +64,31 @@ export type InteractiveMovieProjectPatch = {
   script_lines: InteractiveMovieEntityPatch
   viewport: Record<string, unknown>
   selected_object: Record<string, unknown>
+}
+
+export type InteractiveMovieRelease = {
+  id: string
+  project_id: string
+  version_no: number
+  title: string
+  content_hash: string
+  created_at: string
+  is_current: boolean
+}
+
+export type InteractiveMoviePublishResult<TDocument> = {
+  project: InteractiveMovieProjectDetail<TDocument>
+  release: InteractiveMovieRelease
+}
+
+export type InteractiveMoviePublicProject<TDocument> = {
+  id: string
+  title: string
+  release_id: string
+  version_no: number
+  content_hash: string
+  published_at: string
+  document: TDocument
 }
 
 export async function getInteractiveMoviePromptTemplate(): Promise<PromptTemplate> {
@@ -89,6 +124,40 @@ export async function getInteractiveMovieSyncState(projectId: string): Promise<I
   return response.data
 }
 
+export async function listInteractiveMovieReleases(projectId: string): Promise<InteractiveMovieRelease[]> {
+  const response = await api.get<InteractiveMovieRelease[]>(`/interactive-movie/projects/${projectId}/releases`)
+  return response.data
+}
+
+export async function publishInteractiveMovieProject<TDocument>(
+  projectId: string,
+  baseVersion: number,
+  baseHash: string,
+): Promise<InteractiveMoviePublishResult<TDocument>> {
+  const response = await api.post<InteractiveMoviePublishResult<TDocument>>(`/interactive-movie/projects/${projectId}/releases`, {
+    base_version: baseVersion,
+    base_hash: baseHash,
+  })
+  return response.data
+}
+
+export async function setInteractiveMoviePublishedRelease<TDocument>(
+  projectId: string,
+  releaseId: string,
+): Promise<InteractiveMovieProjectDetail<TDocument>> {
+  const response = await api.put<InteractiveMovieProjectDetail<TDocument>>(`/interactive-movie/projects/${projectId}/published-release`, {
+    release_id: releaseId,
+  })
+  return response.data
+}
+
+export async function closeInteractiveMoviePublication<TDocument>(
+  projectId: string,
+): Promise<InteractiveMovieProjectDetail<TDocument>> {
+  const response = await api.delete<InteractiveMovieProjectDetail<TDocument>>(`/interactive-movie/projects/${projectId}/published-release`)
+  return response.data
+}
+
 export async function patchInteractiveMovieProject<TDocument>(
   projectId: string,
   patch: InteractiveMovieProjectPatch,
@@ -109,6 +178,13 @@ export async function renameInteractiveMovieProject<TDocument>(
 
 export async function deleteInteractiveMovieProject(projectId: string): Promise<void> {
   await api.delete(`/interactive-movie/projects/${projectId}`)
+}
+
+export async function getInteractiveMoviePublicProject<TDocument>(
+  projectId: string,
+): Promise<InteractiveMoviePublicProject<TDocument>> {
+  const response = await api.get<InteractiveMoviePublicProject<TDocument>>(`/interactive-movie/public/${projectId}`)
+  return response.data
 }
 
 export async function uploadInteractiveMovieVideo(file: File): Promise<InteractiveMovieVideoUpload> {

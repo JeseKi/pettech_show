@@ -19,14 +19,19 @@ import {
 import {
   BorderOuterOutlined,
   BranchesOutlined,
+  CheckCircleOutlined,
+  CloudUploadOutlined,
   DeleteOutlined,
   DoubleLeftOutlined,
   DoubleRightOutlined,
   DownOutlined,
   EditOutlined,
   FullscreenOutlined,
+  GlobalOutlined,
+  LinkOutlined,
   MessageOutlined,
   PlusOutlined,
+  PoweroffOutlined,
   PlayCircleOutlined,
   SaveOutlined,
   UploadOutlined,
@@ -37,17 +42,26 @@ import {
 } from '@ant-design/icons'
 import { Link } from 'react-router-dom'
 import {
+  closeInteractiveMoviePublication,
   createInteractiveMovieProject,
   deleteInteractiveMovieProject,
   getInteractiveMovieProject,
   getInteractiveMoviePromptTemplate,
   getInteractiveMovieSyncState,
+  listInteractiveMovieReleases,
   listInteractiveMovieProjects,
   patchInteractiveMovieProject,
+  publishInteractiveMovieProject,
   renameInteractiveMovieProject,
+  setInteractiveMoviePublishedRelease,
   uploadInteractiveMovieVideo,
 } from '../../lib/interactiveMovie'
-import type { InteractiveMovieProjectDetail, InteractiveMovieProjectPatch, PromptTemplate } from '../../lib/interactiveMovie'
+import type {
+  InteractiveMovieProjectDetail,
+  InteractiveMovieProjectPatch,
+  InteractiveMovieRelease,
+  PromptTemplate,
+} from '../../lib/interactiveMovie'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import './InteractiveMoviePage.css'
 
@@ -121,6 +135,11 @@ type InteractiveMovieProject = {
   version?: number
   contentHash?: string
   cloudUpdatedAt?: string
+  isPublished?: boolean
+  publishedReleaseId?: string | null
+  publishedVersionNo?: number | null
+  publishedAt?: string | null
+  publicPath?: string | null
   scenes: SceneNode[]
   choices: ChoiceEdge[]
   selectedObject: SelectedObject
@@ -417,16 +436,18 @@ const persistWorkspaceLocally = (workspace: StoredWorkspace) => {
 }
 
 const withCloudMeta = (
-  document: InteractiveMovieProject,
-  version: number,
-  contentHash: string,
-  cloudUpdatedAt: string,
+  detail: InteractiveMovieProjectDetail<InteractiveMovieProject>,
 ): InteractiveMovieProject => ({
-  ...document,
-  version,
-  contentHash,
-  cloudUpdatedAt,
-  updatedAt: document.updatedAt || cloudUpdatedAt,
+  ...detail.document,
+  version: detail.version,
+  contentHash: detail.content_hash,
+  cloudUpdatedAt: detail.updated_at,
+  updatedAt: detail.document.updatedAt || detail.updated_at,
+  isPublished: detail.is_published,
+  publishedReleaseId: detail.published_release_id ?? null,
+  publishedVersionNo: detail.published_version_no ?? null,
+  publishedAt: detail.published_at ?? null,
+  publicPath: detail.public_path ?? `/interactive-movie/play/${detail.id}`,
 })
 
 const flattenScene = (scene: SceneNode, sortOrder: number): Record<string, unknown> => ({
@@ -549,6 +570,16 @@ const firstSelectableObject = (scenes: SceneNode[], choices: ChoiceEdge[]): Sele
   return { type: 'scene', id: '' }
 }
 
+const formatDateTime = (value: string | null | undefined) => {
+  if (!value) return '-'
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return value
+  return new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(timestamp))
+}
+
 export default function InteractiveMoviePage() {
   const { message, modal } = App.useApp()
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -565,6 +596,10 @@ export default function InteractiveMoviePage() {
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState('本地草稿')
+  const [publishModalOpen, setPublishModalOpen] = useState(false)
+  const [releaseHistory, setReleaseHistory] = useState<InteractiveMovieRelease[]>([])
+  const [releaseLoading, setReleaseLoading] = useState(false)
+  const [publishing, setPublishing] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewSceneId, setPreviewSceneId] = useState('')
   const [previewLineIndex, setPreviewLineIndex] = useState(0)
@@ -588,7 +623,16 @@ export default function InteractiveMoviePage() {
   const outgoingPreviewChoices = choices.filter((choice) => (
     choice.fromSceneId === previewScene?.id && sceneMap.has(choice.toSceneId)
   ))
+  const previewVideoUrl = previewScene?.media.kind === 'video' ? previewScene.media.url : undefined
+  const previewHasVideo = Boolean(previewVideoUrl)
   const currentPreviewLine = previewScene?.script.lines[previewLineIndex]
+  const activeProjectCloudBase = hasCloudCopy(activeProject) ? readProjectReplica(cloudReplicaKey(activeProject.id)) : null
+  const activeProjectHasUnsavedChanges = !activeProjectCloudBase
+    || patchHasChanges(buildProjectPatch(activeProjectCloudBase, activeProject))
+  const activeProjectPublicPath = activeProject.publicPath ?? `/interactive-movie/play/${activeProject.id}`
+  const activeProjectPublicUrl = typeof window === 'undefined'
+    ? activeProjectPublicPath
+    : `${window.location.origin}${activeProjectPublicPath}`
 
   useEffect(() => {
     persistWorkspaceLocally(workspace)
@@ -613,7 +657,7 @@ export default function InteractiveMoviePage() {
           cleanupProjectReplicasOutside(new Set([localProject.id]))
           const created = await createInteractiveMovieProject(localProject.title, localProject)
           if (cancelled) return
-          const project = withCloudMeta(created.document, created.version, created.content_hash, created.updated_at)
+          const project = withCloudMeta(created)
           cleanupProjectReplicasOutside(new Set([project.id]))
           writeProjectReplica(cloudReplicaKey(project.id), project)
           writeProjectReplica(draftReplicaKey(project.id), project)
@@ -643,7 +687,7 @@ export default function InteractiveMoviePage() {
           return
         }
         const projects = details.map((detail) => {
-          const cloudProject = withCloudMeta(detail.document, detail.version, detail.content_hash, detail.updated_at)
+          const cloudProject = withCloudMeta(detail)
           writeProjectReplica(cloudReplicaKey(cloudProject.id), cloudProject)
           const draftProject = readProjectReplica(draftReplicaKey(cloudProject.id))
           if (draftProject) {
@@ -719,6 +763,18 @@ export default function InteractiveMoviePage() {
 
   const setSelectedObject = (nextSelectedObject: SelectedObject) => {
     updateActiveProject((project) => ({ ...project, selectedObject: nextSelectedObject }))
+  }
+
+  const replaceProjectFromServer = (detail: InteractiveMovieProjectDetail<InteractiveMovieProject>) => {
+    const project = withCloudMeta(detail)
+    writeProjectReplica(cloudReplicaKey(project.id), project)
+    writeProjectReplica(draftReplicaKey(project.id), project)
+    setWorkspace((current) => ({
+      ...current,
+      activeProjectId: current.activeProjectId === detail.id ? project.id : current.activeProjectId,
+      projects: current.projects.map((item) => (item.id === project.id ? project : item)),
+    }))
+    return project
   }
 
   const selectCanvasScene = (sceneId: string) => {
@@ -829,12 +885,7 @@ export default function InteractiveMoviePage() {
           const hasCloudCopy = Boolean(project.version && project.contentHash)
           if (hasCloudCopy) {
             const renamed = await renameInteractiveMovieProject<InteractiveMovieProject>(project.id, title)
-            const nextProject = withCloudMeta(
-              renamed.document,
-              renamed.version,
-              renamed.content_hash,
-              renamed.updated_at,
-            )
+            const nextProject = withCloudMeta(renamed)
             writeProjectReplica(cloudReplicaKey(nextProject.id), nextProject)
             writeProjectReplica(draftReplicaKey(nextProject.id), nextProject)
             setWorkspace((current) => ({
@@ -1169,12 +1220,7 @@ export default function InteractiveMoviePage() {
     setPreviewOpen(true)
   }
 
-  const advancePreview = () => {
-    if (!previewScene) return
-    if (previewLineIndex < previewScene.script.lines.length - 1) {
-      setPreviewLineIndex((index) => index + 1)
-      return
-    }
+  const finishPreviewScene = () => {
     if (outgoingPreviewChoices.length > 0) {
       setPreviewChoicesVisible(true)
       return
@@ -1182,11 +1228,123 @@ export default function InteractiveMoviePage() {
     message.info('预览已结束')
   }
 
+  const advancePreview = () => {
+    if (!previewScene) return
+    if (previewLineIndex < previewScene.script.lines.length - 1) {
+      setPreviewLineIndex((index) => index + 1)
+      return
+    }
+    finishPreviewScene()
+  }
+
   const choosePreviewEdge = (choice: ChoiceEdge) => {
     if (!sceneMap.has(choice.toSceneId)) return
     setPreviewSceneId(choice.toSceneId)
     setPreviewLineIndex(0)
     setPreviewChoicesVisible(false)
+  }
+
+  useEffect(() => {
+    if (!previewOpen || !previewScene || previewChoicesVisible || previewHasVideo || currentPreviewLine) return
+    if (outgoingPreviewChoices.length > 0) {
+      setPreviewChoicesVisible(true)
+    }
+  }, [
+    currentPreviewLine,
+    outgoingPreviewChoices.length,
+    previewChoicesVisible,
+    previewHasVideo,
+    previewOpen,
+    previewScene,
+  ])
+
+  const refreshReleaseHistory = async (projectId = activeProject.id) => {
+    if (!hasCloudCopy(activeProject)) {
+      setReleaseHistory([])
+      return
+    }
+    setReleaseLoading(true)
+    try {
+      const releases = await listInteractiveMovieReleases(projectId)
+      setReleaseHistory(releases)
+    } catch (error) {
+      message.error(resolveErrorMessage(error))
+    } finally {
+      setReleaseLoading(false)
+    }
+  }
+
+  const openPublishModal = () => {
+    setPublishModalOpen(true)
+    void refreshReleaseHistory(activeProject.id)
+  }
+
+  const publishCurrentDraft = async () => {
+    if (!activeProject.version || !activeProject.contentHash) {
+      message.warning('请先保存到云端后再发表')
+      return
+    }
+    if (activeProjectHasUnsavedChanges) {
+      message.warning('请先保存当前草稿后再发表')
+      return
+    }
+    setPublishing(true)
+    try {
+      const result = await publishInteractiveMovieProject<InteractiveMovieProject>(
+        activeProject.id,
+        activeProject.version,
+        activeProject.contentHash,
+      )
+      replaceProjectFromServer(result.project)
+      await refreshReleaseHistory(activeProject.id)
+      setSyncMessage(`已发表正式版 v${result.release.version_no}`)
+      message.success(`已发表正式版 v${result.release.version_no}`)
+    } catch (error) {
+      message.error(resolveErrorMessage(error))
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  const setReleaseOnline = async (release: InteractiveMovieRelease) => {
+    setPublishing(true)
+    try {
+      const detail = await setInteractiveMoviePublishedRelease<InteractiveMovieProject>(activeProject.id, release.id)
+      replaceProjectFromServer(detail)
+      await refreshReleaseHistory(activeProject.id)
+      setSyncMessage(`已切换线上版 v${release.version_no}`)
+      message.success(`已切换线上版 v${release.version_no}`)
+    } catch (error) {
+      message.error(resolveErrorMessage(error))
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  const closePublishedProject = async () => {
+    if (!activeProject.isPublished) return
+    modal.confirm({
+      title: '关闭发表？',
+      content: '关闭后固定公开 URL 会立即变为 404，正式版历史仍会保留。',
+      okText: '关闭发表',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      async onOk() {
+        setPublishing(true)
+        try {
+          const detail = await closeInteractiveMoviePublication<InteractiveMovieProject>(activeProject.id)
+          replaceProjectFromServer(detail)
+          await refreshReleaseHistory(activeProject.id)
+          setSyncMessage('已关闭发表')
+          message.success('已关闭发表')
+        } catch (error) {
+          message.error(resolveErrorMessage(error))
+          throw error
+        } finally {
+          setPublishing(false)
+        }
+      },
+    })
   }
 
   const saveDraft = useCallback(async () => {
@@ -1199,7 +1357,7 @@ export default function InteractiveMoviePage() {
       const cloudBase = readProjectReplica(cloudReplicaKey(draft.id))
       if (!cloudBase?.version || !cloudBase.contentHash) {
         const created = await createInteractiveMovieProject(draft.title, draft)
-        const project = withCloudMeta(created.document, created.version, created.content_hash, created.updated_at)
+        const project = withCloudMeta(created)
         writeProjectReplica(cloudReplicaKey(project.id), project)
         writeProjectReplica(draftReplicaKey(project.id), project)
         setWorkspace((current) => ({
@@ -1217,7 +1375,7 @@ export default function InteractiveMoviePage() {
         return
       }
       const saved = await patchInteractiveMovieProject<InteractiveMovieProject>(draft.id, patch)
-      const project = withCloudMeta(saved.document, saved.version, saved.content_hash, saved.updated_at)
+      const project = withCloudMeta(saved)
       writeProjectReplica(cloudReplicaKey(project.id), project)
       writeProjectReplica(draftReplicaKey(project.id), project)
       setWorkspace((current) => ({
@@ -1272,7 +1430,7 @@ export default function InteractiveMoviePage() {
           return
         }
         const latest = await getInteractiveMovieProject<InteractiveMovieProject>(activeProject.id)
-        const project = withCloudMeta(latest.document, latest.version, latest.content_hash, latest.updated_at)
+        const project = withCloudMeta(latest)
         writeProjectReplica(cloudReplicaKey(project.id), project)
         writeProjectReplica(draftReplicaKey(project.id), project)
         setWorkspace((current) => ({
@@ -1442,7 +1600,13 @@ export default function InteractiveMoviePage() {
           </nav>
           <Space wrap>
             <Tag className="movie-status-tag">{syncing ? '同步检查中' : syncMessage}</Tag>
+            {activeProject.isPublished && (
+              <Tag color="green" icon={<GlobalOutlined />}>线上 v{activeProject.publishedVersionNo}</Tag>
+            )}
             <Button icon={<SaveOutlined />} loading={saving} onClick={() => void saveDraft()}>保存</Button>
+            <Button icon={<CloudUploadOutlined />} onClick={openPublishModal}>
+              {activeProject.isPublished ? '管理发表' : '发表'}
+            </Button>
             <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => startPreview()}>预览</Button>
           </Space>
         </header>
@@ -1690,7 +1854,19 @@ export default function InteractiveMoviePage() {
       >
         {previewScene && (
           <div className="movie-preview-player">
-            <div className="movie-preview-scene">
+            <div className={previewHasVideo ? 'movie-preview-scene has-video' : 'movie-preview-scene'}>
+              {!previewChoicesVisible && previewVideoUrl && (
+                <video
+                  key={previewScene.id}
+                  src={previewVideoUrl}
+                  poster={previewScene.media.posterUrl}
+                  className="movie-preview-video"
+                  controls
+                  autoPlay
+                  playsInline
+                  onEnded={finishPreviewScene}
+                />
+              )}
               <div className="movie-preview-vignette" />
               <div className="movie-preview-title">{previewScene.title}</div>
               {previewChoicesVisible && (
@@ -1702,14 +1878,14 @@ export default function InteractiveMoviePage() {
                   ))}
                 </div>
               )}
-              {!previewChoicesVisible && currentPreviewLine && (
+              {!previewChoicesVisible && !previewHasVideo && currentPreviewLine && (
                 <button type="button" className="movie-dialogue-box" onClick={advancePreview}>
                   <span className="movie-dialogue-speaker">{currentPreviewLine.speaker || '角色'}</span>
                   <span className="movie-dialogue-text">{currentPreviewLine.text}</span>
                   <span className="movie-dialogue-next">点击继续</span>
                 </button>
               )}
-              {!previewChoicesVisible && !currentPreviewLine && (
+              {!previewChoicesVisible && !previewHasVideo && !currentPreviewLine && (
                 <div className="movie-preview-choices">
                   <Button size="large" onClick={advancePreview}>继续</Button>
                 </div>
@@ -1717,6 +1893,84 @@ export default function InteractiveMoviePage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        title="发表与正式版"
+        open={publishModalOpen}
+        onCancel={() => setPublishModalOpen(false)}
+        footer={null}
+        width={760}
+        className="movie-publish-modal"
+      >
+        <Flex vertical gap={16}>
+          <section className="movie-publish-status">
+            <Flex align="center" justify="space-between" gap={12} wrap>
+              <div>
+                <Typography.Text className="movie-panel-kicker">公开地址</Typography.Text>
+                <Typography.Title level={5} className="movie-publish-title">
+                  {activeProject.isPublished ? `已发表 v${activeProject.publishedVersionNo}` : '未发表'}
+                </Typography.Title>
+              </div>
+              <Space wrap>
+                {activeProject.isPublished && (
+                  <Button danger icon={<PoweroffOutlined />} loading={publishing} onClick={() => void closePublishedProject()}>
+                    关闭发表
+                  </Button>
+                )}
+                <Button
+                  type="primary"
+                  icon={<CloudUploadOutlined />}
+                  loading={publishing}
+                  disabled={saving || activeProjectHasUnsavedChanges}
+                  onClick={() => void publishCurrentDraft()}
+                >
+                  发表当前草稿
+                </Button>
+              </Space>
+            </Flex>
+            <div className="movie-public-url">
+              <LinkOutlined />
+              <Typography.Text copyable={{ text: activeProjectPublicUrl }} className="movie-public-url-text">
+                {activeProjectPublicUrl}
+              </Typography.Text>
+            </div>
+            {activeProjectHasUnsavedChanges && (
+              <div className="movie-publish-warning">请先保存当前草稿后再发表。</div>
+            )}
+          </section>
+
+          <section className="movie-panel-section">
+            <Flex align="center" justify="space-between">
+              <Typography.Text className="movie-panel-label">正式版历史</Typography.Text>
+              <Button size="small" loading={releaseLoading} onClick={() => void refreshReleaseHistory(activeProject.id)}>
+                刷新
+              </Button>
+            </Flex>
+            {releaseHistory.length > 0 ? (
+              <div className="movie-release-list">
+                {releaseHistory.map((release) => (
+                  <div key={release.id} className={release.is_current ? 'movie-release-row is-current' : 'movie-release-row'}>
+                    <div className="movie-release-main">
+                      <span className="movie-release-version">v{release.version_no}</span>
+                      <span className="movie-release-title">{release.title}</span>
+                      <span className="movie-release-time">{formatDateTime(release.created_at)}</span>
+                    </div>
+                    {release.is_current ? (
+                      <Tag color="green" icon={<CheckCircleOutlined />}>线上版</Tag>
+                    ) : (
+                      <Button size="small" loading={publishing} onClick={() => void setReleaseOnline(release)}>
+                        设为线上版
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={releaseLoading ? '加载正式版历史中' : '暂无正式版'} />
+            )}
+          </section>
+        </Flex>
       </Modal>
     </div>
   )

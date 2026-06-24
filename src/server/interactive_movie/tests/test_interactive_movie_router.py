@@ -10,6 +10,7 @@ from src.server.auth import service as auth_service
 from src.server.auth.models import User
 from src.server.config import global_config
 from src.server.interactive_movie import service as movie_service
+from src.server.interactive_movie.models import InteractiveMovieRelease
 
 
 def _create_user(test_db_session, username: str) -> User:
@@ -192,6 +193,156 @@ def test_project_rename_updates_title_version_and_hash(test_client, test_db_sess
     assert renamed["document"]["title"] == "重命名互动电影"
     assert renamed["version"] == created["version"] + 1
     assert renamed["content_hash"] != created["content_hash"]
+
+
+def test_public_project_requires_published_release(test_client, test_db_session):
+    user = _create_user(test_db_session, "interactive_movie_unpublished_owner")
+    headers = _auth_headers(user)
+    document = _project_document("movie-public-missing")
+
+    create_resp = test_client.post(
+        "/api/interactive-movie/projects",
+        headers=headers,
+        json={"title": document["title"], "document": document},
+    )
+    assert create_resp.status_code == HTTPStatus.CREATED, create_resp.text
+
+    public_resp = test_client.get("/api/interactive-movie/public/movie-public-missing")
+
+    assert public_resp.status_code == HTTPStatus.NOT_FOUND
+
+
+def test_publish_release_public_read_switch_close_and_delete(test_client, test_db_session):
+    user = _create_user(test_db_session, "interactive_movie_publish_owner")
+    headers = _auth_headers(user)
+    document = _project_document("movie-public-a")
+
+    create_resp = test_client.post(
+        "/api/interactive-movie/projects",
+        headers=headers,
+        json={"title": document["title"], "document": document},
+    )
+    assert create_resp.status_code == HTTPStatus.CREATED, create_resp.text
+    created = create_resp.json()
+    assert created["is_published"] is False
+    assert created["public_path"] == "/interactive-movie/play/movie-public-a"
+
+    first_publish_resp = test_client.post(
+        "/api/interactive-movie/projects/movie-public-a/releases",
+        headers=headers,
+        json={"base_version": created["version"], "base_hash": created["content_hash"]},
+    )
+    assert first_publish_resp.status_code == HTTPStatus.CREATED, first_publish_resp.text
+    first_publish = first_publish_resp.json()
+    first_release = first_publish["release"]
+    assert first_release["version_no"] == 1
+    assert first_release["is_current"] is True
+    assert first_publish["project"]["is_published"] is True
+    assert first_publish["project"]["published_version_no"] == 1
+    assert first_publish["project"]["public_path"] == "/interactive-movie/play/movie-public-a"
+
+    public_resp = test_client.get("/api/interactive-movie/public/movie-public-a")
+    assert public_resp.status_code == HTTPStatus.OK, public_resp.text
+    public_payload = public_resp.json()
+    assert public_payload["release_id"] == first_release["id"]
+    assert public_payload["version_no"] == 1
+    assert public_payload["document"]["title"] == "云端草稿"
+
+    rename_resp = test_client.patch(
+        "/api/interactive-movie/projects/movie-public-a/title",
+        headers=headers,
+        json={"title": "第二版草稿"},
+    )
+    assert rename_resp.status_code == HTTPStatus.OK, rename_resp.text
+    renamed = rename_resp.json()
+
+    second_publish_resp = test_client.post(
+        "/api/interactive-movie/projects/movie-public-a/releases",
+        headers=headers,
+        json={"base_version": renamed["version"], "base_hash": renamed["content_hash"]},
+    )
+    assert second_publish_resp.status_code == HTTPStatus.CREATED, second_publish_resp.text
+    second_publish = second_publish_resp.json()
+    second_release = second_publish["release"]
+    assert second_release["version_no"] == 2
+    assert second_publish["project"]["public_path"] == "/interactive-movie/play/movie-public-a"
+
+    public_second_resp = test_client.get("/api/interactive-movie/public/movie-public-a")
+    assert public_second_resp.status_code == HTTPStatus.OK, public_second_resp.text
+    assert public_second_resp.json()["release_id"] == second_release["id"]
+    assert public_second_resp.json()["document"]["title"] == "第二版草稿"
+
+    switch_resp = test_client.put(
+        "/api/interactive-movie/projects/movie-public-a/published-release",
+        headers=headers,
+        json={"release_id": first_release["id"]},
+    )
+    assert switch_resp.status_code == HTTPStatus.OK, switch_resp.text
+    switched = switch_resp.json()
+    assert switched["published_release_id"] == first_release["id"]
+    assert switched["published_version_no"] == 1
+
+    public_switched_resp = test_client.get("/api/interactive-movie/public/movie-public-a")
+    assert public_switched_resp.status_code == HTTPStatus.OK, public_switched_resp.text
+    assert public_switched_resp.json()["release_id"] == first_release["id"]
+    assert public_switched_resp.json()["document"]["title"] == "云端草稿"
+
+    draft_resp = test_client.get("/api/interactive-movie/projects/movie-public-a", headers=headers)
+    assert draft_resp.status_code == HTTPStatus.OK, draft_resp.text
+    assert draft_resp.json()["document"]["title"] == "第二版草稿"
+
+    releases_resp = test_client.get("/api/interactive-movie/projects/movie-public-a/releases", headers=headers)
+    assert releases_resp.status_code == HTTPStatus.OK, releases_resp.text
+    releases = releases_resp.json()
+    assert [release["version_no"] for release in releases] == [2, 1]
+    assert {release["version_no"]: release["is_current"] for release in releases} == {1: True, 2: False}
+
+    close_resp = test_client.delete("/api/interactive-movie/projects/movie-public-a/published-release", headers=headers)
+    assert close_resp.status_code == HTTPStatus.OK, close_resp.text
+    assert close_resp.json()["is_published"] is False
+    assert close_resp.json()["published_release_id"] is None
+
+    public_closed_resp = test_client.get("/api/interactive-movie/public/movie-public-a")
+    assert public_closed_resp.status_code == HTTPStatus.NOT_FOUND
+
+    releases_after_close_resp = test_client.get("/api/interactive-movie/projects/movie-public-a/releases", headers=headers)
+    assert releases_after_close_resp.status_code == HTTPStatus.OK, releases_after_close_resp.text
+    assert len(releases_after_close_resp.json()) == 2
+
+    delete_resp = test_client.delete("/api/interactive-movie/projects/movie-public-a", headers=headers)
+    assert delete_resp.status_code == HTTPStatus.NO_CONTENT, delete_resp.text
+    assert test_db_session.query(InteractiveMovieRelease).filter(InteractiveMovieRelease.project_id == "movie-public-a").count() == 0
+    assert test_client.get("/api/interactive-movie/public/movie-public-a").status_code == HTTPStatus.NOT_FOUND
+
+
+def test_publish_rejects_stale_project_version(test_client, test_db_session):
+    user = _create_user(test_db_session, "interactive_movie_publish_conflict")
+    headers = _auth_headers(user)
+    document = _project_document("movie-public-conflict")
+
+    create_resp = test_client.post(
+        "/api/interactive-movie/projects",
+        headers=headers,
+        json={"title": document["title"], "document": document},
+    )
+    assert create_resp.status_code == HTTPStatus.CREATED, create_resp.text
+    created = create_resp.json()
+
+    rename_resp = test_client.patch(
+        "/api/interactive-movie/projects/movie-public-conflict/title",
+        headers=headers,
+        json={"title": "已有新版"},
+    )
+    assert rename_resp.status_code == HTTPStatus.OK, rename_resp.text
+
+    stale_publish_resp = test_client.post(
+        "/api/interactive-movie/projects/movie-public-conflict/releases",
+        headers=headers,
+        json={"base_version": created["version"], "base_hash": created["content_hash"]},
+    )
+
+    assert stale_publish_resp.status_code == HTTPStatus.CONFLICT
+    assert stale_publish_resp.json()["detail"]["reason"] == "version_conflict"
 
 
 class _FakeS3Client:

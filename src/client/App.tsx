@@ -17,6 +17,7 @@ import AiwikiPage from './pages/aiwiki'
 import SeedMatrixPage from './pages/seedMatrix'
 import DailyWriterPage from './pages/dailyWriter'
 import InteractiveMoviePage from './pages/interactiveMovie'
+import PublicInteractiveMoviePlayer from './pages/interactiveMovie/PublicInteractiveMoviePlayer'
 import CapabilityEntryPage from './pages/capabilities/CapabilityEntryPage'
 import GestureControlPage from './pages/gestureControl'
 import { AuthProvider, RequireAdmin, RequireAuth } from './providers/AuthProvider'
@@ -33,6 +34,7 @@ function ThemeToggleGate() {
     || location.pathname.startsWith('/agents/chat/')
     || location.pathname === '/landing'
     || location.pathname === '/interactive-movie'
+    || location.pathname.startsWith('/interactive-movie/play/')
     || location.pathname === '/knowledge-base'
   ) {
     return null
@@ -91,6 +93,7 @@ export default function App() {
                     </RequireAuth>
                   }
                 />
+                <Route path="/interactive-movie/play/:projectId" element={<PublicInteractiveMoviePlayer />} />
                 <Route
                   path="/agents"
                   element={

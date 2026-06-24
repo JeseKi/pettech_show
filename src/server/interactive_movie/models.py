@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.server.database import Base
@@ -26,6 +26,9 @@ class InteractiveMovieProject(Base):
     content_hash: Mapped[str] = mapped_column(String(80), nullable=False)
     selected_object_type: Mapped[str] = mapped_column(String(20), nullable=False, default="scene")
     selected_object_id: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    published_release_id: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 
@@ -89,3 +92,15 @@ class InteractiveMovieViewport(Base):
     x: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     y: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     zoom: Mapped[float] = mapped_column(Float, nullable=False, default=1)
+
+
+class InteractiveMovieRelease(Base):
+    __tablename__ = "interactive_movie_releases"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    document_json: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)

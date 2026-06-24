@@ -111,6 +111,11 @@ class InteractiveMovieProjectSummaryOut(BaseModel):
     updated_at: str
     scene_count: int
     choice_count: int
+    is_published: bool = False
+    published_release_id: str | None = None
+    published_version_no: int | None = None
+    published_at: str | None = None
+    public_path: str | None = None
 
 
 class InteractiveMovieProjectOut(BaseModel):
@@ -120,6 +125,11 @@ class InteractiveMovieProjectOut(BaseModel):
     content_hash: str
     updated_at: str
     document: dict[str, Any]
+    is_published: bool = False
+    published_release_id: str | None = None
+    published_version_no: int | None = None
+    published_at: str | None = None
+    public_path: str | None = None
 
 
 class InteractiveMovieSyncStateOut(BaseModel):
@@ -143,3 +153,37 @@ class InteractiveMovieProjectPatchIn(BaseModel):
     script_lines: EntityPatchIn = Field(default_factory=EntityPatchIn)
     viewport: dict[str, Any] = Field(default_factory=dict)
     selected_object: dict[str, Any] = Field(default_factory=dict)
+
+
+class InteractiveMoviePublishIn(BaseModel):
+    base_version: int
+    base_hash: str
+
+
+class InteractiveMovieSetPublishedReleaseIn(BaseModel):
+    release_id: str = Field(..., min_length=1, max_length=80)
+
+
+class InteractiveMovieReleaseOut(BaseModel):
+    id: str
+    project_id: str
+    version_no: int
+    title: str
+    content_hash: str
+    created_at: str
+    is_current: bool = False
+
+
+class InteractiveMoviePublishOut(BaseModel):
+    project: InteractiveMovieProjectOut
+    release: InteractiveMovieReleaseOut
+
+
+class InteractiveMoviePublicProjectOut(BaseModel):
+    id: str
+    title: str
+    release_id: str
+    version_no: int
+    content_hash: str
+    published_at: str
+    document: dict[str, Any]

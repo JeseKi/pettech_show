@@ -20,15 +20,18 @@ from src.server.config import global_config
 from .models import (
     InteractiveMovieChoice,
     InteractiveMovieProject,
+    InteractiveMovieRelease,
     InteractiveMovieScene,
     InteractiveMovieScriptLine,
     InteractiveMovieViewport,
     utc_now,
 )
 from .schemas import (
+    InteractiveMoviePublishIn,
     InteractiveMovieProjectCreateIn,
     InteractiveMovieProjectPatchIn,
     InteractiveMovieProjectRenameIn,
+    InteractiveMovieSetPublishedReleaseIn,
     UploadedVideoOut,
 )
 
@@ -47,6 +50,7 @@ def list_projects(db: Session, user: User) -> list[dict[str, Any]]:
     for project in projects:
         scene_count = db.query(InteractiveMovieScene).filter(InteractiveMovieScene.project_id == project.id).count()
         choice_count = db.query(InteractiveMovieChoice).filter(InteractiveMovieChoice.project_id == project.id).count()
+        publication = _publication_fields(db, project)
         summaries.append({
             "id": project.id,
             "title": project.title,
@@ -55,6 +59,7 @@ def list_projects(db: Session, user: User) -> list[dict[str, Any]]:
             "updated_at": _iso(project.updated_at),
             "scene_count": scene_count,
             "choice_count": choice_count,
+            **publication,
         })
     return summaries
 
@@ -145,8 +150,128 @@ def rename_project(db: Session, user: User, project_id: str, payload: Interactiv
 def delete_project(db: Session, user: User, project_id: str) -> None:
     project = _get_owned_project(db, user, project_id)
     _delete_project_children(db, project.id)
+    _delete_project_releases(db, project.id)
     db.delete(project)
     db.commit()
+
+
+def list_releases(db: Session, user: User, project_id: str) -> list[dict[str, Any]]:
+    project = _get_owned_project(db, user, project_id)
+    releases = (
+        db.query(InteractiveMovieRelease)
+        .filter(InteractiveMovieRelease.project_id == project.id)
+        .order_by(InteractiveMovieRelease.version_no.desc(), InteractiveMovieRelease.created_at.desc())
+        .all()
+    )
+    return [_release_out(release, project.published_release_id) for release in releases]
+
+
+def publish_project(
+    db: Session,
+    user: User,
+    project_id: str,
+    payload: InteractiveMoviePublishIn,
+) -> dict[str, Any]:
+    project = _get_owned_project(db, user, project_id)
+    if project.version != payload.base_version or project.content_hash != payload.base_hash:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "reason": "version_conflict",
+                "remote_version": project.version,
+                "remote_hash": project.content_hash,
+            },
+        )
+
+    latest_version = (
+        db.query(InteractiveMovieRelease.version_no)
+        .filter(InteractiveMovieRelease.project_id == project.id)
+        .order_by(InteractiveMovieRelease.version_no.desc())
+        .first()
+    )
+    version_no = int(latest_version[0]) + 1 if latest_version else 1
+    now = utc_now()
+    snapshot = _snapshot(db, project)
+    release = InteractiveMovieRelease(
+        id=f"release-{uuid4().hex}",
+        project_id=project.id,
+        version_no=version_no,
+        title=project.title,
+        document_json=json.dumps(snapshot, ensure_ascii=False),
+        content_hash=project.content_hash,
+        created_at=now,
+    )
+    db.add(release)
+    _set_project_publication(project, release.id, now)
+    db.commit()
+    db.refresh(project)
+    db.refresh(release)
+    return {
+        "project": _project_out(db, project),
+        "release": _release_out(release, project.published_release_id),
+    }
+
+
+def set_published_release(
+    db: Session,
+    user: User,
+    project_id: str,
+    payload: InteractiveMovieSetPublishedReleaseIn,
+) -> dict[str, Any]:
+    project = _get_owned_project(db, user, project_id)
+    release = _get_project_release(db, project.id, payload.release_id)
+    _set_project_publication(project, release.id, utc_now())
+    db.commit()
+    db.refresh(project)
+    return _project_out(db, project)
+
+
+def close_publication(db: Session, user: User, project_id: str) -> dict[str, Any]:
+    project = _get_owned_project(db, user, project_id)
+    project.is_published = False
+    project.published_release_id = ""
+    project.published_at = None
+    project.version += 1
+    project.updated_at = utc_now()
+    db.commit()
+    db.refresh(project)
+    return _project_out(db, project)
+
+
+def get_public_project(db: Session, project_id: str) -> dict[str, Any]:
+    project = (
+        db.query(InteractiveMovieProject)
+        .populate_existing()
+        .filter(InteractiveMovieProject.id == project_id)
+        .first()
+    )
+    if not project or not project.is_published or not project.published_release_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="互动电影未发表")
+
+    release = (
+        db.query(InteractiveMovieRelease)
+        .filter(
+            InteractiveMovieRelease.project_id == project.id,
+            InteractiveMovieRelease.id == project.published_release_id,
+        )
+        .first()
+    )
+    if not release:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="互动电影未发表")
+
+    try:
+        document = json.loads(release.document_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="互动电影未发表") from exc
+    return {
+        "id": project.id,
+        "title": release.title,
+        "release_id": release.id,
+        "version_no": release.version_no,
+        "content_hash": release.content_hash,
+        "published_at": _iso(project.published_at or release.created_at),
+        "document": document,
+    }
 
 
 def compute_content_hash(document: dict[str, Any]) -> str:
@@ -343,6 +468,10 @@ def _delete_project_children(db: Session, project_id: str) -> None:
     db.query(InteractiveMovieChoice).filter(InteractiveMovieChoice.project_id == project_id).delete(synchronize_session=False)
     db.query(InteractiveMovieScene).filter(InteractiveMovieScene.project_id == project_id).delete(synchronize_session=False)
     db.query(InteractiveMovieViewport).filter(InteractiveMovieViewport.project_id == project_id).delete(synchronize_session=False)
+
+
+def _delete_project_releases(db: Session, project_id: str) -> None:
+    db.query(InteractiveMovieRelease).filter(InteractiveMovieRelease.project_id == project_id).delete(synchronize_session=False)
 
 
 def _apply_patch(db: Session, project: InteractiveMovieProject, payload: InteractiveMovieProjectPatchIn) -> None:
@@ -610,7 +739,74 @@ def _project_out(db: Session, project: InteractiveMovieProject) -> dict[str, Any
         "content_hash": project.content_hash,
         "updated_at": _iso(project.updated_at),
         "document": _snapshot(db, project),
+        **_publication_fields(db, project),
     }
+
+
+def _set_project_publication(project: InteractiveMovieProject, release_id: str, published_at: datetime) -> None:
+    project.is_published = True
+    project.published_release_id = release_id
+    project.published_at = published_at
+    project.version += 1
+    project.updated_at = published_at
+
+
+def _publication_fields(db: Session, project: InteractiveMovieProject) -> dict[str, Any]:
+    release = None
+    if project.published_release_id:
+        release = (
+            db.query(InteractiveMovieRelease)
+            .filter(
+                InteractiveMovieRelease.project_id == project.id,
+                InteractiveMovieRelease.id == project.published_release_id,
+            )
+            .first()
+        )
+    if not project.is_published or release is None:
+        return {
+            "is_published": False,
+            "published_release_id": None,
+            "published_version_no": None,
+            "published_at": None,
+            "public_path": _public_path(project.id),
+        }
+    return {
+        "is_published": True,
+        "published_release_id": release.id,
+        "published_version_no": release.version_no,
+        "published_at": _iso(project.published_at) if project.published_at else None,
+        "public_path": _public_path(project.id),
+    }
+
+
+def _release_out(release: InteractiveMovieRelease, current_release_id: str = "") -> dict[str, Any]:
+    return {
+        "id": release.id,
+        "project_id": release.project_id,
+        "version_no": release.version_no,
+        "title": release.title,
+        "content_hash": release.content_hash,
+        "created_at": _iso(release.created_at),
+        "is_current": release.id == current_release_id,
+    }
+
+
+def _get_project_release(db: Session, project_id: str, release_id: str) -> InteractiveMovieRelease:
+    release = (
+        db.query(InteractiveMovieRelease)
+        .filter(
+            InteractiveMovieRelease.project_id == project_id,
+            InteractiveMovieRelease.id == release_id,
+        )
+        .first()
+    )
+    if not release:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="正式版不存在")
+    return release
+
+
+def _public_path(project_id: str) -> str:
+    return f"/interactive-movie/play/{project_id}"
 
 
 def _normalize_document(document: dict[str, Any]) -> dict[str, Any]:
