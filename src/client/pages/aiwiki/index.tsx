@@ -32,7 +32,6 @@ import {
   PlusOutlined,
   ReloadOutlined,
   TableOutlined,
-  UploadOutlined,
 } from '@ant-design/icons'
 import { Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
@@ -88,8 +87,8 @@ type DisplayTask = {
 }
 
 const ACCEPTED_TYPES = '.md,.markdown,.txt,.xlsx,.pdf'
-const DRAFT_TASK_ID = '__draft__'
-const ACCEPTED_TYPE_LABELS = ['Markdown', 'TXT', 'XLSX', 'PDF']
+const CREATE_TASK_ID = '__create_task__'
+const ACCEPTED_TYPE_HINT = '文档: .md、.markdown、.txt；表格: .xlsx；PDF: .pdf'
 
 export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const { message, modal } = App.useApp()
@@ -98,6 +97,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [history, setHistory] = useState<AiwikiJobSummary[]>([])
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
+  const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [job, setJob] = useState<AiwikiJob | null>(null)
   const [result, setResult] = useState<AiwikiResult | null>(null)
   const [localFiles, setLocalFiles] = useState<DisplayFile[]>([])
@@ -135,6 +135,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const loadJob = useCallback(async (jobId: string, silent = false) => {
     try {
       const latest = await getAiwikiJob(jobId)
+      setIsCreatingTask(false)
       setActiveTaskId(jobId)
       setJob(latest)
       setResult(latest.status === 'completed' ? await getAiwikiResult(jobId) : null)
@@ -163,43 +164,40 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     return () => window.clearInterval(timer)
   }, [job?.id, job?.status, loadHistory, loadJob])
 
-  const activeJob = job?.id === activeTaskId ? job : null
+  const draftTask = useMemo<DisplayTask>(() => ({
+    id: CREATE_TASK_ID,
+    title: localFiles.length ? `创建新任务（${localFiles.length} 个文件）` : '创建新任务',
+    description: '文件尚未提交生成。',
+    status: 'draft',
+    files: localFiles,
+    isDraft: true,
+  }), [localFiles])
+
+  const activeJob = !isCreatingTask && job?.id === activeTaskId ? job : null
   const activeFiles = useMemo<DisplayFile[]>(() => {
-    if (activeTaskId === DRAFT_TASK_ID) return localFiles
+    if (isCreatingTask) return localFiles
     const source = activeJob ?? history.find((item) => item.id === activeTaskId)
     if (!source) return []
     return source.files.map((file, fileIndex) => toDisplayFile(file, source, fileIndex))
-  }, [activeJob, activeTaskId, history, localFiles])
+  }, [activeJob, activeTaskId, history, isCreatingTask, localFiles])
 
   const taskItems = useMemo<DisplayTask[]>(() => {
-    const shouldShowDraft = activeTaskId === DRAFT_TASK_ID || localFiles.length > 0
-    const draft: DisplayTask[] = shouldShowDraft ? [{
-      id: DRAFT_TASK_ID,
-      title: localFiles.length ? `新任务草稿（${localFiles.length} 个文件）` : '新任务草稿',
-      description: '文件尚未提交生成。',
-      status: 'draft',
-      files: localFiles,
-      isDraft: true,
-    }] : []
-    return [
-      ...draft,
-      ...history.map((item) => ({
-        id: item.id,
-        title: item.title,
-        description: item.description,
-        status: item.status,
-        created_at: item.created_at,
-        files: item.files.map((file, fileIndex) => toDisplayFile(file, item, fileIndex)),
-        summary: item,
-      })),
-    ]
-  }, [activeTaskId, history, localFiles])
+    return history.map((item) => ({
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      status: item.status,
+      created_at: item.created_at,
+      files: item.files.map((file, fileIndex) => toDisplayFile(file, item, fileIndex)),
+      summary: item,
+    }))
+  }, [history])
 
   const displayTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
     return taskItems.filter((task) => {
       const statusMatch = taskFilter === 'all'
-        || (taskFilter === 'active' && (task.status === 'draft' || task.status === 'queued' || task.status === 'running'))
+        || (taskFilter === 'active' && (task.status === 'queued' || task.status === 'running'))
         || task.status === taskFilter
       const searchText = [
         task.title,
@@ -212,10 +210,11 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   }, [search, taskFilter, taskItems])
 
   const activeTask = useMemo(() => (
-    taskItems.find((item) => item.id === activeTaskId) ?? null
-  ), [activeTaskId, taskItems])
+    isCreatingTask ? draftTask : taskItems.find((item) => item.id === activeTaskId) ?? null
+  ), [activeTaskId, draftTask, isCreatingTask, taskItems])
 
   useEffect(() => {
+    if (isCreatingTask) return
     if (activeTaskId && taskItems.some((item) => item.id === activeTaskId)) return
     const nextTask = taskItems[0]
     if (!nextTask) {
@@ -224,27 +223,21 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
       setResult(null)
       return
     }
-    if (nextTask.isDraft) {
-      setActiveTaskId(DRAFT_TASK_ID)
-      setJob(null)
-      setResult(null)
-      return
-    }
     void loadJob(nextTask.id, true)
-  }, [activeTaskId, loadJob, taskItems])
+  }, [activeTaskId, isCreatingTask, loadJob, taskItems])
 
   const stats = useMemo(() => {
     const serverTasks = history.length
     const activeCount = history.filter((item) => item.status === 'queued' || item.status === 'running').length
     const completedCount = history.filter((item) => item.status === 'completed').length
-    const fileCount = history.reduce((total, item) => total + item.files.length, localFiles.length)
+    const fileCount = history.reduce((total, item) => total + item.files.length, 0)
     return {
       serverTasks,
       activeCount,
       completedCount,
       fileCount,
     }
-  }, [history, localFiles.length])
+  }, [history])
 
   const entriesBySlug = useMemo(() => (
     new Map((result?.wiki_entries ?? []).map((entry) => [entry.slug, entry]))
@@ -273,7 +266,8 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
       const startIndex = localFilesRef.current.length
       const previews = await Promise.all(files.map((file, index) => buildLocalFile(file, startIndex + index)))
       setLocalFiles((items) => [...items, ...previews])
-      setActiveTaskId(DRAFT_TASK_ID)
+      setIsCreatingTask(true)
+      setActiveTaskId(null)
       setJob(null)
       setResult(null)
     } catch (err) {
@@ -282,7 +276,8 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   }
 
   const startNewTask = () => {
-    setActiveTaskId(DRAFT_TASK_ID)
+    setIsCreatingTask(true)
+    setActiveTaskId(null)
     setJob(null)
     setResult(null)
     setActiveEntrySlug(null)
@@ -308,6 +303,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
       )
       revokeLocalUrls(localFiles)
       setLocalFiles([])
+      setIsCreatingTask(false)
       setActiveTaskId(created.id)
       setJob(created)
       setResult(null)
@@ -325,12 +321,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
 
   const selectTask = async (task: DisplayTask) => {
     setActiveEntrySlug(null)
-    if (task.isDraft) {
-      setActiveTaskId(DRAFT_TASK_ID)
-      setJob(null)
-      setResult(null)
-      return
-    }
+    setIsCreatingTask(false)
     await loadJob(task.id)
   }
 
@@ -446,16 +437,14 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
                   role="button"
                   tabIndex={0}
                 >
-                  <span className="aiwiki-file-icon">{task.isDraft ? <UploadOutlined /> : <FileTextOutlined />}</span>
+                  <span className="aiwiki-file-icon"><FileTextOutlined /></span>
                   <span className="aiwiki-file-copy">
                     <span className="aiwiki-file-name">{task.title}</span>
                     <span className="aiwiki-file-meta">
                       {task.files.length} 个文件 · {taskStatusLabel(task.status)}
                     </span>
                   </span>
-                  {task.isDraft ? (
-                    <span className="aiwiki-local-dot" />
-                  ) : task.summary ? (
+                  {task.summary ? (
                     <span className="aiwiki-task-list-actions" onKeyDown={(event) => event.stopPropagation()}>
                       <Tooltip title="编辑">
                         <button
@@ -505,7 +494,6 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
           </Flex>
           <Space wrap className="aiwiki-top-actions">
             <Button icon={<ReloadOutlined />} loading={historyLoading} onClick={() => void loadHistory()}>刷新</Button>
-            <Button type="primary" icon={<PlusOutlined />} disabled={submitting} onClick={startNewTask}>创建新任务</Button>
           </Space>
         </header>
 
@@ -536,7 +524,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
               <TaskOverview
                 task={activeTask}
                 files={activeFiles}
-                uploading={submitting && activeTask?.isDraft}
+                uploading={submitting && isCreatingTask}
                 uploadProgress={uploadProgress}
                 onPreview={setPreviewFile}
                 onRemoveLocal={removeLocalFile}
@@ -564,7 +552,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
             />
             <SourceFilesPanel
               files={activeFiles}
-              uploading={submitting && activeTask?.isDraft}
+              uploading={submitting && isCreatingTask}
               onPreview={setPreviewFile}
               onRemoveLocal={removeLocalFile}
             />
@@ -689,7 +677,7 @@ function TaskOverview({
           onClick={onSubmit}
           className="aiwiki-create-task-submit"
         >
-          创建新任务
+          开始生成
         </Button>
       )}
     </div>
@@ -762,12 +750,11 @@ function TaskUploadDropzone({
       <Typography.Paragraph type="secondary" className="aiwiki-upload-dropzone-copy">
         一个任务可以包含多个文件。先添加文件，确认清单后再创建任务。
       </Typography.Paragraph>
-      <Space wrap className="aiwiki-upload-type-list">
-        {ACCEPTED_TYPE_LABELS.map((label) => <Tag key={label}>{label}</Tag>)}
-      </Space>
-      <Typography.Text type="secondary" className="aiwiki-upload-limit">
-        支持 .md、.markdown、.txt、.xlsx、.pdf
-      </Typography.Text>
+      <Tooltip title={ACCEPTED_TYPE_HINT}>
+        <Typography.Text type="secondary" className="aiwiki-upload-limit">
+          支持文档、表格和 PDF
+        </Typography.Text>
+      </Tooltip>
     </div>
   )
 }

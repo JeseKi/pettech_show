@@ -178,13 +178,6 @@
   font-size: 12px;
 }
 
-.aiwiki-local-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #f59e0b;
-}
-
 .aiwiki-dashboard-link {
   color: #c9d7ed;
   display: inline-flex;
@@ -355,12 +348,9 @@
   margin: 0 !important;
 }
 
-.aiwiki-upload-type-list {
-  justify-content: center;
-}
-
 .aiwiki-upload-limit {
   font-size: 12px;
+  cursor: help;
 }
 
 .aiwiki-create-task-submit {
