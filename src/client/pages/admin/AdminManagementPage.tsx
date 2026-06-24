@@ -1,5 +1,6 @@
-import { ApiOutlined, AppstoreAddOutlined, FileSearchOutlined, KeyOutlined, LockOutlined, TeamOutlined } from '@ant-design/icons'
+import { ApiOutlined, AppstoreAddOutlined, BarChartOutlined, FileSearchOutlined, KeyOutlined, LockOutlined, TeamOutlined } from '@ant-design/icons'
 import { Tabs } from 'antd'
+import AdminMonitoringPage from './AdminMonitoringPage'
 import UserManagementPage from './UserManagementPage'
 import PermissionManagementPage from './PermissionManagementPage'
 import ScopeManagementPage from './ScopeManagementPage'
@@ -8,6 +9,16 @@ import AiwikiAuditPage from './AiwikiAuditPage'
 import SkillMarketManagementPage from './SkillMarketManagementPage'
 
 const tabItems = [
+  {
+    key: 'monitoring',
+    label: (
+      <span>
+        <BarChartOutlined />
+        监控概览
+      </span>
+    ),
+    children: <AdminMonitoringPage />,
+  },
   {
     key: 'users',
     label: (
@@ -73,7 +84,7 @@ const tabItems = [
 export default function AdminManagementPage() {
   return (
     <div style={{ overflowX: 'auto' }}>
-      <Tabs defaultActiveKey="users" items={tabItems} style={{ minWidth: 500 }} />
+      <Tabs defaultActiveKey="monitoring" items={tabItems} style={{ minWidth: 500 }} />
     </div>
   )
 }

@@ -17,7 +17,14 @@ from src.server.auth.models import User
 from src.server.auth.schemas import UserRole
 from src.server.config import global_config
 
-from .models import AgentSkill, AgentSkillCategory, AgentSkillTag, AgentSkillTagLink, UserAgentSkill
+from .models import (
+    AgentSkill,
+    AgentSkillCategory,
+    AgentSkillTag,
+    AgentSkillTagLink,
+    AgentSkillUsageEvent,
+    UserAgentSkill,
+)
 from .schemas import (
     AgentSkillCategoryCreateIn,
     AgentSkillCategoryOut,
@@ -134,6 +141,7 @@ def add_user_skill(db: Session, user: User, skill_id: str) -> UserAgentSkillOut:
         .filter(UserAgentSkill.owner_user_id == user.id, UserAgentSkill.skill_id == skill.id)
         .first()
     )
+    should_log_event = link is None or not link.enabled
     if link:
         link.enabled = True
         link.updated_at = now
@@ -146,6 +154,15 @@ def add_user_skill(db: Session, user: User, skill_id: str) -> UserAgentSkillOut:
             updated_at=now,
         )
         db.add(link)
+    if should_log_event:
+        db.add(
+            AgentSkillUsageEvent(
+                owner_user_id=user.id,
+                skill_id=skill.id,
+                action="add",
+                created_at=now,
+            )
+        )
     db.commit()
     db.refresh(link)
     return UserAgentSkillOut(
@@ -155,14 +172,24 @@ def add_user_skill(db: Session, user: User, skill_id: str) -> UserAgentSkillOut:
 
 
 def remove_user_skill(db: Session, user: User, skill_id: str) -> None:
+    now = datetime.now(timezone.utc)
     deleted = (
         db.query(UserAgentSkill)
         .filter(UserAgentSkill.owner_user_id == user.id, UserAgentSkill.skill_id == skill_id)
         .delete(synchronize_session=False)
     )
-    db.commit()
     if not deleted:
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户未添加该 Skill")
+    db.add(
+        AgentSkillUsageEvent(
+            owner_user_id=user.id,
+            skill_id=skill_id,
+            action="remove",
+            created_at=now,
+        )
+    )
+    db.commit()
 
 
 def list_admin_categories(db: Session) -> list[AgentSkillCategoryOut]:
