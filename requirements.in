@@ -19,3 +19,4 @@ httpx[socks]
 types-python-jose
 alembic
 python-multipart
+boto3

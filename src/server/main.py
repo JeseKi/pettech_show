@@ -36,6 +36,7 @@ from src.server.aiwiki.router import router as aiwiki_router
 from src.server.seed_matrix.router import router as seed_matrix_router
 from src.server.daily_writer.router import router as daily_writer_router
 from src.server.capability_jobs.router import router as capability_jobs_router
+from src.server.interactive_movie.router import router as interactive_movie_router
 
 # --- 配置与常量 ---
 PROJECT_ROOT = Path(global_config.project_root)
@@ -205,6 +206,7 @@ app.include_router(aiwiki_router)
 app.include_router(seed_matrix_router)
 app.include_router(daily_writer_router)
 app.include_router(capability_jobs_router)
+app.include_router(interactive_movie_router)
 app.include_router(admin_router)
 app.include_router(scope_management_router)
 if global_config.app_env == "dev":

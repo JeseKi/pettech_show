@@ -681,6 +681,7 @@
 }
 
 .movie-panel-media {
+  position: relative;
   display: flex;
   height: 142px;
   align-items: center;
@@ -693,6 +694,73 @@
     linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(249, 115, 22, 0.14)),
     #15171c;
   color: rgba(248, 250, 252, 0.68);
+  overflow: hidden;
+  outline: none;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.movie-panel-media:hover,
+.movie-panel-media:focus-within {
+  border-color: rgba(249, 115, 22, 0.45);
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.16);
+}
+
+.movie-panel-media-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.movie-panel-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.movie-panel-poster {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.movie-panel-media-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(3, 7, 18, 0.64);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(6px);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.movie-panel-media:hover .movie-panel-media-overlay,
+.movie-panel-media:focus-within .movie-panel-media-overlay {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.movie-video-preview-modal .ant-modal-content {
+  overflow: hidden;
+  background: #0b0c0f;
+}
+
+.movie-video-preview-player {
+  display: block;
+  width: 100%;
+  max-height: 72vh;
+  border-radius: 8px;
+  background: #000;
 }
 
 .movie-line-list {
@@ -764,6 +832,50 @@
 .movie-choice-row:hover {
   border-color: rgba(249, 115, 22, 0.45);
   background: rgba(249, 115, 22, 0.1);
+}
+
+.movie-prompt-template {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(56, 189, 248, 0.16);
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.movie-prompt-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: rgba(226, 232, 240, 0.68);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.movie-generation-select {
+  min-width: 104px;
+  flex: 1;
+}
+
+.movie-generation-duration {
+  width: 126px;
+}
+
+.movie-generation-message {
+  padding: 10px 12px;
+  border: 1px solid rgba(34, 197, 94, 0.22);
+  border-radius: 8px;
+  background: rgba(34, 197, 94, 0.08);
+  color: rgba(220, 252, 231, 0.86);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.movie-generation-message.is-error {
+  border-color: rgba(248, 113, 113, 0.26);
+  background: rgba(248, 113, 113, 0.1);
+  color: #fecaca;
 }
 
 .movie-preview-modal .ant-modal-content {

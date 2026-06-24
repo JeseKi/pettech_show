@@ -143,6 +143,53 @@ class GlobalConfig(BaseSettings):
         title="示例外部 API Base URL",
     )
 
+    interactive_movie_s3_endpoint_url: str = Field(
+        default="",
+        title="互动电影 S3 Endpoint",
+    )
+
+    interactive_movie_s3_region_name: str = Field(
+        default="",
+        title="互动电影 S3 Region",
+    )
+
+    interactive_movie_s3_bucket: str = Field(
+        default="",
+        title="互动电影 S3 Bucket",
+    )
+
+    interactive_movie_s3_access_key_id: str = Field(
+        default="",
+        title="互动电影 S3 Access Key ID",
+    )
+
+    interactive_movie_s3_secret_access_key: str = Field(
+        default="",
+        title="互动电影 S3 Secret Access Key",
+    )
+
+    interactive_movie_s3_prefix: str = Field(
+        default="interactive-movie",
+        title="互动电影 S3 对象前缀",
+    )
+
+    interactive_movie_s3_public_base_url: str = Field(
+        default="",
+        title="互动电影 S3 公开访问 Base URL",
+    )
+
+    interactive_movie_s3_presign_expires_seconds: int = Field(
+        default=3600,
+        ge=60,
+        title="互动电影 S3 预签名 URL 有效秒数",
+    )
+
+    interactive_movie_max_video_upload_mb: int = Field(
+        default=200,
+        ge=1,
+        title="互动电影视频上传大小限制 MB",
+    )
+
     aiwiki_opencode_command: str = Field(
         default="opencode",
         title="AI Wiki OpenCode 命令",

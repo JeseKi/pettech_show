@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
 import {
@@ -13,6 +13,7 @@ import {
   Tag,
   Tooltip,
   Typography,
+  Upload,
 } from 'antd'
 import {
   BorderOuterOutlined,
@@ -27,12 +28,16 @@ import {
   PlusOutlined,
   PlayCircleOutlined,
   SaveOutlined,
+  UploadOutlined,
   UpOutlined,
   VideoCameraOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
 } from '@ant-design/icons'
 import { Link } from 'react-router-dom'
+import { getInteractiveMoviePromptTemplate, uploadInteractiveMovieVideo } from '../../lib/interactiveMovie'
+import type { PromptTemplate } from '../../lib/interactiveMovie'
+import { resolveErrorMessage } from '../../lib/errorMessage'
 import './InteractiveMoviePage.css'
 
 type SceneRole = 'start' | 'middle' | 'ending'
@@ -49,6 +54,7 @@ type SceneScript = {
   visualDescription: string
   lines: ScriptLine[]
   videoPrompt: string
+  promptParts?: VideoPromptParts
 }
 
 type SceneNode = {
@@ -60,6 +66,7 @@ type SceneNode = {
   media: {
     kind: 'image' | 'video' | 'placeholder'
     url?: string
+    posterUrl?: string
     status: 'empty' | 'mock' | 'ready'
   }
 }
@@ -77,6 +84,21 @@ type CanvasViewport = {
   x: number
   y: number
   zoom: number
+}
+
+type VideoPromptParts = {
+  subject: string
+  action: string
+  scene: string
+  camera: string
+  timeline: string
+  style: string
+  constraints: string
+}
+
+type SceneUploadState = {
+  status: 'idle' | 'uploading' | 'ready' | 'failed'
+  message?: string
 }
 
 type InteractiveMovieProject = {
@@ -132,6 +154,70 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 const uniqueId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
 
+const defaultPromptParts = (sceneTitle: string): VideoPromptParts => ({
+  subject: sceneTitle,
+  action: '',
+  scene: '',
+  camera: '电影级中景缓慢推近，浅景深',
+  timeline: '[0-2s] 建立场景和主体状态；[2-5s] 主体完成关键动作并留下悬念。',
+  style: '电影感，写实，低饱和，高对比，细腻光影',
+  constraints: '不出现文字水印，不切换主角，主体外观保持一致',
+})
+
+const buildVideoPrompt = (scene: SceneNode): string => {
+  const parts = scene.script.promptParts ?? defaultPromptParts(scene.title)
+  const sections = [
+    ['主体', parts.subject],
+    ['动作', parts.action || scene.script.synopsis],
+    ['场景', parts.scene || scene.script.visualDescription],
+    ['镜头', parts.camera],
+    ['时序', parts.timeline],
+    ['风格', parts.style],
+    ['约束', parts.constraints],
+  ]
+  return sections
+    .filter(([, value]) => value.trim())
+    .map(([label, value]) => `${label}：${value.trim()}`)
+    .join('\n')
+}
+
+const captureVideoPoster = (file: File): Promise<string> => new Promise((resolve, reject) => {
+  const objectUrl = URL.createObjectURL(file)
+  const video = document.createElement('video')
+  const cleanup = () => {
+    URL.revokeObjectURL(objectUrl)
+    video.removeAttribute('src')
+    video.load()
+  }
+  video.preload = 'metadata'
+  video.muted = true
+  video.playsInline = true
+  video.src = objectUrl
+
+  video.onloadeddata = () => {
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth || 1280
+      canvas.height = video.videoHeight || 720
+      const context = canvas.getContext('2d')
+      if (!context) {
+        throw new Error('无法创建视频封面')
+      }
+      context.drawImage(video, 0, 0, canvas.width, canvas.height)
+      const posterUrl = canvas.toDataURL('image/jpeg', 0.82)
+      cleanup()
+      resolve(posterUrl)
+    } catch (error) {
+      cleanup()
+      reject(error)
+    }
+  }
+  video.onerror = () => {
+    cleanup()
+    reject(new Error('无法读取视频第一帧'))
+  }
+})
+
 const createDefaultProject = (title = '互动电影草稿'): InteractiveMovieProject => {
   const startSceneId = uniqueId('scene-start')
   const nextSceneId = uniqueId('scene-next')
@@ -153,6 +239,15 @@ const createDefaultProject = (title = '互动电影草稿'): InteractiveMoviePro
           synopsis: '雨夜，主角在旧公寓门口收到一封没有署名的信。',
           visualDescription: '狭窄的老式公寓走廊，窗外下着雨，暖黄色楼道灯闪烁，地上有一封湿掉的信。',
           videoPrompt: 'cinematic rainy night apartment hallway, warm flickering light, mysterious envelope on the floor, slow push-in, suspense mood',
+          promptParts: {
+            subject: '年轻女性林夏站在老式公寓走廊，手里拿着一封湿掉的信',
+            action: '她迟疑地拆开信封，抬头看向走廊尽头',
+            scene: '雨夜，狭窄老公寓走廊，暖黄色灯光闪烁，地面潮湿',
+            camera: '电影级中景缓慢推近，浅景深，轻微手持感',
+            timeline: '[0-2s] 她发现门口的信；[2-5s] 她蹲下捡起信并拆开，神情紧张',
+            style: '悬疑短片，写实，低饱和，高对比，环境声紧张',
+            constraints: '不出现文字水印，不切换主角，不夸张恐怖',
+          },
           lines: [
             { id: uniqueId('line'), speaker: '林夏', text: '这封信……为什么会在我家门口？' },
           ],
@@ -168,6 +263,15 @@ const createDefaultProject = (title = '互动电影草稿'): InteractiveMoviePro
           synopsis: '主角拆开信后，隔壁空置已久的房间传来轻轻的敲门声。',
           visualDescription: '镜头贴近主角手中的信纸，字迹慢慢显现；远处传来敲门声，走廊尽头的门缝透出蓝光。',
           videoPrompt: 'close-up of wet paper letter, ink appearing slowly, empty hallway door with blue light leak, subtle horror, cinematic shallow depth of field',
+          promptParts: {
+            subject: '林夏站在走廊中央，手中拿着展开的信纸',
+            action: '她被身后的敲门声惊到，缓慢转身',
+            scene: '老公寓走廊尽头的空房间门缝透出蓝光，空气潮湿',
+            camera: '从信纸特写切到主角背影，随后缓慢拉远',
+            timeline: '[0-2s] 信纸字迹显现；[2-5s] 远处响起敲门声，主角缓慢转身',
+            style: '悬疑电影，冷暖光对比，克制恐怖，真实质感',
+            constraints: '不出现额外角色，不出现字幕水印，主角服装和上一场保持一致',
+          },
           lines: [
             { id: uniqueId('line'), speaker: '林夏', text: '可身后的门，已经响了。' },
           ],
@@ -227,6 +331,8 @@ export default function InteractiveMoviePage() {
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
   const [bottomToolbarCollapsed, setBottomToolbarCollapsed] = useState(false)
+  const [promptTemplate, setPromptTemplate] = useState<PromptTemplate | null>(null)
+  const [uploadBySceneId, setUploadBySceneId] = useState<Record<string, SceneUploadState>>({})
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewSceneId, setPreviewSceneId] = useState('')
   const [previewLineIndex, setPreviewLineIndex] = useState(0)
@@ -265,6 +371,14 @@ export default function InteractiveMoviePage() {
         || project.choices.some((choice, choiceIndex) => choice.toSceneId !== current.projects[index].choices[choiceIndex]?.toSceneId))
       return changed ? { ...current, projects: normalizedProjects } : current
     })
+  }, [])
+
+  useEffect(() => {
+    void getInteractiveMoviePromptTemplate()
+      .then(setPromptTemplate)
+      .catch(() => {
+        setPromptTemplate(null)
+      })
   }, [])
 
   const updateActiveProject = (updater: (project: InteractiveMovieProject) => InteractiveMovieProject) => {
@@ -451,6 +565,7 @@ export default function InteractiveMoviePage() {
         synopsis: '补充这个场景要发生的关键事件。',
         visualDescription: '描述画面、人物位置、镜头运动和情绪氛围。',
         videoPrompt: 'describe the cinematic shot, action, mood and camera movement',
+        promptParts: defaultPromptParts(`新场景 ${scenes.length + 1}`),
         lines: [{ id: uniqueId('line'), speaker: '角色', text: '新的剧情片段从这里开始。' }],
       },
     }
@@ -542,9 +657,75 @@ export default function InteractiveMoviePage() {
     setPreviewChoicesVisible(false)
   }
 
-  const saveDraft = () => {
+  const saveDraft = useCallback(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace))
     message.success('已保存到本地')
+  }, [message, workspace])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault()
+        event.stopPropagation()
+        if (event.repeat) return
+        saveDraft()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [saveDraft])
+
+  const uploadSceneVideo = async (scene: SceneNode, file: File) => {
+    setUploadBySceneId((current) => ({
+      ...current,
+      [scene.id]: { status: 'uploading', message: '正在截取第一帧' },
+    }))
+    try {
+      let posterUrl: string | undefined
+      try {
+        posterUrl = await captureVideoPoster(file)
+      } catch {
+        setUploadBySceneId((current) => ({
+          ...current,
+          [scene.id]: { status: 'uploading', message: '封面截取失败，继续上传视频' },
+        }))
+      }
+      setUploadBySceneId((current) => ({
+        ...current,
+        [scene.id]: { status: 'uploading', message: '视频上传中' },
+      }))
+      const uploaded = await uploadInteractiveMovieVideo(file)
+      if (!uploaded.url) {
+        setUploadBySceneId((current) => ({
+          ...current,
+          [scene.id]: { status: 'failed', message: '上传成功，但没有返回可播放的视频 URL' },
+        }))
+        message.warning('上传成功，但没有返回可播放的视频 URL')
+        return
+      }
+      updateScene(scene.id, (current) => ({
+        ...current,
+        media: {
+          ...current.media,
+          kind: 'video',
+          status: 'ready',
+          url: uploaded.url ?? undefined,
+          posterUrl,
+        },
+      }))
+      setUploadBySceneId((current) => ({
+        ...current,
+        [scene.id]: { status: 'ready', message: `已上传：${uploaded.filename}` },
+      }))
+      message.success('视频已上传')
+    } catch (error) {
+      const text = resolveErrorMessage(error)
+      setUploadBySceneId((current) => ({
+        ...current,
+        [scene.id]: { status: 'failed', message: text },
+      }))
+      message.error(text)
+    }
   }
 
   return (
@@ -735,15 +916,18 @@ export default function InteractiveMoviePage() {
               onWheel={(event) => event.stopPropagation()}
             >
               {selectedScene && (
-                <SceneEditor
-                  scene={selectedScene}
-                  outgoingChoices={choices.filter((choice) => choice.fromSceneId === selectedScene.id)}
-                  onChange={(updater) => updateScene(selectedScene.id, updater)}
-                  onAddLine={() => addLine(selectedScene.id)}
-                  onDeleteLine={(lineId) => deleteLine(selectedScene.id, lineId)}
-                  onSelectChoice={(choiceId) => setSelectedObject({ type: 'choice', id: choiceId })}
-                  onPreview={() => startPreview(selectedScene.id)}
-                />
+                  <SceneEditor
+                    scene={selectedScene}
+                    outgoingChoices={choices.filter((choice) => choice.fromSceneId === selectedScene.id)}
+                    promptTemplate={promptTemplate}
+                    uploadState={uploadBySceneId[selectedScene.id] ?? { status: 'idle' }}
+                    onChange={(updater) => updateScene(selectedScene.id, updater)}
+                    onAddLine={() => addLine(selectedScene.id)}
+                    onDeleteLine={(lineId) => deleteLine(selectedScene.id, lineId)}
+                    onSelectChoice={(choiceId) => setSelectedObject({ type: 'choice', id: choiceId })}
+                    onUploadVideo={(file) => void uploadSceneVideo(selectedScene, file)}
+                    onPreview={() => startPreview(selectedScene.id)}
+                  />
               )}
               {selectedChoice && (
                 <ChoiceEditor
@@ -843,24 +1027,48 @@ export default function InteractiveMoviePage() {
 function SceneEditor({
   scene,
   outgoingChoices,
+  promptTemplate,
+  uploadState,
   onChange,
   onAddLine,
   onDeleteLine,
   onSelectChoice,
+  onUploadVideo,
   onPreview,
 }: {
   scene: SceneNode
   outgoingChoices: ChoiceEdge[]
+  promptTemplate: PromptTemplate | null
+  uploadState: SceneUploadState
   onChange: (updater: (scene: SceneNode) => SceneNode) => void
   onAddLine: () => void
   onDeleteLine: (lineId: string) => void
   onSelectChoice: (choiceId: string) => void
+  onUploadVideo: (file: File) => void
   onPreview: () => void
 }) {
+  const promptParts = scene.script.promptParts ?? defaultPromptParts(scene.title)
+  const generatedPrompt = buildVideoPrompt(scene)
+  const isUploading = uploadState.status === 'uploading'
+  const [videoPreviewOpen, setVideoPreviewOpen] = useState(false)
+
   const updateScript = (script: Partial<SceneScript>) => {
     onChange((current) => ({
       ...current,
       script: { ...current.script, ...script },
+    }))
+  }
+
+  const updatePromptParts = (patch: Partial<VideoPromptParts>) => {
+    onChange((current) => ({
+      ...current,
+      script: {
+        ...current.script,
+        promptParts: {
+          ...(current.script.promptParts ?? defaultPromptParts(current.title)),
+          ...patch,
+        },
+      },
     }))
   }
 
@@ -901,10 +1109,55 @@ function SceneEditor({
 
       <section className="movie-panel-section">
         <Typography.Text className="movie-panel-label">画面占位</Typography.Text>
-        <div className="movie-panel-media">
-          <VideoCameraOutlined />
-          <span>视频 / 图片待生成</span>
+        <div className="movie-panel-media" tabIndex={0}>
+          {scene.media.posterUrl ? (
+            <img src={scene.media.posterUrl} alt={`${scene.title} 视频封面`} className="movie-panel-poster" />
+          ) : scene.media.url ? (
+            <video src={scene.media.url} muted preload="metadata" className="movie-panel-video" />
+          ) : (
+            <div className="movie-panel-media-empty">
+              <VideoCameraOutlined />
+              <span>视频 / 图片待生成</span>
+            </div>
+          )}
+          <div className="movie-panel-media-overlay">
+            <Upload
+              accept="video/*"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                onUploadVideo(file)
+                return Upload.LIST_IGNORE
+              }}
+            >
+              <Button icon={<UploadOutlined />} loading={isUploading}>
+                上传
+              </Button>
+            </Upload>
+            {scene.media.url && (
+              <Button icon={<PlayCircleOutlined />} onClick={() => setVideoPreviewOpen(true)}>
+                预览
+              </Button>
+            )}
+          </div>
         </div>
+        {uploadState.message && (
+          <div className={uploadState.status === 'failed' ? 'movie-generation-message is-error' : 'movie-generation-message'}>
+            {uploadState.message}
+          </div>
+        )}
+        <Modal
+          title={scene.title}
+          open={videoPreviewOpen}
+          footer={null}
+          centered
+          width={860}
+          onCancel={() => setVideoPreviewOpen(false)}
+          className="movie-video-preview-modal"
+        >
+          {scene.media.url && (
+            <video src={scene.media.url} controls autoPlay className="movie-video-preview-player" />
+          )}
+        </Modal>
       </section>
 
       <section className="movie-panel-section">
@@ -985,8 +1238,66 @@ function SceneEditor({
 
       <section className="movie-panel-section">
         <Typography.Text className="movie-panel-label">视频 Prompt</Typography.Text>
+        <div className="movie-prompt-template">
+          <Typography.Text className="movie-panel-label">结构化视频提示词</Typography.Text>
+          <div className="movie-prompt-tips">
+            {(promptTemplate?.sections ?? [
+              '主体：谁或什么是画面核心。',
+              '动作：主体正在做什么。',
+              '场景：空间、天气、道具、情绪氛围。',
+              '镜头：景别、机位、运镜。',
+              '时序：按秒描述关键动作变化。',
+              '风格：色彩、光线、材质和影片类型。',
+              '约束：不希望出现的内容。',
+            ]).map((item) => (
+              <span key={item}>{item}</span>
+            ))}
+          </div>
+        </div>
+        <Input
+          value={promptParts.subject}
+          onChange={(event) => updatePromptParts({ subject: event.target.value })}
+          placeholder="主体：例如，年轻女性林夏站在老式公寓走廊"
+        />
         <Input.TextArea
-          value={scene.script.videoPrompt}
+          value={promptParts.action}
+          autoSize={{ minRows: 2, maxRows: 4 }}
+          onChange={(event) => updatePromptParts({ action: event.target.value })}
+          placeholder="动作：主体做什么，尽量聚焦一组主要动作"
+        />
+        <Input.TextArea
+          value={promptParts.scene}
+          autoSize={{ minRows: 2, maxRows: 4 }}
+          onChange={(event) => updatePromptParts({ scene: event.target.value })}
+          placeholder="场景：空间、时代、天气、道具、情绪氛围"
+        />
+        <Input.TextArea
+          value={promptParts.camera}
+          autoSize={{ minRows: 2, maxRows: 4 }}
+          onChange={(event) => updatePromptParts({ camera: event.target.value })}
+          placeholder="镜头：景别、机位、运镜或镜头切换"
+        />
+        <Input.TextArea
+          value={promptParts.timeline}
+          autoSize={{ minRows: 2, maxRows: 4 }}
+          onChange={(event) => updatePromptParts({ timeline: event.target.value })}
+          placeholder="时序：例如 [0-2s] 建立场景；[2-5s] 完成关键动作"
+        />
+        <Input.TextArea
+          value={promptParts.style}
+          autoSize={{ minRows: 2, maxRows: 4 }}
+          onChange={(event) => updatePromptParts({ style: event.target.value })}
+          placeholder="风格：电影感、写实、低饱和、高对比、细腻光影"
+        />
+        <Input.TextArea
+          value={promptParts.constraints}
+          autoSize={{ minRows: 2, maxRows: 4 }}
+          onChange={(event) => updatePromptParts({ constraints: event.target.value })}
+          placeholder="约束：不出现文字水印，不切换主角，主体一致"
+        />
+        <Typography.Text className="movie-panel-label">最终 Prompt</Typography.Text>
+        <Input.TextArea
+          value={scene.script.videoPrompt || generatedPrompt}
           autoSize={{ minRows: 3, maxRows: 6 }}
           onChange={(event) => updateScript({ videoPrompt: event.target.value })}
         />
