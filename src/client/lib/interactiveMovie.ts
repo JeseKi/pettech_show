@@ -97,6 +97,16 @@ export async function patchInteractiveMovieProject<TDocument>(
   return response.data
 }
 
+export async function renameInteractiveMovieProject<TDocument>(
+  projectId: string,
+  title: string,
+): Promise<InteractiveMovieProjectDetail<TDocument>> {
+  const response = await api.patch<InteractiveMovieProjectDetail<TDocument>>(`/interactive-movie/projects/${projectId}/title`, {
+    title,
+  })
+  return response.data
+}
+
 export async function deleteInteractiveMovieProject(projectId: string): Promise<void> {
   await api.delete(`/interactive-movie/projects/${projectId}`)
 }

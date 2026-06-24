@@ -18,6 +18,7 @@ from .schemas import (
     InteractiveMovieProjectCreateIn,
     InteractiveMovieProjectOut,
     InteractiveMovieProjectPatchIn,
+    InteractiveMovieProjectRenameIn,
     InteractiveMovieProjectSummaryOut,
     InteractiveMovieSyncStateOut,
     PromptTemplateOut,
@@ -32,6 +33,7 @@ from .service import (
     patch_project,
     prompt_template,
     read_video_upload,
+    rename_project,
     upload_video,
 )
 
@@ -97,6 +99,20 @@ async def patch_movie_project(
     current_user: User = Security(get_current_user, scopes=[SCOPE_PROFILE_READ]),
 ):
     return await run_in_thread(lambda: patch_project(db, current_user, project_id, payload))
+
+
+@router.patch(
+    "/projects/{project_id}/title",
+    response_model=InteractiveMovieProjectOut,
+    summary="重命名互动电影项目",
+)
+async def rename_movie_project(
+    project_id: str,
+    payload: InteractiveMovieProjectRenameIn,
+    db: Session = Depends(get_db),
+    current_user: User = Security(get_current_user, scopes=[SCOPE_PROFILE_READ]),
+):
+    return await run_in_thread(lambda: rename_project(db, current_user, project_id, payload))
 
 
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除互动电影项目")

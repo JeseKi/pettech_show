@@ -1,0 +1,283 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+from http import HTTPStatus
+from typing import Any
+
+import httpx
+import pytest
+
+from src.server.auth import service as auth_service
+from src.server.auth.models import User
+from src.server.chat import service as chat_service
+from src.server.config import global_config
+
+
+def _create_user(test_db_session, username: str) -> User:
+    user = User(username=username, email=f"{username}@example.com")
+    user.set_password("Password123")
+    test_db_session.add(user)
+    test_db_session.commit()
+    test_db_session.refresh(user)
+    return user
+
+
+def _auth_headers(user: User) -> dict[str, str]:
+    token = auth_service.create_access_token(
+        {
+            "sub": user.username,
+            "scope": auth_service.get_user_scopes(user),
+            "tv": user.token_version,
+        }
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_chat_completion_requires_authentication(test_client):
+    resp = test_client.post(
+        "/api/chat/completions",
+        json={"messages": [{"role": "user", "content": "你好"}]},
+    )
+
+    assert resp.status_code == HTTPStatus.UNAUTHORIZED
+
+
+def test_chat_stream_requires_authentication(test_client):
+    resp = test_client.post(
+        "/api/chat/completions/stream",
+        json={"messages": [{"role": "user", "content": "你好"}]},
+    )
+
+    assert resp.status_code == HTTPStatus.UNAUTHORIZED
+
+
+def test_chat_completion_proxies_openai_compatible_response(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = _create_user(test_db_session, "chat_owner")
+    captured: dict[str, Any] = {}
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_api_base_url", "https://llm.example.com/v1")
+    monkeypatch.setattr(global_config, "chat_model", "test-model")
+    monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
+        captured["payload"] = payload
+        return {
+            "id": "chatcmpl-test",
+            "model": payload["model"],
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "这是后端代理返回的回复",
+                    }
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 8,
+                "total_tokens": 18,
+            },
+        }
+
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
+
+    resp = test_client.post(
+        "/api/chat/completions",
+        headers=_auth_headers(user),
+        json={
+            "messages": [{"role": "user", "content": "帮我做互动影游"}],
+            "temperature": 0.4,
+            "max_tokens": 500,
+        },
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    payload = resp.json()
+    assert payload["id"] == "chatcmpl-test"
+    assert payload["model"] == "test-model"
+    assert payload["role"] == "assistant"
+    assert payload["content"] == "这是后端代理返回的回复"
+    assert payload["usage"]["total_tokens"] == 18
+    assert captured["payload"]["temperature"] == 0.4
+    assert captured["payload"]["max_tokens"] == 500
+    assert captured["payload"]["messages"] == [
+        {"role": "system", "content": "系统提示"},
+        {"role": "user", "content": "帮我做互动影游"},
+    ]
+
+
+def test_chat_stream_proxies_openai_compatible_events(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = _create_user(test_db_session, "chat_stream_owner")
+    captured: dict[str, Any] = {}
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "stream-model")
+    monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+
+    async def fake_stream_chat_events(_config, payload: dict[str, Any]):
+        captured["payload"] = payload
+        yield "delta", {"content": "流"}
+        yield "delta", {"content": "式回复"}
+        yield "done", {}
+
+    monkeypatch.setattr(chat_service, "_stream_chat_events", fake_stream_chat_events)
+
+    resp = test_client.post(
+        "/api/chat/completions/stream",
+        headers=_auth_headers(user),
+        json={"messages": [{"role": "user", "content": "帮我流式生成"}]},
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    assert 'event: delta\ndata: {"content": "流"}' in resp.text
+    assert 'event: delta\ndata: {"content": "式回复"}' in resp.text
+    assert "event: done" in resp.text
+    assert captured["payload"]["model"] == "stream-model"
+    assert captured["payload"]["stream"] is True
+    assert captured["payload"]["messages"] == [
+        {"role": "system", "content": "系统提示"},
+        {"role": "user", "content": "帮我流式生成"},
+    ]
+
+
+def test_persistent_chat_stream_stores_server_messages_and_uses_server_history(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = _create_user(test_db_session, "chat_persistent_owner")
+    headers = _auth_headers(user)
+    captured_payloads: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "persistent-model")
+    monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+
+    async def fake_stream_chat_events(_config, payload: dict[str, Any]):
+        captured_payloads.append(payload)
+        yield "delta", {"content": "服务端"}
+        yield "delta", {"content": "回复"}
+        yield "done", {}
+
+    monkeypatch.setattr(chat_service, "_stream_chat_events", fake_stream_chat_events)
+
+    first_resp = test_client.post(
+        "/api/chat/sessions/stream",
+        headers=headers,
+        json={"content": "第一条消息"},
+    )
+    assert first_resp.status_code == HTTPStatus.OK, first_resp.text
+    assert first_resp.headers["content-type"].startswith("text/event-stream")
+    assert "event: session" in first_resp.text
+    assert 'event: delta\ndata: {"content": "服务端"}' in first_resp.text
+    assert 'event: delta\ndata: {"content": "回复"}' in first_resp.text
+    assert "event: done" in first_resp.text
+
+    sessions_resp = test_client.get("/api/chat/sessions", headers=headers)
+    assert sessions_resp.status_code == HTTPStatus.OK, sessions_resp.text
+    sessions = sessions_resp.json()
+    assert len(sessions) == 1
+    session_id = sessions[0]["id"]
+    assert sessions[0]["title"] == "第一条消息"
+    assert sessions[0]["message_count"] == 2
+
+    messages_resp = test_client.get(f"/api/chat/sessions/{session_id}/messages", headers=headers)
+    assert messages_resp.status_code == HTTPStatus.OK, messages_resp.text
+    assert [(item["role"], item["content"]) for item in messages_resp.json()] == [
+        ("user", "第一条消息"),
+        ("assistant", "服务端回复"),
+    ]
+    assert captured_payloads[0]["messages"] == [
+        {"role": "system", "content": "系统提示"},
+        {"role": "user", "content": "第一条消息"},
+    ]
+
+    second_resp = test_client.post(
+        "/api/chat/sessions/stream",
+        headers=headers,
+        json={"session_id": session_id, "content": "第二条消息"},
+    )
+    assert second_resp.status_code == HTTPStatus.OK, second_resp.text
+    assert captured_payloads[1]["messages"] == [
+        {"role": "system", "content": "系统提示"},
+        {"role": "user", "content": "第一条消息"},
+        {"role": "assistant", "content": "服务端回复"},
+        {"role": "user", "content": "第二条消息"},
+    ]
+
+    rename_resp = test_client.patch(
+        f"/api/chat/sessions/{session_id}",
+        headers=headers,
+        json={"title": "重命名会话"},
+    )
+    assert rename_resp.status_code == HTTPStatus.OK, rename_resp.text
+    assert rename_resp.json()["title"] == "重命名会话"
+
+    delete_resp = test_client.delete(f"/api/chat/sessions/{session_id}", headers=headers)
+    assert delete_resp.status_code == HTTPStatus.NO_CONTENT, delete_resp.text
+    assert test_client.get("/api/chat/sessions", headers=headers).json() == []
+
+
+def test_chat_stream_returns_sse_error_for_unread_upstream_status(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = _create_user(test_db_session, "chat_stream_404")
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "stream-model")
+
+    async def fake_stream_chat_events(_config, _payload: dict[str, Any]):
+        request = httpx.Request("POST", "https://llm.example.com/v1/chat/completions")
+        response = httpx.Response(
+            HTTPStatus.NOT_FOUND,
+            request=request,
+            stream=httpx.ByteStream(b'{"error":{"message":"missing route"}}'),
+        )
+        raise httpx.HTTPStatusError(
+            "upstream returned 404",
+            request=request,
+            response=response,
+        )
+        yield "done", {}
+
+    monkeypatch.setattr(chat_service, "_stream_chat_events", fake_stream_chat_events)
+
+    resp = test_client.post(
+        "/api/chat/completions/stream",
+        headers=_auth_headers(user),
+        json={"messages": [{"role": "user", "content": "测试 404"}]},
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert "event: error" in resp.text
+    assert "Chat API 上游错误：HTTP 404" in resp.text
+
+
+def test_chat_completion_requires_api_key(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = _create_user(test_db_session, "chat_no_key")
+    monkeypatch.setattr(global_config, "chat_api_key", "")
+
+    resp = test_client.post(
+        "/api/chat/completions",
+        headers=_auth_headers(user),
+        json={"messages": [{"role": "user", "content": "你好"}]},
+    )
+
+    assert resp.status_code == HTTPStatus.SERVICE_UNAVAILABLE
+    assert resp.json()["detail"] == "Chat API 未配置：请设置 CHAT_API_KEY"

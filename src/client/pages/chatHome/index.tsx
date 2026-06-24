@@ -1,0 +1,758 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { Alert, App, Avatar, Dropdown, Input, Typography, type MenuProps } from 'antd'
+import { DeleteOutlined, EditOutlined } from '@ant-design/icons'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import {
+  Film,
+  Home,
+  Image as ImageIcon,
+  LayoutGrid,
+  LogOut,
+  MessageSquareText,
+  NotebookPen,
+  Plus,
+  Send,
+  UserRound,
+  type LucideIcon,
+} from 'lucide-react'
+import { Button as LobeButton, Tag, ThemeProvider as LobeThemeProvider } from '@lobehub/ui'
+import { ChatInputAreaInner, ChatList, type ChatMessage, type RenderMessage } from '@lobehub/ui/chat'
+import { useAuth } from '../../hooks/useAuth'
+import {
+  deleteChatSession,
+  getChatSessionMessages,
+  listChatSessions,
+  renameChatSession,
+  streamChatSession,
+  type ChatMessageRecord,
+  type ChatSessionSummary,
+} from '../../lib/chat'
+import { resolveErrorMessage } from '../../lib/errorMessage'
+import { BRAND_LOGO_SRC, BRAND_NAME } from '../../lib/brand'
+import './ChatHomePage.css'
+
+type QuickPrompt = {
+  icon: LucideIcon
+  key: string
+  label: string
+  prompt: string
+}
+
+type Recommendation = {
+  className: string
+  description: string
+  key: string
+  tag: string
+  title: string
+  to?: string
+}
+
+const quickPrompts: QuickPrompt[] = [
+  {
+    icon: NotebookPen,
+    key: 'storyboard',
+    label: '构建剧本与分镜图',
+    prompt: '帮我为一条互动影游短片构建三幕剧本、关键选择节点和分镜图清单。',
+  },
+  {
+    icon: ImageIcon,
+    key: 'camera',
+    label: '探索图片运镜效果',
+    prompt: '帮我设计一组图片转视频的运镜效果，适合悬疑互动影游开场。',
+  },
+  {
+    icon: Film,
+    key: 'role',
+    label: '塑造写实原创角色',
+    prompt: '帮我塑造一个写实原创角色，包含身份、动机、造型和互动选择触发点。',
+  },
+]
+
+const recommendations: Recommendation[] = [
+  {
+    className: 'chat-card-workspace',
+    description: '打开节点画布、场景视频、选择跳转和互动预览。',
+    key: 'workspace',
+    tag: 'Workspace',
+    title: '互动影游工作空间',
+    to: '/interactive-movie',
+  },
+  {
+    className: 'chat-card-script',
+    description: '沉淀主线、分支和关键镜头，快速形成可制作草稿。',
+    key: 'script',
+    tag: 'Script',
+    title: '剧本与分镜启动板',
+  },
+  {
+    className: 'chat-card-role',
+    description: '整理角色设定、视觉关键词和每个选择背后的动机。',
+    key: 'role-kit',
+    tag: 'Role',
+    title: '原创角色设定包',
+  },
+]
+
+function createMessage(role: ChatMessage['role'], content: string): ChatMessage {
+  const now = Date.now()
+  const isUser = role === 'user'
+  return {
+    content,
+    createAt: now,
+    id: `${role}-${now}-${Math.random().toString(36).slice(2)}`,
+    meta: {
+      avatar: isUser ? '你' : 'AI',
+      backgroundColor: isUser ? '#4f46e5' : '#0ea5e9',
+      title: isUser ? '你' : 'ChatUI',
+    },
+    role,
+    updateAt: now,
+  }
+}
+
+function createMessageFromRecord(record: ChatMessageRecord): ChatMessage {
+  const createdAt = Date.parse(record.created_at)
+  const role = record.role === 'system' ? 'assistant' : record.role
+  return {
+    ...createMessage(role, record.content),
+    createAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+    id: record.id,
+    updateAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+  }
+}
+
+function sessionUpdatedAt(session: ChatSessionSummary): number {
+  const updatedAt = Date.parse(session.updated_at)
+  return Number.isFinite(updatedAt) ? updatedAt : 0
+}
+
+function NavItem({
+  active,
+  children,
+  icon,
+  to,
+}: {
+  active?: boolean
+  children: ReactNode
+  icon: ReactNode
+  to: string
+}) {
+  return (
+    <Link className={active ? 'chat-home-nav-item is-active' : 'chat-home-nav-item'} to={to}>
+      {icon}
+      <span>{children}</span>
+    </Link>
+  )
+}
+
+const renderChatMessage: RenderMessage = ({ editableContent }) => (
+  <div className="chat-message-markdown">
+    {editableContent}
+  </div>
+)
+
+const CHAT_HOME_PATH = '/dashboard'
+
+function chatSessionPath(sessionId: string): string {
+  return `${CHAT_HOME_PATH}/chat/${encodeURIComponent(sessionId)}`
+}
+
+export default function ChatHomePage() {
+  const navigate = useNavigate()
+  const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>()
+  const { message, modal } = App.useApp()
+  const { user, logout } = useAuth()
+  const [draft, setDraft] = useState('')
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [sessions, setSessions] = useState<ChatSessionSummary[]>([])
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [thinking, setThinking] = useState(false)
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const autoScrollRef = useRef(true)
+  const lastScrollYRef = useRef(0)
+  const streamAbortRef = useRef<AbortController | null>(null)
+  const streamFrameRef = useRef<number | null>(null)
+
+  const renderMessages = useMemo(() => ({ default: renderChatMessage }), [])
+  const orderedSessions = useMemo(
+    () => [...sessions].sort((a, b) => sessionUpdatedAt(b) - sessionUpdatedAt(a)),
+    [sessions],
+  )
+
+  useEffect(() => () => {
+    streamAbortRef.current?.abort()
+    if (streamFrameRef.current !== null) {
+      cancelAnimationFrame(streamFrameRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadSessions = async () => {
+      try {
+        const nextSessions = await listChatSessions()
+        if (cancelled) return
+
+        setSessions(nextSessions)
+        setDraft('')
+        setError(null)
+
+        if (!routeSessionId) {
+          setActiveSessionId(null)
+          setMessages([])
+          return
+        }
+
+        const routeSession = nextSessions.find((session) => session.id === routeSessionId)
+        if (!routeSession) {
+          setActiveSessionId(null)
+          setMessages([])
+          navigate(CHAT_HOME_PATH, { replace: true })
+          return
+        }
+
+        setActiveSessionId(routeSession.id)
+        const records = await getChatSessionMessages(routeSession.id)
+        if (cancelled) return
+        setMessages(records.map(createMessageFromRecord))
+        window.requestAnimationFrame(() => window.scrollTo({ top: 0 }))
+      } catch (err) {
+        if (cancelled) return
+        const text = resolveErrorMessage(err)
+        setError(text)
+        message.error(text)
+        if (routeSessionId) {
+          setActiveSessionId(null)
+          setMessages([])
+          navigate(CHAT_HOME_PATH, { replace: true })
+        }
+      }
+    }
+
+    void loadSessions()
+    return () => {
+      cancelled = true
+    }
+  }, [message, navigate, routeSessionId, user?.id, user?.username])
+
+  useEffect(() => {
+    const handleWindowScroll = () => {
+      const documentElement = document.documentElement
+      const currentScrollY = window.scrollY
+      const nearBottom = window.innerHeight + currentScrollY >= documentElement.scrollHeight - 120
+      const scrollingUp = currentScrollY < lastScrollYRef.current - 8
+
+      if (nearBottom) {
+        autoScrollRef.current = true
+      } else if (scrollingUp) {
+        autoScrollRef.current = false
+      }
+
+      lastScrollYRef.current = currentScrollY
+    }
+
+    lastScrollYRef.current = window.scrollY
+    window.addEventListener('scroll', handleWindowScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleWindowScroll)
+  }, [])
+
+  useEffect(() => {
+    if (!autoScrollRef.current) return
+    window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: thinking ? 'auto' : 'smooth',
+        block: 'end',
+      })
+    })
+  }, [messages, thinking])
+
+  const canSend = draft.trim().length > 0 && !thinking
+  const hasConversation = messages.length > 0
+
+  const startNewConversation = () => {
+    if (thinking) return
+    autoScrollRef.current = true
+    setActiveSessionId(null)
+    setMessages([])
+    setDraft('')
+    setError(null)
+    navigate(CHAT_HOME_PATH)
+  }
+
+  const selectSession = async (session: ChatSessionSummary) => {
+    if (thinking) return
+    autoScrollRef.current = true
+    if (session.id !== routeSessionId) {
+      navigate(chatSessionPath(session.id))
+      return
+    }
+    setActiveSessionId(session.id)
+    setDraft('')
+    setError(null)
+    try {
+      const records = await getChatSessionMessages(session.id)
+      setMessages(records.map(createMessageFromRecord))
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0 }))
+    } catch (err) {
+      const text = resolveErrorMessage(err)
+      setError(text)
+      message.error(text)
+    }
+  }
+
+  const confirmDeleteSession = (session: ChatSessionSummary) => {
+    if (thinking) return
+
+    modal.confirm({
+      title: `删除会话「${session.title}」？`,
+      content: '此操作无法撤回。会话记录会从服务端删除。',
+      okText: '确认删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      async onOk() {
+        try {
+          await deleteChatSession(session.id)
+          const remaining = sessions.filter((item) => item.id !== session.id)
+          setSessions(remaining)
+
+          if (activeSessionId === session.id) {
+            autoScrollRef.current = true
+            setActiveSessionId(null)
+            setMessages([])
+            setDraft('')
+            setError(null)
+            navigate(CHAT_HOME_PATH, { replace: true })
+            window.requestAnimationFrame(() => window.scrollTo({ top: 0 }))
+          }
+
+          message.success('会话已删除')
+        } catch (err) {
+          const text = resolveErrorMessage(err)
+          message.error(text)
+          throw err
+        }
+      },
+    })
+  }
+
+  const confirmRenameSession = (session: ChatSessionSummary) => {
+    if (thinking) return
+
+    let nextTitle = session.title
+    modal.confirm({
+      title: `重命名会话「${session.title}」`,
+      content: (
+        <Input
+          autoFocus
+          defaultValue={session.title}
+          maxLength={40}
+          onChange={(event) => {
+            nextTitle = event.target.value
+          }}
+          placeholder="输入会话名称"
+        />
+      ),
+      okText: '保存',
+      cancelText: '取消',
+      async onOk() {
+        try {
+          const title = nextTitle.trim() || '新对话'
+          const renamed = await renameChatSession(session.id, title)
+          setSessions((current) => current.map((item) => (
+            item.id === session.id ? renamed : item
+          )))
+          message.success('会话已重命名')
+        } catch (err) {
+          const text = resolveErrorMessage(err)
+          message.error(text)
+          throw err
+        }
+      },
+    })
+  }
+
+  const sendPrompt = async (value = draft) => {
+    const prompt = value.trim()
+    if (!prompt || thinking) return
+
+    const userMessage = createMessage('user', prompt)
+    const assistantMessage = createMessage('assistant', '正在整理创作简报...')
+    const nextMessages = [...messages, userMessage, assistantMessage]
+    const controller = new AbortController()
+    let streamedContent = ''
+    let pendingContent = ''
+    let sessionIdForRefresh = activeSessionId
+
+    const flushStreamedContent = () => {
+      streamFrameRef.current = null
+      if (!pendingContent) return
+
+      streamedContent += pendingContent
+      pendingContent = ''
+      const nextContent = streamedContent
+      setMessages((current) => current.map((item) => (
+        item.id === assistantMessage.id
+          ? { ...item, content: nextContent, updateAt: Date.now() }
+          : item
+      )))
+    }
+
+    const scheduleStreamFlush = () => {
+      if (streamFrameRef.current !== null) return
+      streamFrameRef.current = requestAnimationFrame(flushStreamedContent)
+    }
+
+    streamAbortRef.current = controller
+    autoScrollRef.current = true
+    setDraft('')
+    setError(null)
+    setMessages(nextMessages)
+    setThinking(true)
+    setStreamingMessageId(assistantMessage.id)
+
+    try {
+      await streamChatSession(
+        {
+          content: prompt,
+          session_id: activeSessionId ?? undefined,
+        },
+        {
+          onSession: (session) => {
+            sessionIdForRefresh = session.id
+            setActiveSessionId(session.id)
+            setSessions((current) => [
+              session,
+              ...current.filter((item) => item.id !== session.id),
+            ])
+          },
+          onDelta: (content) => {
+            pendingContent += content
+            scheduleStreamFlush()
+          },
+        },
+        controller.signal,
+      )
+
+      if (streamFrameRef.current !== null) {
+        cancelAnimationFrame(streamFrameRef.current)
+        flushStreamedContent()
+      }
+
+      if (!streamedContent.trim()) {
+        setMessages((current) => current.map((item) => (
+          item.id === assistantMessage.id
+            ? { ...item, content: '没有收到有效回复。', updateAt: Date.now() }
+            : item
+        )))
+      }
+
+      if (sessionIdForRefresh) {
+        const [nextSessions, records] = await Promise.all([
+          listChatSessions(),
+          getChatSessionMessages(sessionIdForRefresh),
+        ])
+        setSessions(nextSessions)
+        setActiveSessionId(sessionIdForRefresh)
+        setMessages(records.map(createMessageFromRecord))
+        if (sessionIdForRefresh !== routeSessionId) {
+          navigate(chatSessionPath(sessionIdForRefresh), { replace: activeSessionId === null })
+        }
+      }
+    } catch (err) {
+      if (controller.signal.aborted) return
+      const text = resolveErrorMessage(err)
+      setError(text)
+      message.error(text)
+      if (sessionIdForRefresh) {
+        try {
+          const [nextSessions, records] = await Promise.all([
+            listChatSessions(),
+            getChatSessionMessages(sessionIdForRefresh),
+          ])
+          setSessions(nextSessions)
+          setActiveSessionId(sessionIdForRefresh)
+          setMessages(records.map(createMessageFromRecord))
+          if (sessionIdForRefresh !== routeSessionId) {
+            navigate(chatSessionPath(sessionIdForRefresh), { replace: activeSessionId === null })
+          }
+        } catch {
+          if (!streamedContent) {
+            setMessages((current) => current.filter((item) => item.id !== assistantMessage.id))
+          }
+        }
+      } else if (!streamedContent) {
+        setMessages((current) => current.filter((item) => (
+          item.id !== userMessage.id && item.id !== assistantMessage.id
+        )))
+      }
+    } finally {
+      if (streamFrameRef.current !== null) {
+        cancelAnimationFrame(streamFrameRef.current)
+        streamFrameRef.current = null
+      }
+      if (streamAbortRef.current === controller) {
+        streamAbortRef.current = null
+      }
+      setThinking(false)
+      setStreamingMessageId(null)
+    }
+  }
+
+  const userMenu = useMemo<MenuProps['items']>(() => [
+    {
+      disabled: true,
+      key: 'current-user',
+      label: user?.username ?? '当前用户',
+    },
+    { type: 'divider' },
+    {
+      icon: <LogOut size={15} />,
+      key: 'logout',
+      label: '退出登录',
+    },
+  ], [user?.username])
+
+  const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
+    if (key !== 'logout') return
+    void logout().then(() => navigate('/login', { replace: true }))
+  }
+
+  const renderComposer = (floating = false) => (
+    <div className={floating ? 'chat-composer chat-composer-floating' : 'chat-composer'}>
+      <ChatInputAreaInner
+        className="chat-composer-input"
+        onInput={setDraft}
+        onSend={() => void sendPrompt()}
+        placeholder="开始一段灵感对话..."
+        value={draft}
+      />
+      <div className="chat-composer-actions">
+        <LobeButton
+          aria-label="发送"
+          className="chat-send-button"
+          disabled={!canSend}
+          icon={Send}
+          loading={thinking}
+          onClick={() => void sendPrompt()}
+          type="primary"
+        />
+      </div>
+    </div>
+  )
+
+  return (
+    <LobeThemeProvider
+      appearance="dark"
+      enableCustomFonts={false}
+      enableGlobalStyle={false}
+      style={{ minHeight: '100vh' }}
+    >
+      <main className="chat-home-page">
+        <header className="chat-home-nav">
+          <Link className="chat-home-brand" to="/dashboard" aria-label={`${BRAND_NAME} 首页`}>
+            <img src={BRAND_LOGO_SRC} alt={`${BRAND_NAME} Logo`} />
+            <span>{BRAND_NAME}</span>
+          </Link>
+
+          <nav className="chat-home-nav-items" aria-label="主导航">
+            <NavItem active icon={<Home size={17} />} to="/dashboard">
+              主页
+            </NavItem>
+            <NavItem icon={<LayoutGrid size={17} />} to="/interactive-movie">
+              工作空间
+            </NavItem>
+          </nav>
+
+          <div className="chat-home-user">
+            <Dropdown
+              menu={{ items: userMenu, onClick: handleUserMenuClick }}
+              placement="bottomRight"
+              trigger={['click']}
+            >
+              <button className="chat-home-user-button" type="button">
+                <UserRound size={16} />
+                <Typography.Text ellipsis style={{ color: 'inherit', maxWidth: 150 }}>
+                  {user?.username ?? '用户'}
+                </Typography.Text>
+                <Avatar size={30} style={{ background: '#2b2d31' }}>
+                  {(user?.username ?? 'U').slice(0, 1).toUpperCase()}
+                </Avatar>
+              </button>
+            </Dropdown>
+          </div>
+        </header>
+
+        <div className="chat-home-body">
+          <aside className="chat-session-sidebar" aria-label="聊天会话">
+            <button
+              className={activeSessionId ? 'chat-new-session-button' : 'chat-new-session-button is-active'}
+              disabled={thinking}
+              onClick={startNewConversation}
+              type="button"
+            >
+              <Plus size={16} />
+              <span>新对话</span>
+            </button>
+
+            {orderedSessions.length > 0 ? (
+              <div className="chat-session-list">
+                {orderedSessions.map((session) => (
+                  <div
+                    aria-disabled={thinking && session.id !== activeSessionId}
+                    className={session.id === activeSessionId ? 'chat-session-item is-active' : 'chat-session-item'}
+                    key={session.id}
+                    onClick={() => void selectSession(session)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        void selectSession(session)
+                      }
+                    }}
+                    role="button"
+                    tabIndex={thinking && session.id !== activeSessionId ? -1 : 0}
+                  >
+                    <button
+                      aria-label={`重命名会话 ${session.title}`}
+                      className="chat-session-rename"
+                      disabled={thinking}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        confirmRenameSession(session)
+                      }}
+                      type="button"
+                    >
+                      <EditOutlined />
+                    </button>
+                    <button
+                      aria-label={`删除会话 ${session.title}`}
+                      className="chat-session-delete"
+                      disabled={thinking}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        confirmDeleteSession(session)
+                      }}
+                      type="button"
+                    >
+                      <DeleteOutlined />
+                    </button>
+                    <MessageSquareText size={15} />
+                    <span>{session.title}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="chat-session-empty">暂无会话</p>
+            )}
+          </aside>
+
+          <div className={hasConversation ? 'chat-home-main has-conversation' : 'chat-home-main'}>
+          {!hasConversation && (
+            <section className="chat-home-hero">
+              <h1 className="chat-home-title">
+                <span className="chat-home-mark" aria-hidden />
+                <span>今天要做点什么?</span>
+              </h1>
+
+              {renderComposer()}
+
+              <div className="chat-home-prompts">
+                {quickPrompts.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <button
+                      className="chat-prompt-chip"
+                      key={item.key}
+                      type="button"
+                      onClick={() => {
+                        setDraft(item.prompt)
+                        setError(null)
+                      }}
+                    >
+                      <Icon size={15} />
+                      <span>{item.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          {(error || messages.length > 0) && (
+            <section className="chat-message-panel" aria-label="对话">
+              {error && (
+                <Alert
+                  message={error}
+                  showIcon
+                  style={{ marginBottom: messages.length > 0 ? 18 : 0 }}
+                  type="error"
+                />
+              )}
+              {messages.length > 0 && (
+                <ChatList
+                  className="chat-message-list"
+                  data={messages}
+                  loadingId={thinking ? streamingMessageId ?? undefined : undefined}
+                  renderMessages={renderMessages}
+                  showTitle
+                  text={{
+                    copy: '复制',
+                    copySuccess: '已复制',
+                    delete: '删除',
+                    edit: '编辑',
+                    regenerate: '重新生成',
+                  }}
+                  variant="bubble"
+                />
+              )}
+              <div ref={messagesEndRef} />
+            </section>
+          )}
+
+          {!hasConversation && (
+            <section className="chat-home-section">
+              <div className="chat-home-section-header">
+                <h2 className="chat-home-section-title">精选推荐</h2>
+                <Link className="chat-home-section-action" to="/interactive-movie">
+                  查看工作空间
+                </Link>
+              </div>
+
+              <div className="chat-recommend-grid">
+                {recommendations.map((item) => {
+                  const content = (
+                    <article className={`chat-recommend-card ${item.className}`}>
+                      <div className="chat-recommend-content">
+                        <Tag color="info" size="small" variant="filled">{item.tag}</Tag>
+                        <h3>{item.title}</h3>
+                        <p>{item.description}</p>
+                      </div>
+                    </article>
+                  )
+
+                  return item.to ? (
+                    <Link key={item.key} to={item.to}>
+                      {content}
+                    </Link>
+                  ) : (
+                    <div key={item.key}>{content}</div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          {hasConversation && (
+            <div className="chat-fixed-composer-shell">
+              {renderComposer(true)}
+            </div>
+          )}
+          </div>
+        </div>
+      </main>
+    </LobeThemeProvider>
+  )
+}

@@ -168,6 +168,32 @@ def test_project_create_sync_and_patch(test_client, test_db_session):
     assert conflict_resp.json()["detail"]["reason"] == "version_conflict"
 
 
+def test_project_rename_updates_title_version_and_hash(test_client, test_db_session):
+    user = _create_user(test_db_session, "interactive_movie_rename_owner")
+    headers = _auth_headers(user)
+    document = _project_document("movie-rename-a")
+
+    create_resp = test_client.post(
+        "/api/interactive-movie/projects",
+        headers=headers,
+        json={"title": document["title"], "document": document},
+    )
+    assert create_resp.status_code == HTTPStatus.CREATED, create_resp.text
+    created = create_resp.json()
+
+    rename_resp = test_client.patch(
+        "/api/interactive-movie/projects/movie-rename-a/title",
+        headers=headers,
+        json={"title": "重命名互动电影"},
+    )
+    assert rename_resp.status_code == HTTPStatus.OK, rename_resp.text
+    renamed = rename_resp.json()
+    assert renamed["title"] == "重命名互动电影"
+    assert renamed["document"]["title"] == "重命名互动电影"
+    assert renamed["version"] == created["version"] + 1
+    assert renamed["content_hash"] != created["content_hash"]
+
+
 class _FakeS3Client:
     def __init__(self) -> None:
         self.put_calls: list[dict[str, Any]] = []

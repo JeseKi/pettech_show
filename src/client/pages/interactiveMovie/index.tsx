@@ -43,6 +43,7 @@ import {
   getInteractiveMovieSyncState,
   listInteractiveMovieProjects,
   patchInteractiveMovieProject,
+  renameInteractiveMovieProject,
   uploadInteractiveMovieVideo,
 } from '../../lib/interactiveMovie'
 import type { InteractiveMovieProjectPatch, PromptTemplate } from '../../lib/interactiveMovie'
@@ -689,6 +690,67 @@ export default function InteractiveMoviePage() {
     })
   }
 
+  const confirmRenameProject = (project: InteractiveMovieProject) => {
+    let nextTitle = project.title
+    modal.confirm({
+      title: `重命名项目「${project.title}」`,
+      content: (
+        <Input
+          autoFocus
+          defaultValue={project.title}
+          maxLength={80}
+          onChange={(event) => {
+            nextTitle = event.target.value
+          }}
+          placeholder="输入项目名称"
+        />
+      ),
+      okText: '保存',
+      cancelText: '取消',
+      async onOk() {
+        const title = nextTitle.trim()
+        if (!title) {
+          message.warning('项目名称不能为空')
+          throw new Error('项目名称不能为空')
+        }
+
+        try {
+          const hasCloudCopy = Boolean(project.version && project.contentHash)
+          if (hasCloudCopy) {
+            const renamed = await renameInteractiveMovieProject<InteractiveMovieProject>(project.id, title)
+            const nextProject = withCloudMeta(
+              renamed.document,
+              renamed.version,
+              renamed.content_hash,
+              renamed.updated_at,
+            )
+            writeProjectReplica(cloudReplicaKey(nextProject.id), nextProject)
+            writeProjectReplica(draftReplicaKey(nextProject.id), nextProject)
+            setWorkspace((current) => ({
+              ...current,
+              projects: current.projects.map((item) => (item.id === nextProject.id ? nextProject : item)),
+            }))
+            setSyncMessage('项目已重命名')
+            message.success('项目已重命名')
+            return
+          }
+
+          const nextProject = { ...project, title, updatedAt: new Date().toISOString() }
+          writeProjectReplica(draftReplicaKey(nextProject.id), nextProject)
+          setWorkspace((current) => ({
+            ...current,
+            projects: current.projects.map((item) => (item.id === nextProject.id ? nextProject : item)),
+          }))
+          setSyncMessage('本地草稿已重命名')
+          message.success('项目已重命名')
+        } catch (error) {
+          message.error(resolveErrorMessage(error))
+          throw error
+        }
+      },
+    })
+  }
+
   const renameProject = (title: string) => {
     updateActiveProject((project) => ({ ...project, title }))
   }
@@ -1105,6 +1167,17 @@ export default function InteractiveMoviePage() {
                 }
               }}
             >
+              <button
+                type="button"
+                className="movie-project-rename"
+                aria-label={`重命名项目 ${project.title}`}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  confirmRenameProject(project)
+                }}
+              >
+                <EditOutlined />
+              </button>
               <button
                 type="button"
                 className="movie-project-delete"

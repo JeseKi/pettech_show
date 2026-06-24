@@ -98,6 +98,7 @@ def import_all_models() -> None:
         from src.server.daily_writer import models as _9  # noqa: F401
         from src.server.capability_jobs import models as _10  # noqa: F401
         from src.server.interactive_movie import models as _11  # noqa: F401
+        from src.server.chat import models as _12  # noqa: F401
     except Exception as e:
         logger.warning(f"导入模型时出现警告：{e}")
 

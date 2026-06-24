@@ -26,9 +26,9 @@ from .models import (
     utc_now,
 )
 from .schemas import (
-    InteractiveMovieDocumentIn,
     InteractiveMovieProjectCreateIn,
     InteractiveMovieProjectPatchIn,
+    InteractiveMovieProjectRenameIn,
     UploadedVideoOut,
 )
 
@@ -120,6 +120,23 @@ def patch_project(db: Session, user: User, project_id: str, payload: Interactive
     project.canvas_json = json.dumps(snapshot, ensure_ascii=False)
     project.version += 1
     project.updated_at = utc_now()
+    db.commit()
+    db.refresh(project)
+    return _project_out(db, project)
+
+
+def rename_project(db: Session, user: User, project_id: str, payload: InteractiveMovieProjectRenameIn) -> dict[str, Any]:
+    project = _get_owned_project(db, user, project_id)
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="项目名称不能为空")
+
+    project.title = title[:200]
+    project.version += 1
+    project.updated_at = utc_now()
+    snapshot = _snapshot(db, project)
+    project.content_hash = compute_content_hash(snapshot)
+    project.canvas_json = json.dumps(snapshot, ensure_ascii=False)
     db.commit()
     db.refresh(project)
     return _project_out(db, project)

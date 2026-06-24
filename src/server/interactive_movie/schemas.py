@@ -99,6 +99,10 @@ class InteractiveMovieProjectCreateIn(BaseModel):
     document: InteractiveMovieDocumentIn
 
 
+class InteractiveMovieProjectRenameIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
+
 class InteractiveMovieProjectSummaryOut(BaseModel):
     id: str
     title: str
