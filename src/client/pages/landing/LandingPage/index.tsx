@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../hooks/useAuth'
 import { CourseModal } from './CourseModal'
@@ -15,12 +16,16 @@ import { INTRO_UNLOCK_DELAY_MS, PROGRESSIVE_BLOCK_IDS, type Course, type Progres
 import { isProgressiveBlockId } from './utils'
 import './styles.css'
 
+const SCROLL_HINT_IDLE_MS = 3000
+
 export default function LandingPage() {
   const navigate = useNavigate()
   const { isAuthenticated } = useAuth()
   const [activeCourse, setActiveCourse] = useState<Course | null>(null)
   const [revealedBlockIds, setRevealedBlockIds] = useState<Set<ProgressiveBlockId>>(() => new Set())
+  const [showScrollHint, setShowScrollHint] = useState(false)
   const progressiveBlockRefs = useRef(new Map<ProgressiveBlockId, HTMLElement>())
+  const scrollHintTimerRef = useRef(0)
 
   const goToWorkspace = useCallback(() => {
     navigate(isAuthenticated ? '/dashboard' : '/login')
@@ -28,6 +33,10 @@ export default function LandingPage() {
 
   const goToConsult = useCallback(() => {
     document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
+  const scrollToNextViewport = useCallback(() => {
+    window.scrollBy({ top: Math.max(window.innerHeight * 0.72, 360), behavior: 'smooth' })
   }, [])
 
   const revealBlock = useCallback((id: ProgressiveBlockId) => {
@@ -144,6 +153,32 @@ export default function LandingPage() {
     }
   }, [revealBlock])
 
+  useEffect(() => {
+    const isNearPageBottom = () => (
+      window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 24
+    )
+    const scheduleScrollHint = () => {
+      if (scrollHintTimerRef.current) window.clearTimeout(scrollHintTimerRef.current)
+      setShowScrollHint(false)
+      if (isNearPageBottom()) return
+
+      scrollHintTimerRef.current = window.setTimeout(() => {
+        scrollHintTimerRef.current = 0
+        setShowScrollHint(!isNearPageBottom())
+      }, SCROLL_HINT_IDLE_MS)
+    }
+
+    scheduleScrollHint()
+    window.addEventListener('scroll', scheduleScrollHint, { passive: true })
+    window.addEventListener('resize', scheduleScrollHint)
+
+    return () => {
+      if (scrollHintTimerRef.current) window.clearTimeout(scrollHintTimerRef.current)
+      window.removeEventListener('scroll', scheduleScrollHint)
+      window.removeEventListener('resize', scheduleScrollHint)
+    }
+  }, [])
+
   return (
     <main className="landing-page">
       <LandingNav
@@ -187,6 +222,15 @@ export default function LandingPage() {
         goToConsult={goToConsult}
         isAuthenticated={isAuthenticated}
       />
+      <button
+        className="landing-scroll-hint"
+        data-visible={showScrollHint && activeCourse === null}
+        type="button"
+        onClick={scrollToNextViewport}
+        aria-label="向下滚动"
+      >
+        <ChevronDown size={24} />
+      </button>
       <CourseModal activeCourse={activeCourse} onClose={() => setActiveCourse(null)} />
     </main>
   )

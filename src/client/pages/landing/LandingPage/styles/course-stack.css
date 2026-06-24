@@ -25,10 +25,14 @@
   place-items: center;
 }
 
+.course-stack-mobile {
+  display: none;
+}
+
 .course-stack-scene {
   position: relative;
   display: grid;
-  width: 100vw;
+  width: 100%;
   height: 100svh;
   min-height: 620px;
   overflow: hidden;
@@ -284,4 +288,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@keyframes courseMobileCassette {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
 }

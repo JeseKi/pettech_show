@@ -4,7 +4,8 @@
   .landing-reveal,
   .landing-reveal .result-strip article,
   .landing-reveal .capability-grid article,
-  .landing-reveal .tool-flow__items article {
+  .landing-reveal .tool-flow__items article,
+  .course-stack-mobile {
     opacity: 1;
     filter: none;
     animation: none;
@@ -13,6 +14,11 @@
 
   .stack-course-card {
     transition: none;
+    will-change: auto;
+  }
+
+  .course-stack-mobile__track {
+    animation: none;
     will-change: auto;
   }
 
@@ -88,7 +94,7 @@
 @media (max-width: 680px) {
   .landing-nav {
     top: 10px;
-    width: calc(100vw - 20px);
+    width: calc(100% - 20px);
     min-height: 54px;
     padding: 8px;
   }
@@ -112,16 +118,154 @@
     flex-direction: column;
   }
 
-  .course-stack-content {
-    transform:
-      translate3d(-2vw, -1vh, 0)
-      rotateX(-10deg)
-      rotateY(18deg)
-      rotateZ(6deg);
+  .course-stack-scene {
+    display: none;
   }
 
   .course-stack-stage {
     min-height: 560px;
+  }
+
+  .course-stack-mobile {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    opacity: 0;
+    translate: 0 -50%;
+    animation: landingSupportIn 720ms cubic-bezier(0.16, 1, 0.3, 1) 420ms forwards;
+  }
+
+  .course-stack-mobile__viewport {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    padding: 24px 0 30px;
+  }
+
+  .course-stack-mobile__viewport::before,
+  .course-stack-mobile__viewport::after {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 2;
+    width: 18vw;
+    pointer-events: none;
+    content: "";
+  }
+
+  .course-stack-mobile__viewport::before {
+    left: 0;
+    background: linear-gradient(90deg, #050505, transparent);
+  }
+
+  .course-stack-mobile__viewport::after {
+    right: 0;
+    background: linear-gradient(270deg, #050505, transparent);
+  }
+
+  .course-stack-mobile__track {
+    display: flex;
+    width: max-content;
+    transform: translate3d(0, 0, 0);
+    will-change: transform;
+  }
+
+  .course-stack-mobile__group {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 14px;
+    padding-right: 14px;
+  }
+
+  .mobile-course-card {
+    position: relative;
+    display: grid;
+    grid-template-rows: auto auto auto 1fr auto;
+    width: min(78vw, 310px);
+    min-height: 248px;
+    padding: 15px;
+    overflow: hidden;
+    color: #f8faf3;
+    cursor: pointer;
+    background:
+      linear-gradient(150deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.035) 36%, rgba(0, 0, 0, 0.24)),
+      radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--course-accent), transparent 44%), transparent 38%),
+      rgb(30, 25, 30);
+    border: 1px solid color-mix(in srgb, var(--course-accent), white 10%);
+    border-radius: 10px;
+    box-shadow:
+      0 16px 40px rgba(0, 0, 0, 0.52),
+      0 0 28px color-mix(in srgb, var(--course-accent), transparent 84%);
+    outline: 0;
+  }
+
+  .mobile-course-card::before,
+  .mobile-course-card::after {
+    position: absolute;
+    pointer-events: none;
+    content: "";
+  }
+
+  .mobile-course-card::before {
+    inset: 0;
+    background:
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 22px),
+      linear-gradient(115deg, var(--course-accent), transparent 38%),
+      linear-gradient(315deg, rgba(255, 255, 255, 0.1), transparent 42%);
+    opacity: 0.16;
+  }
+
+  .mobile-course-card::after {
+    inset: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 7px;
+  }
+
+  .mobile-course-card:focus-visible {
+    border-color: var(--course-accent);
+    box-shadow:
+      0 20px 54px rgba(0, 0, 0, 0.6),
+      0 0 0 2px var(--course-accent);
+  }
+
+  .mobile-course-card > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .mobile-course-card h2 {
+    margin: 18px 0 0;
+    font-size: 26px;
+    line-height: 1.08;
+    letter-spacing: 0;
+  }
+
+  .mobile-course-card > p {
+    display: -webkit-box;
+    margin: 10px 0 0;
+    overflow: hidden;
+    color: rgba(245, 247, 241, 0.72);
+    font-size: 12px;
+    line-height: 1.5;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
+  .mobile-course-card footer {
+    display: block;
+    align-self: end;
+    margin-top: 10px;
+    padding-top: 9px;
+    overflow: hidden;
+    color: rgba(245, 247, 241, 0.72);
+    font-size: 11px;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   .stack-course-card {
@@ -157,7 +301,7 @@
   }
 
   .landing-section {
-    width: calc(100vw - 28px);
+    width: calc(100% - 28px);
     padding: 76px 0;
   }
 

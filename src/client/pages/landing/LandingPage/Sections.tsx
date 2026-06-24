@@ -169,10 +169,10 @@ export function ContactSection({
   )
 }
 
-export function LandingFooter({ progressiveClassName, registerProgressiveBlock }: LandingSectionProps) {
+export function LandingFooter({ registerProgressiveBlock }: LandingSectionProps) {
   return (
     <footer
-      className={progressiveClassName('footer', 'landing-footer')}
+      className="landing-footer"
       ref={registerProgressiveBlock('footer')}
       data-reveal-id="footer"
     >

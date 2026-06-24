@@ -1,11 +1,11 @@
-import { type KeyboardEvent, type PointerEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type KeyboardEvent, type PointerEvent, useCallback, useEffect, useRef, useState } from 'react'
 import {
   GLOBAL_GESTURE_SWIPE_EVENT,
   type GlobalGestureSwipeDetail,
 } from '../../../components/gesture/events'
+import { courses } from './courseData'
 import {
   COURSE_ORBIT_ANGLE_STEP,
-  COURSE_ORBIT_AUTOPLAY_DELAY_MS,
   COURSE_ORBIT_AUTOPLAY_SPEED,
   COURSE_ORBIT_DRAG_SENSITIVITY,
   COURSE_ORBIT_INERTIA_FRICTION,
@@ -25,6 +25,8 @@ type CourseStackProps = {
   autoPlayEnabled?: boolean
   onCourseOpen: (course: Course) => void
 }
+
+const MOBILE_CASSETTE_SPEED_PX_PER_MS = -0.05
 
 const renderCourseCardContent = (course: Course) => (
   <>
@@ -54,6 +56,18 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
   const autoScrollResumeTimerRef = useRef(0)
   const orbitInertiaFrameRef = useRef(0)
   const courseSceneRef = useRef<HTMLDivElement | null>(null)
+  const mobileCassetteFrameRef = useRef(0)
+  const mobileCassetteLastTimeRef = useRef(0)
+  const mobileCassetteTrackRef = useRef<HTMLDivElement | null>(null)
+  const mobileCassetteGroupRef = useRef<HTMLDivElement | null>(null)
+  const mobileClickSuppressedRef = useRef(false)
+  const mobileCassetteStateRef = useRef({
+    groupWidth: 0,
+    hasDragged: false,
+    isDragging: false,
+    lastX: 0,
+    offset: 0,
+  })
   const orbitPointerStateRef = useRef<CourseOrbitPointerState>({
     isDragging: false,
     hasDragged: false,
@@ -112,10 +126,7 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
     stopCourseOrbitAutoplay()
     if (!autoPlayEnabled) return
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    autoScrollResumeTimerRef.current = window.setTimeout(() => {
-      autoScrollResumeTimerRef.current = 0
-      startCourseOrbitAutoplay()
-    }, COURSE_ORBIT_AUTOPLAY_DELAY_MS)
+    startCourseOrbitAutoplay()
   }, [autoPlayEnabled, startCourseOrbitAutoplay, stopCourseOrbitAutoplay])
 
   const startCourseOrbitInertia = useCallback(() => {
@@ -210,6 +221,54 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
     onCourseOpen(course)
   }
 
+  const normalizeMobileCassetteOffset = useCallback((offset: number) => {
+    const groupWidth = mobileCassetteStateRef.current.groupWidth
+    if (groupWidth <= 0) return offset
+    return ((offset % groupWidth) + groupWidth) % groupWidth - groupWidth
+  }, [])
+
+  const applyMobileCassetteOffset = useCallback((offset: number) => {
+    const normalizedOffset = normalizeMobileCassetteOffset(offset)
+    mobileCassetteStateRef.current.offset = normalizedOffset
+    if (mobileCassetteTrackRef.current) {
+      mobileCassetteTrackRef.current.style.transform = `translate3d(${normalizedOffset}px, 0, 0)`
+    }
+  }, [normalizeMobileCassetteOffset])
+
+  const handleMobileCassettePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    const cassetteState = mobileCassetteStateRef.current
+    cassetteState.isDragging = true
+    cassetteState.hasDragged = false
+    cassetteState.lastX = event.clientX
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handleMobileCassettePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const cassetteState = mobileCassetteStateRef.current
+    if (!cassetteState.isDragging) return
+    const deltaX = event.clientX - cassetteState.lastX
+    cassetteState.lastX = event.clientX
+    cassetteState.hasDragged = cassetteState.hasDragged || Math.abs(deltaX) > 4
+    applyMobileCassetteOffset(cassetteState.offset + deltaX)
+  }
+
+  const releaseMobileCassettePointer = (event: PointerEvent<HTMLDivElement>) => {
+    const cassetteState = mobileCassetteStateRef.current
+    if (!cassetteState.isDragging) return
+    cassetteState.isDragging = false
+    mobileClickSuppressedRef.current = cassetteState.hasDragged
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  const handleMobileCourseOpen = (course: Course) => {
+    if (mobileClickSuppressedRef.current) {
+      mobileClickSuppressedRef.current = false
+      return
+    }
+    onCourseOpen(course)
+  }
+
   useEffect(() => {
     const updateViewportSize = () => {
       setViewportSize({ width: window.innerWidth, height: window.innerHeight })
@@ -266,6 +325,46 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
     return () => stopCourseOrbitAutoplay()
   }, [startCourseOrbitAutoplay, stopCourseOrbitAutoplay])
 
+  useEffect(() => {
+    const updateMobileCassetteWidth = () => {
+      const groupWidth = mobileCassetteGroupRef.current?.scrollWidth ?? 0
+      mobileCassetteStateRef.current.groupWidth = groupWidth
+      applyMobileCassetteOffset(mobileCassetteStateRef.current.offset)
+    }
+
+    updateMobileCassetteWidth()
+    window.addEventListener('resize', updateMobileCassetteWidth)
+    return () => window.removeEventListener('resize', updateMobileCassetteWidth)
+  }, [applyMobileCassetteOffset])
+
+  useEffect(() => {
+    if (!autoPlayEnabled) return undefined
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined
+
+    const animateMobileCassette = (timestamp: number) => {
+      const previousTimestamp = mobileCassetteLastTimeRef.current || timestamp
+      const deltaTime = Math.min(timestamp - previousTimestamp, 48)
+      mobileCassetteLastTimeRef.current = timestamp
+
+      if (!mobileCassetteStateRef.current.isDragging) {
+        applyMobileCassetteOffset(
+          mobileCassetteStateRef.current.offset + deltaTime * MOBILE_CASSETTE_SPEED_PX_PER_MS,
+        )
+      }
+
+      mobileCassetteFrameRef.current = window.requestAnimationFrame(animateMobileCassette)
+    }
+
+    mobileCassetteFrameRef.current = window.requestAnimationFrame(animateMobileCassette)
+    return () => {
+      if (mobileCassetteFrameRef.current) window.cancelAnimationFrame(mobileCassetteFrameRef.current)
+      mobileCassetteFrameRef.current = 0
+      mobileCassetteLastTimeRef.current = 0
+    }
+  }, [applyMobileCassetteOffset, autoPlayEnabled])
+
+  const mobileCourseRows = [courses, courses]
+
   return (
     <section className="course-stack-section" id="courses">
       <div className="course-stack-stage">
@@ -316,6 +415,40 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
             >
               {renderCourseCardContent(activeOrbitItem)}
             </article>
+          </div>
+        </div>
+        <div className="course-stack-mobile" aria-label="课程卡片">
+          <div
+            className="course-stack-mobile__viewport"
+            onPointerCancel={releaseMobileCassettePointer}
+            onPointerDown={handleMobileCassettePointerDown}
+            onPointerMove={handleMobileCassettePointerMove}
+            onPointerUp={releaseMobileCassettePointer}
+          >
+            <div className="course-stack-mobile__track" ref={mobileCassetteTrackRef}>
+              {mobileCourseRows.map((row, rowIndex) => (
+                <div
+                  className="course-stack-mobile__group"
+                  key={rowIndex}
+                  aria-hidden={rowIndex > 0}
+                  ref={rowIndex === 0 ? mobileCassetteGroupRef : undefined}
+                >
+                  {row.map((course) => (
+                    <article
+                      className="mobile-course-card"
+                      key={`${rowIndex}-${course.day}`}
+                      onClick={() => handleMobileCourseOpen(course)}
+                      onKeyDown={(event) => handleCourseKeyDown(event, course)}
+                      role="button"
+                      style={{ '--course-accent': course.accent } as CSSProperties}
+                      tabIndex={rowIndex === 0 ? 0 : -1}
+                    >
+                      {renderCourseCardContent(course)}
+                    </article>
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
