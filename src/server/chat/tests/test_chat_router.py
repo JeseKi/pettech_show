@@ -56,6 +56,56 @@ def _create_skill_taxonomy(test_client, admin: User):
     assert tag_resp.status_code == HTTPStatus.CREATED, tag_resp.text
 
 
+def _create_agent_taxonomy(test_client, admin: User):
+    category_resp = test_client.post(
+        "/api/agent-market/admin/categories",
+        headers=_auth_headers(admin),
+        json={
+            "id": "chat-agents",
+            "name": "聊天智能体",
+            "description": "聊天测试用智能体",
+            "visibility": "public",
+        },
+    )
+    assert category_resp.status_code == HTTPStatus.CREATED, category_resp.text
+    tag_resp = test_client.post(
+        "/api/agent-market/admin/tags",
+        headers=_auth_headers(admin),
+        json={
+            "id": "chat-agent",
+            "name": "聊天",
+        },
+    )
+    assert tag_resp.status_code == HTTPStatus.CREATED, tag_resp.text
+
+
+def _create_agent(
+    test_client,
+    admin: User,
+    *,
+    agent_id: str = "pet-content-agent",
+    system_prompt: str = "你是宠物内容智能体。",
+    visibility: str = "public",
+    category_id: str = "chat-agents",
+):
+    resp = test_client.post(
+        "/api/agent-market/admin/market",
+        headers=_auth_headers(admin),
+        json={
+            "id": agent_id,
+            "name": "宠物内容智能体",
+            "description": "处理宠物内容规划",
+            "category_id": category_id,
+            "tag_ids": ["chat-agent"] if category_id == "chat-agents" else [],
+            "visibility": visibility,
+            "system_prompt": system_prompt,
+            "change_note": "测试创建",
+        },
+    )
+    assert resp.status_code == HTTPStatus.CREATED, resp.text
+    return resp.json()
+
+
 def test_chat_completion_requires_authentication(test_client):
     resp = test_client.post(
         "/api/chat/completions",
@@ -316,6 +366,118 @@ def test_persistent_chat_injects_only_added_mentioned_skill(
     assert "系统提示" in system_content
     assert "# 宠物客户评价回复" in system_content
     assert "# 到店转化话术" not in system_content
+
+
+def test_persistent_chat_pins_agent_prompt_revision(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    admin = _create_user(test_db_session, "chat_agent_admin", role=UserRole.ADMIN)
+    user = _create_user(test_db_session, "chat_agent_user")
+    headers = _auth_headers(user)
+    _create_agent_taxonomy(test_client, admin)
+    _create_agent(
+        test_client,
+        admin,
+        agent_id="pet-content-agent",
+        system_prompt="版本一：你是宠物内容智能体。",
+    )
+    captured_payloads: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "agent-model")
+
+    async def fake_stream_chat_events(_config, payload: dict[str, Any]):
+        captured_payloads.append(payload)
+        yield "delta", {"content": "已按 Agent 回复"}
+        yield "done", {}
+
+    monkeypatch.setattr(chat_service, "_stream_chat_events", fake_stream_chat_events)
+
+    first_resp = test_client.post(
+        "/api/chat/sessions/stream",
+        headers=headers,
+        json={"agent_id": "pet-content-agent", "content": "第一条"},
+    )
+    assert first_resp.status_code == HTTPStatus.OK, first_resp.text
+    sessions = test_client.get("/api/chat/sessions", headers=headers).json()
+    session_id = sessions[0]["id"]
+    assert sessions[0]["agent_id"] == "pet-content-agent"
+    assert captured_payloads[0]["messages"][0]["content"] == "版本一：你是宠物内容智能体。"
+
+    update_resp = test_client.patch(
+        "/api/agent-market/admin/market/pet-content-agent",
+        headers=_auth_headers(admin),
+        json={
+            "system_prompt": "版本二：你是宠物内容智能体，必须输出执行清单。",
+            "change_note": "更新 Prompt",
+        },
+    )
+    assert update_resp.status_code == HTTPStatus.OK, update_resp.text
+
+    second_resp = test_client.post(
+        "/api/chat/sessions/stream",
+        headers=headers,
+        json={"session_id": session_id, "agent_id": "pet-content-agent", "content": "第二条"},
+    )
+    assert second_resp.status_code == HTTPStatus.OK, second_resp.text
+    assert captured_payloads[1]["messages"][0]["content"] == "版本一：你是宠物内容智能体。"
+
+    third_resp = test_client.post(
+        "/api/chat/sessions/stream",
+        headers=headers,
+        json={"agent_id": "pet-content-agent", "content": "新会话"},
+    )
+    assert third_resp.status_code == HTTPStatus.OK, third_resp.text
+    assert captured_payloads[2]["messages"][0]["content"] == "版本二：你是宠物内容智能体，必须输出执行清单。"
+
+
+def test_regular_user_cannot_select_admin_only_agent_for_chat(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    admin = _create_user(test_db_session, "chat_owner_agent_admin", role=UserRole.ADMIN)
+    user = _create_user(test_db_session, "chat_owner_agent_user")
+    owner_category_resp = test_client.post(
+        "/api/agent-market/admin/categories",
+        headers=_auth_headers(admin),
+        json={
+            "id": "owner-chat-agents",
+            "name": "老板聊天",
+            "description": "老板专属",
+            "visibility": "admin",
+        },
+    )
+    assert owner_category_resp.status_code == HTTPStatus.CREATED, owner_category_resp.text
+    _create_agent(
+        test_client,
+        admin,
+        agent_id="owner-chat-agent",
+        system_prompt="你是老板经营智能体。",
+        visibility="admin",
+        category_id="owner-chat-agents",
+    )
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "agent-model")
+
+    async def fake_stream_chat_events(_config, _payload: dict[str, Any]):
+        yield "delta", {"content": "不应执行"}
+        yield "done", {}
+
+    monkeypatch.setattr(chat_service, "_stream_chat_events", fake_stream_chat_events)
+
+    resp = test_client.post(
+        "/api/chat/sessions/stream",
+        headers=_auth_headers(user),
+        json={"agent_id": "owner-chat-agent", "content": "经营分析"},
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert "event: error" in resp.text
+    assert "智能体不存在或不可见" in resp.text
 
 
 def test_chat_stream_returns_sse_error_for_unread_upstream_status(

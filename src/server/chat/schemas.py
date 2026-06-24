@@ -17,6 +17,7 @@ class ChatMessageIn(BaseModel):
 
 class ChatCompletionIn(BaseModel):
     messages: list[ChatMessageIn] = Field(..., min_length=1, max_length=30)
+    agent_id: str | None = Field(default=None, min_length=2, max_length=80)
     model: str | None = Field(default=None, max_length=100)
     temperature: float | None = Field(default=None, ge=0, le=2)
     max_tokens: int | None = Field(default=None, ge=1, le=32_000)
@@ -40,6 +41,9 @@ class ChatCompletionOut(BaseModel):
 class ChatSessionSummaryOut(BaseModel):
     id: str
     title: str
+    agent_id: str | None = None
+    agent_revision_id: str | None = None
+    agent_name: str | None = None
     created_at: str
     updated_at: str
     message_count: int = 0
@@ -58,6 +62,7 @@ class ChatSessionRenameIn(BaseModel):
 
 class ChatSessionStreamIn(BaseModel):
     session_id: str | None = Field(default=None, max_length=80)
+    agent_id: str | None = Field(default=None, min_length=2, max_length=80)
     content: str = Field(..., min_length=1, max_length=20_000)
     model: str | None = Field(default=None, max_length=100)
     temperature: float | None = Field(default=None, ge=0, le=2)

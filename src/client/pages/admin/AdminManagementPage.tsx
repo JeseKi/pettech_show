@@ -7,6 +7,7 @@ import ScopeManagementPage from './ScopeManagementPage'
 import OAuthClientManagementPage from './OAuthClientManagementPage'
 import AiwikiAuditPage from './AiwikiAuditPage'
 import SkillMarketManagementPage from './SkillMarketManagementPage'
+import AgentMarketManagementPage from './AgentMarketManagementPage'
 
 const tabItems = [
   {
@@ -58,6 +59,16 @@ const tabItems = [
       </span>
     ),
     children: <OAuthClientManagementPage />,
+  },
+  {
+    key: 'agent-market',
+    label: (
+      <span>
+        <AppstoreAddOutlined />
+        Agent 市场
+      </span>
+    ),
+    children: <AgentMarketManagementPage />,
   },
   {
     key: 'skill-market',

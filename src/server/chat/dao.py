@@ -18,11 +18,28 @@ class ChatDAO(BaseDAO):
         super().__init__(db_session)
 
     def create_session(self, *, owner_user_id: int, title: str) -> ChatSession:
+        return self.create_session_with_agent(
+            owner_user_id=owner_user_id,
+            title=title,
+            agent_id="zhongying-advertising",
+            agent_revision_id="apr-zhongying-advertising-v1",
+        )
+
+    def create_session_with_agent(
+        self,
+        *,
+        owner_user_id: int,
+        title: str,
+        agent_id: str,
+        agent_revision_id: str,
+    ) -> ChatSession:
         now = utc_now()
         session = ChatSession(
             id=f"chat-{uuid4().hex}",
             owner_user_id=owner_user_id,
             title=title[:100] or "新对话",
+            agent_id=agent_id,
+            agent_revision_id=agent_revision_id,
             created_at=now,
             updated_at=now,
         )

@@ -10,6 +10,7 @@ export interface ChatMessagePayload {
 
 export interface ChatCompletionPayload {
   messages: ChatMessagePayload[]
+  agent_id?: string
   model?: string
   temperature?: number
   max_tokens?: number
@@ -38,6 +39,9 @@ export interface ChatStreamHandlers {
 export interface ChatSessionSummary {
   id: string
   title: string
+  agent_id: string | null
+  agent_revision_id: string | null
+  agent_name: string | null
   created_at: string
   updated_at: string
   message_count: number
@@ -52,6 +56,7 @@ export interface ChatMessageRecord {
 
 export interface ChatSessionStreamPayload {
   session_id?: string
+  agent_id?: string
   content: string
   model?: string
   temperature?: number
@@ -227,6 +232,9 @@ async function readSseStream(
         handlers.onSession?.({
           id: data.id,
           title: data.title,
+          agent_id: typeof data.agent_id === 'string' ? data.agent_id : null,
+          agent_revision_id: typeof data.agent_revision_id === 'string' ? data.agent_revision_id : null,
+          agent_name: typeof data.agent_name === 'string' ? data.agent_name : null,
           created_at: data.created_at,
           updated_at: data.updated_at,
           message_count: typeof data.message_count === 'number' ? data.message_count : 0,

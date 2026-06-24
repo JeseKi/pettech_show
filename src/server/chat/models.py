@@ -26,6 +26,13 @@ class ChatSession(Base):
         index=True,
     )
     title: Mapped[str] = mapped_column(String(100), nullable=False)
+    agent_id: Mapped[str] = mapped_column(String(80), nullable=False, default="zhongying-advertising", index=True)
+    agent_revision_id: Mapped[str] = mapped_column(
+        String(80),
+        nullable=False,
+        default="apr-zhongying-advertising-v1",
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 

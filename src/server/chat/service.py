@@ -13,6 +13,11 @@ from loguru import logger
 from sqlalchemy.orm import Session
 
 from src.server.agent_skills.service import build_mentioned_skill_context
+from src.server.agent_market.service import (
+    agent_label_for_session,
+    resolve_agent_for_new_chat,
+    resolve_pinned_agent_for_chat,
+)
 from src.server.auth.models import User
 from src.server.config import GlobalConfig, global_config
 
@@ -38,10 +43,12 @@ async def create_chat_completion(
     config: GlobalConfig = global_config,
 ) -> ChatCompletionOut:
     skill_context = _skill_context_from_payload(db, user, payload)
+    agent_prompt = _agent_prompt_from_payload(db, user, payload)
     model, upstream_payload = _build_upstream_payload(
         payload,
         config,
         stream=False,
+        agent_system_prompt=agent_prompt,
         extra_system_context=skill_context,
     )
     data = await _post_chat_completion(config, upstream_payload)
@@ -55,10 +62,12 @@ def stream_chat_completion(
     config: GlobalConfig = global_config,
 ) -> AsyncIterator[str]:
     skill_context = _skill_context_from_payload(db, user, payload)
+    agent_prompt = _agent_prompt_from_payload(db, user, payload)
     _, upstream_payload = _build_upstream_payload(
         payload,
         config,
         stream=True,
+        agent_system_prompt=agent_prompt,
         extra_system_context=skill_context,
     )
     return _stream_sse_events(config, upstream_payload)
@@ -67,7 +76,7 @@ def stream_chat_completion(
 def list_chat_sessions(db: Session, user: User) -> list[ChatSessionSummaryOut]:
     dao = ChatDAO(db)
     return [
-        _session_summary_out(session, dao.count_messages(owner_user_id=user.id, session_id=session.id))
+        _session_summary_out(db, session, dao.count_messages(owner_user_id=user.id, session_id=session.id))
         for session in dao.list_sessions(owner_user_id=user.id)
     ]
 
@@ -90,7 +99,7 @@ def rename_chat_session(
     session = dao.rename_session(owner_user_id=user.id, session_id=session_id, title=payload.title.strip())
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
-    return _session_summary_out(session, dao.count_messages(owner_user_id=user.id, session_id=session.id))
+    return _session_summary_out(db, session, dao.count_messages(owner_user_id=user.id, session_id=session.id))
 
 
 def delete_chat_session(db: Session, user: User, session_id: str) -> None:
@@ -122,8 +131,31 @@ async def stream_persistent_chat_session(
         if not session:
             yield _sse_event("error", {"message": "会话不存在"})
             return
+        if payload.agent_id and payload.agent_id != session.agent_id:
+            yield _sse_event("error", {"message": "已有会话不能切换智能体，请新建对话"})
+            return
+        try:
+            agent_context = resolve_pinned_agent_for_chat(
+                db,
+                user,
+                session.agent_id,
+                session.agent_revision_id,
+            )
+        except HTTPException as exc:
+            yield _sse_event("error", {"message": str(exc.detail)})
+            return
     else:
-        session = dao.create_session(owner_user_id=user.id, title=_session_title_from_prompt(prompt))
+        try:
+            agent_context = resolve_agent_for_new_chat(db, user, payload.agent_id)
+        except HTTPException as exc:
+            yield _sse_event("error", {"message": str(exc.detail)})
+            return
+        session = dao.create_session_with_agent(
+            owner_user_id=user.id,
+            title=_session_title_from_prompt(prompt),
+            agent_id=agent_context.agent_id,
+            agent_revision_id=agent_context.revision_id,
+        )
 
     dao.append_message(
         owner_user_id=user.id,
@@ -139,6 +171,7 @@ async def stream_persistent_chat_session(
             ChatMessageIn(role=_message_role(message.role), content=message.content)
             for message in messages[-30:]
         ],
+        agent_id=agent_context.agent_id,
         model=payload.model,
         temperature=payload.temperature,
         max_tokens=payload.max_tokens,
@@ -147,9 +180,11 @@ async def stream_persistent_chat_session(
         completion_payload,
         config,
         stream=True,
+        agent_system_prompt=agent_context.system_prompt,
         extra_system_context=skill_context,
     )
     yield _sse_event("session", _session_summary_out(
+        db,
         session,
         dao.count_messages(owner_user_id=user.id, session_id=session.id),
     ).model_dump())
@@ -206,13 +241,19 @@ def _build_upstream_payload(
     config: GlobalConfig,
     *,
     stream: bool,
+    agent_system_prompt: str | None = None,
     extra_system_context: str = "",
 ) -> tuple[str, dict[str, Any]]:
     model = _resolve_chat_model(payload.model, config)
 
     upstream_payload: dict[str, Any] = {
         "model": model,
-        "messages": _build_messages(payload, config, extra_system_context=extra_system_context),
+        "messages": _build_messages(
+            payload,
+            config,
+            agent_system_prompt=agent_system_prompt,
+            extra_system_context=extra_system_context,
+        ),
         "temperature": (
             payload.temperature
             if payload.temperature is not None
@@ -250,12 +291,18 @@ def _build_messages(
     payload: ChatCompletionIn,
     config: GlobalConfig,
     *,
+    agent_system_prompt: str | None = None,
     extra_system_context: str = "",
 ) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
+    base_system_prompt = (
+        agent_system_prompt.strip()
+        if isinstance(agent_system_prompt, str) and agent_system_prompt.strip()
+        else config.chat_system_prompt.strip()
+    )
     system_parts = [
         part
-        for part in (config.chat_system_prompt.strip(), extra_system_context.strip())
+        for part in (base_system_prompt, extra_system_context.strip())
         if part
     ]
     if system_parts:
@@ -281,6 +328,16 @@ def _skill_context_from_payload(
         if message.role == "user"
     )
     return build_mentioned_skill_context(db, user, prompt_text)
+
+
+def _agent_prompt_from_payload(
+    db: Session | None,
+    user: User | None,
+    payload: ChatCompletionIn,
+) -> str | None:
+    if db is None or user is None:
+        return None
+    return resolve_agent_for_new_chat(db, user, payload.agent_id).system_prompt
 
 
 async def _post_chat_completion(
@@ -503,10 +560,13 @@ def _upstream_error_detail(response: httpx.Response) -> str:
     return f"HTTP {response.status_code}"
 
 
-def _session_summary_out(session: ChatSession, message_count: int) -> ChatSessionSummaryOut:
+def _session_summary_out(db: Session, session: ChatSession, message_count: int) -> ChatSessionSummaryOut:
     return ChatSessionSummaryOut(
         id=session.id,
         title=session.title,
+        agent_id=session.agent_id,
+        agent_revision_id=session.agent_revision_id,
+        agent_name=agent_label_for_session(db, session.agent_id),
         created_at=_iso(session.created_at),
         updated_at=_iso(session.updated_at),
         message_count=message_count,
