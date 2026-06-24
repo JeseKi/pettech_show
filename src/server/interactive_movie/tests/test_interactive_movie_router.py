@@ -91,6 +91,83 @@ def test_upload_scene_video_rejects_non_video(
     assert resp.json()["detail"] == "只支持上传视频文件"
 
 
+def test_project_create_sync_and_patch(test_client, test_db_session):
+    user = _create_user(test_db_session, "interactive_movie_project_owner")
+    headers = _auth_headers(user)
+    document = _project_document("movie-cloud-a")
+
+    create_resp = test_client.post(
+        "/api/interactive-movie/projects",
+        headers=headers,
+        json={"title": document["title"], "document": document},
+    )
+    assert create_resp.status_code == HTTPStatus.CREATED, create_resp.text
+    created = create_resp.json()
+    assert created["version"] == 1
+    assert created["content_hash"].startswith("sha256:")
+    assert created["document"]["scenes"][0]["title"] == "开场"
+
+    sync_resp = test_client.get(
+        "/api/interactive-movie/projects/movie-cloud-a/sync-state",
+        headers=headers,
+    )
+    assert sync_resp.status_code == HTTPStatus.OK, sync_resp.text
+    assert sync_resp.json()["content_hash"] == created["content_hash"]
+
+    patch_resp = test_client.patch(
+        "/api/interactive-movie/projects/movie-cloud-a",
+        headers=headers,
+        json={
+            "base_version": created["version"],
+            "base_hash": created["content_hash"],
+            "project": {"title": "云端互动电影"},
+            "scenes": {
+                "upsert": [
+                    {
+                        "id": "scene-a",
+                        "title": "开场新版",
+                        "positionX": 120,
+                    }
+                ],
+                "delete": [],
+            },
+            "choices": {"upsert": [], "delete": []},
+            "script_lines": {
+                "upsert": [{"id": "line-a", "sceneId": "scene-a", "text": "新的台词"}],
+                "delete": [],
+            },
+            "viewport": {"zoom": 0.8},
+            "selected_object": {"type": "scene", "id": "scene-a"},
+        },
+    )
+    assert patch_resp.status_code == HTTPStatus.OK, patch_resp.text
+    patched = patch_resp.json()
+    assert patched["title"] == "云端互动电影"
+    assert patched["version"] == 2
+    assert patched["content_hash"] != created["content_hash"]
+    assert patched["document"]["scenes"][0]["title"] == "开场新版"
+    assert patched["document"]["scenes"][0]["position"]["x"] == 120
+    assert patched["document"]["scenes"][0]["script"]["lines"][0]["text"] == "新的台词"
+    assert patched["document"]["viewport"]["zoom"] == 0.8
+
+    conflict_resp = test_client.patch(
+        "/api/interactive-movie/projects/movie-cloud-a",
+        headers=headers,
+        json={
+            "base_version": created["version"],
+            "base_hash": created["content_hash"],
+            "project": {"title": "过期保存"},
+            "scenes": {"upsert": [], "delete": []},
+            "choices": {"upsert": [], "delete": []},
+            "script_lines": {"upsert": [], "delete": []},
+            "viewport": {},
+            "selected_object": {},
+        },
+    )
+    assert conflict_resp.status_code == HTTPStatus.CONFLICT
+    assert conflict_resp.json()["detail"]["reason"] == "version_conflict"
+
+
 class _FakeS3Client:
     def __init__(self) -> None:
         self.put_calls: list[dict[str, Any]] = []
@@ -100,3 +177,30 @@ class _FakeS3Client:
 
     def generate_presigned_url(self, *_args: Any, **_kwargs: Any) -> str:
         return "https://signed.example.com/video.mp4?signature=test"
+
+
+def _project_document(project_id: str) -> dict[str, Any]:
+    return {
+        "id": project_id,
+        "title": "云端草稿",
+        "updatedAt": "2026-06-24T00:00:00+00:00",
+        "selectedObject": {"type": "scene", "id": "scene-a"},
+        "viewport": {"x": 10, "y": 20, "zoom": 1},
+        "scenes": [
+            {
+                "id": "scene-a",
+                "title": "开场",
+                "role": "start",
+                "position": {"x": 0, "y": 0},
+                "media": {"kind": "placeholder", "status": "mock"},
+                "script": {
+                    "synopsis": "摘要",
+                    "visualDescription": "画面",
+                    "videoPrompt": "prompt",
+                    "promptParts": {"subject": "主角"},
+                    "lines": [{"id": "line-a", "speaker": "角色", "text": "台词"}],
+                },
+            }
+        ],
+        "choices": [],
+    }

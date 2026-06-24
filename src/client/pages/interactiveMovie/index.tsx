@@ -35,8 +35,17 @@ import {
   ZoomOutOutlined,
 } from '@ant-design/icons'
 import { Link } from 'react-router-dom'
-import { getInteractiveMoviePromptTemplate, uploadInteractiveMovieVideo } from '../../lib/interactiveMovie'
-import type { PromptTemplate } from '../../lib/interactiveMovie'
+import {
+  createInteractiveMovieProject,
+  deleteInteractiveMovieProject,
+  getInteractiveMovieProject,
+  getInteractiveMoviePromptTemplate,
+  getInteractiveMovieSyncState,
+  listInteractiveMovieProjects,
+  patchInteractiveMovieProject,
+  uploadInteractiveMovieVideo,
+} from '../../lib/interactiveMovie'
+import type { InteractiveMovieProjectPatch, PromptTemplate } from '../../lib/interactiveMovie'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import './InteractiveMoviePage.css'
 
@@ -66,6 +75,8 @@ type SceneNode = {
   media: {
     kind: 'image' | 'video' | 'placeholder'
     url?: string
+    objectKey?: string
+    storageUri?: string
     posterUrl?: string
     status: 'empty' | 'mock' | 'ready'
   }
@@ -105,6 +116,9 @@ type InteractiveMovieProject = {
   id: string
   title: string
   updatedAt: string
+  version?: number
+  contentHash?: string
+  cloudUpdatedAt?: string
   scenes: SceneNode[]
   choices: ChoiceEdge[]
   selectedObject: SelectedObject
@@ -139,6 +153,8 @@ type InteractionState =
   }
 
 const STORAGE_KEY = 'pettech.interactiveMovie.workspace.v1'
+const CLOUD_REPLICA_PREFIX = 'pettech.interactiveMovie.cloudReplica.'
+const DRAFT_REPLICA_PREFIX = 'pettech.interactiveMovie.draftReplica.'
 const NODE_WIDTH = 292
 const NODE_HEIGHT = 236
 const MIN_ZOOM = 0.25
@@ -322,8 +338,162 @@ const normalizeProjectChoices = (project: InteractiveMovieProject): InteractiveM
   return { ...project, choices }
 }
 
+const cloudReplicaKey = (projectId: string) => `${CLOUD_REPLICA_PREFIX}${projectId}`
+const draftReplicaKey = (projectId: string) => `${DRAFT_REPLICA_PREFIX}${projectId}`
+
+const readProjectReplica = (key: string): InteractiveMovieProject | null => {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(key)
+    return raw ? JSON.parse(raw) as InteractiveMovieProject : null
+  } catch {
+    window.localStorage.removeItem(key)
+    return null
+  }
+}
+
+const writeProjectReplica = (key: string, project: InteractiveMovieProject) => {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(key, JSON.stringify(project))
+}
+
+const persistWorkspaceLocally = (workspace: StoredWorkspace) => {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace))
+  workspace.projects.forEach((project) => {
+    writeProjectReplica(draftReplicaKey(project.id), project)
+  })
+}
+
+const withCloudMeta = (
+  document: InteractiveMovieProject,
+  version: number,
+  contentHash: string,
+  cloudUpdatedAt: string,
+): InteractiveMovieProject => ({
+  ...document,
+  version,
+  contentHash,
+  cloudUpdatedAt,
+  updatedAt: document.updatedAt || cloudUpdatedAt,
+})
+
+const flattenScene = (scene: SceneNode, sortOrder: number): Record<string, unknown> => ({
+  id: scene.id,
+  title: scene.title,
+  role: scene.role,
+  positionX: scene.position.x,
+  positionY: scene.position.y,
+  synopsis: scene.script.synopsis,
+  visualDescription: scene.script.visualDescription,
+  videoPrompt: scene.script.videoPrompt,
+  promptSubject: scene.script.promptParts?.subject ?? '',
+  promptAction: scene.script.promptParts?.action ?? '',
+  promptScene: scene.script.promptParts?.scene ?? '',
+  promptCamera: scene.script.promptParts?.camera ?? '',
+  promptTimeline: scene.script.promptParts?.timeline ?? '',
+  promptStyle: scene.script.promptParts?.style ?? '',
+  promptConstraints: scene.script.promptParts?.constraints ?? '',
+  mediaKind: scene.media.kind,
+  mediaUrl: scene.media.url ?? '',
+  mediaObjectKey: scene.media.objectKey ?? '',
+  mediaStorageUri: scene.media.storageUri ?? '',
+  posterUrl: scene.media.posterUrl ?? '',
+  mediaStatus: scene.media.status,
+  sortOrder,
+})
+
+const flattenChoice = (choice: ChoiceEdge, sortOrder: number): Record<string, unknown> => ({
+  id: choice.id,
+  fromSceneId: choice.fromSceneId,
+  toSceneId: choice.toSceneId,
+  label: choice.label,
+  trigger: choice.trigger,
+  offsetY: choice.offsetY ?? 0,
+  sortOrder,
+})
+
+const flattenLine = (sceneId: string, line: ScriptLine, sortOrder: number): Record<string, unknown> => ({
+  id: line.id,
+  sceneId,
+  speaker: line.speaker,
+  text: line.text,
+  sortOrder,
+})
+
+const shallowChanged = (before: Record<string, unknown> | undefined, after: Record<string, unknown>) => (
+  !before || Object.keys(after).some((key) => before[key] !== after[key])
+)
+
+const buildProjectPatch = (base: InteractiveMovieProject, draft: InteractiveMovieProject): InteractiveMovieProjectPatch => {
+  const baseScenes = new Map(base.scenes.map((scene, index) => [scene.id, flattenScene(scene, index)]))
+  const draftScenes = new Map(draft.scenes.map((scene, index) => [scene.id, flattenScene(scene, index)]))
+  const baseChoices = new Map(base.choices.map((choice, index) => [choice.id, flattenChoice(choice, index)]))
+  const draftChoices = new Map(draft.choices.map((choice, index) => [choice.id, flattenChoice(choice, index)]))
+  const baseLines = new Map<string, Record<string, unknown>>()
+  const draftLines = new Map<string, Record<string, unknown>>()
+  base.scenes.forEach((scene) => scene.script.lines.forEach((line, index) => baseLines.set(line.id, flattenLine(scene.id, line, index))))
+  draft.scenes.forEach((scene) => scene.script.lines.forEach((line, index) => draftLines.set(line.id, flattenLine(scene.id, line, index))))
+
+  return {
+    base_version: base.version ?? 0,
+    base_hash: base.contentHash ?? '',
+    project: base.title !== draft.title ? { title: draft.title } : {},
+    scenes: {
+      upsert: [...draftScenes.values()].filter((scene) => shallowChanged(baseScenes.get(String(scene.id)), scene)),
+      delete: [...baseScenes.keys()].filter((id) => !draftScenes.has(id)),
+    },
+    choices: {
+      upsert: [...draftChoices.values()].filter((choice) => shallowChanged(baseChoices.get(String(choice.id)), choice)),
+      delete: [...baseChoices.keys()].filter((id) => !draftChoices.has(id)),
+    },
+    script_lines: {
+      upsert: [...draftLines.values()].filter((line) => shallowChanged(baseLines.get(String(line.id)), line)),
+      delete: [...baseLines.keys()].filter((id) => !draftLines.has(id)),
+    },
+    viewport: (
+      base.viewport.x !== draft.viewport.x || base.viewport.y !== draft.viewport.y || base.viewport.zoom !== draft.viewport.zoom
+        ? { ...draft.viewport }
+        : {}
+    ),
+    selected_object: (
+      base.selectedObject.type !== draft.selectedObject.type || base.selectedObject.id !== draft.selectedObject.id
+        ? { type: draft.selectedObject.type, id: draft.selectedObject.id }
+        : {}
+    ),
+  }
+}
+
+const patchHasChanges = (patch: InteractiveMovieProjectPatch) => (
+  Object.keys(patch.project).length > 0
+  || Object.keys(patch.viewport).length > 0
+  || Object.keys(patch.selected_object).length > 0
+  || patch.scenes.upsert.length > 0
+  || patch.scenes.delete.length > 0
+  || patch.choices.upsert.length > 0
+  || patch.choices.delete.length > 0
+  || patch.script_lines.upsert.length > 0
+  || patch.script_lines.delete.length > 0
+)
+
+const localDraftIsNewer = (draft: InteractiveMovieProject, cloud: InteractiveMovieProject) => {
+  const draftTime = Date.parse(draft.updatedAt)
+  const cloudTime = Date.parse(cloud.cloudUpdatedAt ?? cloud.updatedAt)
+  return Number.isFinite(draftTime) && Number.isFinite(cloudTime) && draftTime > cloudTime
+}
+
+const mergeDraftWithCloudMeta = (
+  draft: InteractiveMovieProject,
+  cloud: InteractiveMovieProject,
+): InteractiveMovieProject => ({
+  ...draft,
+  version: cloud.version,
+  contentHash: cloud.contentHash,
+  cloudUpdatedAt: cloud.cloudUpdatedAt,
+})
+
 export default function InteractiveMoviePage() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const canvasRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<InteractionState | null>(null)
 
@@ -333,6 +503,10 @@ export default function InteractiveMoviePage() {
   const [bottomToolbarCollapsed, setBottomToolbarCollapsed] = useState(false)
   const [promptTemplate, setPromptTemplate] = useState<PromptTemplate | null>(null)
   const [uploadBySceneId, setUploadBySceneId] = useState<Record<string, SceneUploadState>>({})
+  const [cloudReady, setCloudReady] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState('本地草稿')
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewSceneId, setPreviewSceneId] = useState('')
   const [previewLineIndex, setPreviewLineIndex] = useState(0)
@@ -358,11 +532,59 @@ export default function InteractiveMoviePage() {
   const sceneMap = useMemo(() => new Map(scenes.map((scene) => [scene.id, scene])), [scenes])
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace))
-    }, 250)
-    return () => window.clearTimeout(timer)
+    persistWorkspaceLocally(workspace)
   }, [workspace])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadCloudWorkspace = async () => {
+      try {
+        const summaries = await listInteractiveMovieProjects()
+        if (cancelled) return
+        if (summaries.length === 0) {
+          const localProject = activeProject ?? createDefaultProject()
+          const created = await createInteractiveMovieProject(localProject.title, localProject)
+          if (cancelled) return
+          const project = withCloudMeta(created.document, created.version, created.content_hash, created.updated_at)
+          writeProjectReplica(cloudReplicaKey(project.id), project)
+          writeProjectReplica(draftReplicaKey(project.id), project)
+          setWorkspace({ activeProjectId: project.id, projects: [project] })
+          setSyncMessage('已连接云端')
+          return
+        }
+        const details = await Promise.all(summaries.map((summary) => getInteractiveMovieProject<InteractiveMovieProject>(summary.id)))
+        if (cancelled) return
+        const projects = details.map((detail) => {
+          const cloudProject = withCloudMeta(detail.document, detail.version, detail.content_hash, detail.updated_at)
+          writeProjectReplica(cloudReplicaKey(cloudProject.id), cloudProject)
+          const draftProject = readProjectReplica(draftReplicaKey(cloudProject.id))
+          if (draftProject) {
+            const hasLocalChanges = patchHasChanges(buildProjectPatch(cloudProject, draftProject))
+            if (hasLocalChanges && localDraftIsNewer(draftProject, cloudProject)) {
+              return mergeDraftWithCloudMeta(draftProject, cloudProject)
+            }
+          }
+          writeProjectReplica(draftReplicaKey(cloudProject.id), cloudProject)
+          return cloudProject
+        })
+        const activeId = projects.some((project) => project.id === workspace.activeProjectId)
+          ? workspace.activeProjectId
+          : projects[0].id
+        setWorkspace({ activeProjectId: activeId, projects })
+        setSyncMessage('已连接云端')
+      } catch (error) {
+        setSyncMessage(resolveErrorMessage(error))
+      } finally {
+        if (!cancelled) setCloudReady(true)
+      }
+    }
+    void loadCloudWorkspace()
+    return () => {
+      cancelled = true
+    }
+    // only bootstrap once from the best local snapshot available at mount time
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     setWorkspace((current) => {
@@ -419,15 +641,52 @@ export default function InteractiveMoviePage() {
 
   const createProject = () => {
     const project = createDefaultProject(`互动电影 ${workspace.projects.length + 1}`)
+    writeProjectReplica(draftReplicaKey(project.id), project)
     setWorkspace((current) => ({
       activeProjectId: project.id,
       projects: [project, ...current.projects],
     }))
+    setSyncMessage('新项目未保存')
     message.success('已创建新项目')
   }
 
   const switchProject = (projectId: string) => {
     setWorkspace((current) => ({ ...current, activeProjectId: projectId }))
+  }
+
+  const confirmDeleteProject = (project: InteractiveMovieProject) => {
+    modal.confirm({
+      title: `删除项目「${project.title}」？`,
+      content: '此操作无法撤回。项目会从云端和本地草稿中删除。',
+      okText: '确认删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      async onOk() {
+        try {
+          const hasCloudCopy = Boolean(project.version && project.contentHash)
+          if (hasCloudCopy) {
+            await deleteInteractiveMovieProject(project.id)
+          }
+          window.localStorage.removeItem(cloudReplicaKey(project.id))
+          window.localStorage.removeItem(draftReplicaKey(project.id))
+          setWorkspace((current) => {
+            const remaining = current.projects.filter((item) => item.id !== project.id)
+            if (remaining.length > 0) {
+              const nextActiveId = current.activeProjectId === project.id ? remaining[0].id : current.activeProjectId
+              return { activeProjectId: nextActiveId, projects: remaining }
+            }
+            const nextProject = createDefaultProject('互动电影草稿')
+            writeProjectReplica(draftReplicaKey(nextProject.id), nextProject)
+            return { activeProjectId: nextProject.id, projects: [nextProject] }
+          })
+          setSyncMessage('项目已删除')
+          message.success('项目已删除')
+        } catch (error) {
+          message.error(resolveErrorMessage(error))
+          throw error
+        }
+      },
+    })
   }
 
   const renameProject = (title: string) => {
@@ -657,10 +916,51 @@ export default function InteractiveMoviePage() {
     setPreviewChoicesVisible(false)
   }
 
-  const saveDraft = useCallback(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace))
-    message.success('已保存到本地')
-  }, [message, workspace])
+  const saveDraft = useCallback(async () => {
+    const draft = activeProject
+    if (!draft || saving) return
+    writeProjectReplica(draftReplicaKey(draft.id), draft)
+    persistWorkspaceLocally(workspace)
+    setSaving(true)
+    try {
+      const cloudBase = readProjectReplica(cloudReplicaKey(draft.id))
+      if (!cloudBase?.version || !cloudBase.contentHash) {
+        const created = await createInteractiveMovieProject(draft.title, draft)
+        const project = withCloudMeta(created.document, created.version, created.content_hash, created.updated_at)
+        writeProjectReplica(cloudReplicaKey(project.id), project)
+        writeProjectReplica(draftReplicaKey(project.id), project)
+        setWorkspace((current) => ({
+          activeProjectId: project.id,
+          projects: current.projects.map((item) => (item.id === draft.id ? project : item)),
+        }))
+        setSyncMessage('已保存到云端')
+        message.success('已保存到云端')
+        return
+      }
+      const patch = buildProjectPatch(cloudBase, draft)
+      if (!patchHasChanges(patch)) {
+        setSyncMessage('云端已是最新')
+        message.success('云端已是最新')
+        return
+      }
+      const saved = await patchInteractiveMovieProject<InteractiveMovieProject>(draft.id, patch)
+      const project = withCloudMeta(saved.document, saved.version, saved.content_hash, saved.updated_at)
+      writeProjectReplica(cloudReplicaKey(project.id), project)
+      writeProjectReplica(draftReplicaKey(project.id), project)
+      setWorkspace((current) => ({
+        ...current,
+        projects: current.projects.map((item) => (item.id === project.id ? project : item)),
+      }))
+      setSyncMessage('已保存到云端')
+      message.success('已保存到云端')
+    } catch (error) {
+      const text = resolveErrorMessage(error)
+      setSyncMessage(text)
+      message.error(text)
+    } finally {
+      setSaving(false)
+    }
+  }, [activeProject, message, saving, workspace])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -668,12 +968,51 @@ export default function InteractiveMoviePage() {
         event.preventDefault()
         event.stopPropagation()
         if (event.repeat) return
-        saveDraft()
+        void saveDraft()
       }
     }
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [saveDraft])
+
+  useEffect(() => {
+    if (!cloudReady || !activeProject?.contentHash) return undefined
+    const syncOnce = async () => {
+      if (syncing || saving) return
+      setSyncing(true)
+      try {
+        const remote = await getInteractiveMovieSyncState(activeProject.id)
+        const cloudBase = readProjectReplica(cloudReplicaKey(activeProject.id))
+        if (!cloudBase || remote.content_hash === cloudBase.contentHash) {
+          setSyncMessage('云端已同步')
+          return
+        }
+        const draft = readProjectReplica(draftReplicaKey(activeProject.id)) ?? activeProject
+        const localPatch = buildProjectPatch(cloudBase, draft)
+        if (patchHasChanges(localPatch)) {
+          setSyncMessage('云端有新版本，本地有未保存修改')
+          return
+        }
+        const latest = await getInteractiveMovieProject<InteractiveMovieProject>(activeProject.id)
+        const project = withCloudMeta(latest.document, latest.version, latest.content_hash, latest.updated_at)
+        writeProjectReplica(cloudReplicaKey(project.id), project)
+        writeProjectReplica(draftReplicaKey(project.id), project)
+        setWorkspace((current) => ({
+          ...current,
+          projects: current.projects.map((item) => (item.id === project.id ? project : item)),
+        }))
+        setSyncMessage('已自动同步云端')
+      } catch {
+        setSyncMessage('云端同步检查失败')
+      } finally {
+        setSyncing(false)
+      }
+    }
+    const timer = window.setInterval(() => {
+      void syncOnce()
+    }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [activeProject, cloudReady, saving, syncing])
 
   const uploadSceneVideo = async (scene: SceneNode, file: File) => {
     setUploadBySceneId((current) => ({
@@ -710,6 +1049,8 @@ export default function InteractiveMoviePage() {
           kind: 'video',
           status: 'ready',
           url: uploaded.url ?? undefined,
+          objectKey: uploaded.object_key,
+          storageUri: uploaded.storage_uri,
           posterUrl,
         },
       }))
@@ -751,15 +1092,33 @@ export default function InteractiveMoviePage() {
         </Button>
         <div className="movie-project-list">
           {workspace.projects.map((project) => (
-            <button
+            <div
               key={project.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               className={project.id === activeProject.id ? 'movie-project-item is-active' : 'movie-project-item'}
               onClick={() => switchProject(project.id)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  switchProject(project.id)
+                }
+              }}
             >
+              <button
+                type="button"
+                className="movie-project-delete"
+                aria-label={`删除项目 ${project.title}`}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  confirmDeleteProject(project)
+                }}
+              >
+                <DeleteOutlined />
+              </button>
               <span className="movie-project-name">{project.title}</span>
               <span className="movie-project-meta">{project.scenes.length} 场景 · {project.choices.length} 选择</span>
-            </button>
+            </div>
           ))}
         </div>
         <Link to="/dashboard" className="movie-dashboard-link">
@@ -772,7 +1131,7 @@ export default function InteractiveMoviePage() {
         <header className="movie-topbar">
           <Flex align="center" gap={12} className="movie-project-heading">
             <div>
-              <Typography.Text className="movie-kicker">本地项目 / GalGame 式编辑器 MVP</Typography.Text>
+              <Typography.Text className="movie-kicker">云端项目 / GalGame 式编辑器 MVP</Typography.Text>
               <Input
                 variant="borderless"
                 value={activeProject.title}
@@ -783,8 +1142,8 @@ export default function InteractiveMoviePage() {
             </div>
           </Flex>
           <Space wrap>
-            <Tag className="movie-status-tag">localStorage</Tag>
-            <Button icon={<SaveOutlined />} onClick={saveDraft}>保存</Button>
+            <Tag className="movie-status-tag">{syncing ? '同步检查中' : syncMessage}</Tag>
+            <Button icon={<SaveOutlined />} loading={saving} onClick={() => void saveDraft()}>保存</Button>
             <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => startPreview()}>预览</Button>
           </Space>
         </header>
@@ -883,14 +1242,20 @@ export default function InteractiveMoviePage() {
                     <BorderOuterOutlined />
                   </Flex>
                   <div className="movie-node-preview">
-                    <div className="movie-node-preview-grid" />
-                    <VideoCameraOutlined />
+                    {scene.media.posterUrl ? (
+                      <img src={scene.media.posterUrl} alt="" className="movie-node-preview-poster" />
+                    ) : (
+                      <>
+                        <div className="movie-node-preview-grid" />
+                        <VideoCameraOutlined />
+                      </>
+                    )}
                   </div>
                   <Typography.Paragraph ellipsis={{ rows: 2 }} className="movie-node-synopsis">
                     {scene.script.synopsis}
                   </Typography.Paragraph>
                   <Flex align="center" justify="space-between">
-                    <span className="movie-node-meta">{scene.script.lines.length} 句对白 · 视频待生成</span>
+                    <span className="movie-node-meta">{scene.script.lines.length} 句对白 · {scene.media.url ? '视频已上传' : '视频待上传'}</span>
                     <span className="movie-node-dot" />
                   </Flex>
                 </div>
