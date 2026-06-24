@@ -85,19 +85,22 @@
   padding-top: 4px;
 }
 
-.aiwiki-file-list {
+.aiwiki-file-list,
+.aiwiki-task-list {
   min-height: 0;
   flex: 1;
   overflow: auto;
   padding-right: 2px;
 }
 
-.aiwiki-file-list .ant-list-item {
+.aiwiki-file-list .ant-list-item,
+.aiwiki-task-list .ant-list-item {
   border-block-end: 0 !important;
   padding: 4px 0 !important;
 }
 
-.aiwiki-file-item {
+.aiwiki-file-item,
+.aiwiki-task-item {
   width: 100%;
   min-height: 58px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -113,8 +116,39 @@
   cursor: pointer;
 }
 
+.aiwiki-task-item {
+  grid-template-columns: 30px minmax(0, 1fr) 68px;
+  padding-right: 6px;
+}
+
+.aiwiki-task-list-actions {
+  display: inline-flex;
+  width: 68px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.aiwiki-task-list-actions .aiwiki-task-action-button {
+  width: 28px;
+  height: 28px;
+  color: #9fb4d3;
+}
+
+.aiwiki-task-list-actions .aiwiki-task-action-button:hover {
+  background: rgba(56, 189, 248, 0.14);
+  color: #bae6fd;
+}
+
+.aiwiki-task-list-actions .aiwiki-task-action-button.is-danger:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fecaca;
+}
+
 .aiwiki-file-item:hover,
-.aiwiki-file-item.is-active {
+.aiwiki-file-item.is-active,
+.aiwiki-task-item:hover,
+.aiwiki-task-item.is-active {
   border-color: #38bdf8;
   background: rgba(14, 165, 233, 0.16);
 }
@@ -201,14 +235,13 @@
   padding: 16px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(330px, 390px);
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
   position: relative;
   overflow: hidden;
 }
 
 .aiwiki-stat-strip,
-.aiwiki-format-strip,
 .aiwiki-stage,
 .aiwiki-panel-section {
   background: #ffffff;
@@ -233,27 +266,106 @@
   border-right: 0;
 }
 
-.aiwiki-format-strip {
-  grid-column: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 12px;
-}
-
-.aiwiki-format-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  border-radius: 8px;
-}
-
 .aiwiki-stage {
   grid-column: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
   position: relative;
+}
+
+.aiwiki-task-empty {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 14px;
+  padding: 24px;
+}
+
+.aiwiki-task-overview {
+  min-height: 100%;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.aiwiki-task-overview.is-draft {
+  justify-content: center;
+  padding: clamp(28px, 5vw, 72px);
+}
+
+.aiwiki-upload-dropzone {
+  width: min(720px, 100%);
+  min-height: 340px;
+  margin: 0 auto;
+  border: 1px dashed #94a3b8;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 36px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.aiwiki-upload-dropzone:hover,
+.aiwiki-upload-dropzone:focus-visible,
+.aiwiki-upload-dropzone.is-dragging {
+  border-color: #0ea5e9;
+  background: #eff6ff;
+  box-shadow: 0 14px 32px rgba(14, 165, 233, 0.12);
+  outline: none;
+}
+
+.aiwiki-upload-dropzone[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.aiwiki-upload-input {
+  display: none;
+}
+
+.aiwiki-upload-dropzone-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #0f766e;
+  color: #ecfeff;
+  font-size: 34px;
+}
+
+.aiwiki-upload-dropzone-title {
+  margin: 8px 0 0 !important;
+  letter-spacing: 0;
+}
+
+.aiwiki-upload-dropzone-copy {
+  max-width: 460px;
+  margin: 0 !important;
+}
+
+.aiwiki-upload-type-list {
+  justify-content: center;
+}
+
+.aiwiki-upload-limit {
+  font-size: 12px;
+}
+
+.aiwiki-create-task-submit {
+  align-self: center;
+  min-width: 180px;
 }
 
 .aiwiki-result-scroll {
@@ -385,7 +497,7 @@ button.aiwiki-graph-node {
 
 .aiwiki-right-panel {
   grid-column: 2;
-  grid-row: 1 / span 3;
+  grid-row: 1 / span 2;
   min-height: 0;
   display: grid;
   grid-template-rows: minmax(0, 1.35fr) minmax(260px, 0.9fr);
@@ -408,6 +520,13 @@ button.aiwiki-graph-node {
 
 .aiwiki-preview-meta {
   min-height: 24px;
+}
+
+.aiwiki-preview-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 540px;
 }
 
 .aiwiki-preview-body {
@@ -470,7 +589,7 @@ button.aiwiki-graph-node {
 .aiwiki-pdf-preview {
   width: 100%;
   height: 100%;
-  min-height: 440px;
+  min-height: 540px;
   border: 0;
   background: #ffffff;
 }
@@ -482,6 +601,44 @@ button.aiwiki-graph-node {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.aiwiki-task-action-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.aiwiki-task-action-button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    opacity 180ms ease;
+}
+
+.aiwiki-task-action-button:hover {
+  background: rgba(14, 165, 233, 0.12);
+  color: #0369a1;
+}
+
+.aiwiki-task-action-button.is-danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.aiwiki-task-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
 }
 
 .aiwiki-audit-section {
@@ -524,6 +681,28 @@ button.aiwiki-graph-node {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
+.aiwiki-source-section {
+  overflow: hidden;
+}
+
+.aiwiki-source-file-list {
+  min-height: 0;
+  overflow: auto;
+}
+
+.aiwiki-source-file-list .ant-list-item {
+  padding: 8px 0 !important;
+}
+
+.aiwiki-source-file-row {
+  width: 100%;
+  min-width: 0;
+}
+
+.aiwiki-source-file-list.is-compact .aiwiki-source-file-row {
+  align-items: flex-start;
+}
+
 .aiwiki-clickable-file-tag {
   cursor: pointer;
 }
@@ -539,6 +718,7 @@ button.aiwiki-graph-node {
 .is-sidebar-collapsed .aiwiki-brand-text,
 .is-sidebar-collapsed .aiwiki-filter-stack,
 .is-sidebar-collapsed .aiwiki-file-list,
+.is-sidebar-collapsed .aiwiki-task-list,
 .is-sidebar-collapsed .aiwiki-dashboard-link span,
 .is-sidebar-collapsed .aiwiki-sidebar .ant-btn span:not(.anticon) {
   display: none;

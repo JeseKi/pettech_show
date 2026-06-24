@@ -4,9 +4,10 @@ import {
   Button,
   Empty,
   Flex,
+  Form,
   Input,
   List,
-  Popconfirm,
+  Modal,
   Progress,
   Segmented,
   Space,
@@ -18,17 +19,18 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
+  CloudUploadOutlined,
   DeleteOutlined,
   DoubleLeftOutlined,
   DoubleRightOutlined,
+  EditOutlined,
+  EyeOutlined,
   FileMarkdownOutlined,
   FilePdfOutlined,
   FileTextOutlined,
   HomeOutlined,
-  PlayCircleOutlined,
-  QuestionCircleOutlined,
+  PlusOutlined,
   ReloadOutlined,
-  RotateLeftOutlined,
   TableOutlined,
   UploadOutlined,
 } from '@ant-design/icons'
@@ -36,18 +38,17 @@ import { Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as XLSX from 'xlsx'
-import { useAuth } from '../../hooks/useAuth'
 import {
   createAiwikiJob,
   deleteAiwikiJob,
   getAiwikiFile,
   getAiwikiJob,
   getAiwikiResult,
-  listAiwikiAuditLogs,
   listAiwikiJobs,
-  type AiwikiAuditLog,
+  updateAiwikiJob,
   type AiwikiFilePreview,
   type AiwikiJob,
+  type AiwikiJobStatus,
   type AiwikiJobSummary,
   type AiwikiResult,
   type AiwikiSpreadsheetPreview,
@@ -62,7 +63,7 @@ import { ACTIVE_STATUSES, entryTypeLabel, formatDateTime, progressEventColor, st
 import './AiwikiWorkbench.css'
 
 type FileCategory = 'document' | 'spreadsheet'
-type FileFilter = 'all' | FileCategory
+type TaskFilter = 'all' | 'active' | 'completed' | 'failed'
 type DisplayFile = AiwikiUploadedFile & {
   id: string
   job_id?: string
@@ -75,31 +76,38 @@ type DisplayFile = AiwikiUploadedFile & {
   uploadProgress?: number
   created_at?: string
 }
+type DisplayTask = {
+  id: string
+  title: string
+  description: string | null
+  status: AiwikiJobStatus | 'draft'
+  created_at?: string
+  files: DisplayFile[]
+  isDraft?: boolean
+  summary?: AiwikiJobSummary
+}
 
 const ACCEPTED_TYPES = '.md,.markdown,.txt,.xlsx,.pdf'
-const formatOptions = [
-  ['文档', '.md / .markdown / .txt / .pdf'],
-  ['表格', '.xlsx'],
-] as const
+const DRAFT_TASK_ID = '__draft__'
+const ACCEPTED_TYPE_LABELS = ['Markdown', 'TXT', 'XLSX', 'PDF']
 
 export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
-  const { message } = App.useApp()
-  const { user } = useAuth()
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const { message, modal } = App.useApp()
   const localFilesRef = useRef<DisplayFile[]>([])
+  const [editForm] = Form.useForm<{ title?: string; description?: string }>()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [history, setHistory] = useState<AiwikiJobSummary[]>([])
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [job, setJob] = useState<AiwikiJob | null>(null)
   const [result, setResult] = useState<AiwikiResult | null>(null)
-  const [auditLogs, setAuditLogs] = useState<AiwikiAuditLog[]>([])
-  const [auditScope, setAuditScope] = useState<'mine' | 'all'>('mine')
   const [localFiles, setLocalFiles] = useState<DisplayFile[]>([])
-  const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
+  const [previewFile, setPreviewFile] = useState<DisplayFile | null>(null)
+  const [editingJob, setEditingJob] = useState<AiwikiJob | AiwikiJobSummary | null>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
-  const [auditLoading, setAuditLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [savingMetadata, setSavingMetadata] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [fileFilter, setFileFilter] = useState<FileFilter>('all')
+  const [taskFilter, setTaskFilter] = useState<TaskFilter>('all')
   const [search, setSearch] = useState('')
   const [selectedTerms, setSelectedTerms] = useState<string[]>([])
   const [entryFilter, setEntryFilter] = useState<string>('全部')
@@ -107,11 +115,10 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const [keywordModalOpen, setKeywordModalOpen] = useState(false)
   const [keywordSearch, setKeywordSearch] = useState('')
 
-  const isAdmin = user?.role === 'admin'
   const meta = statusMeta(job?.status)
   const workspaceSubtitle = mode === 'full'
-    ? 'OpenCode + Skill 生成 / 文件预览 / 任务日志 / 管理员审计'
-    : 'OpenCode + Skill 生成 / 文件预览 / 任务日志'
+    ? 'OpenCode + Skill 生成 / 任务管理 / 文件预览'
+    : 'OpenCode + Skill 生成 / 任务管理'
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
@@ -125,35 +132,21 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     }
   }, [message])
 
-  const loadAuditLogs = useCallback(async () => {
-    setAuditLoading(true)
-    try {
-      const logs = await listAiwikiAuditLogs({
-        scope: isAdmin ? auditScope : 'mine',
-        limit: 80,
-        offset: 0,
-      })
-      setAuditLogs(logs.items)
-    } catch (err) {
-      message.error(resolveErrorMessage(err))
-    } finally {
-      setAuditLoading(false)
-    }
-  }, [auditScope, isAdmin, message])
-
   const loadJob = useCallback(async (jobId: string, silent = false) => {
     try {
       const latest = await getAiwikiJob(jobId)
+      setActiveTaskId(jobId)
       setJob(latest)
       setResult(latest.status === 'completed' ? await getAiwikiResult(jobId) : null)
+      setHistory((items) => upsertHistory(items, latest))
     } catch (err) {
       if (!silent) message.error(resolveErrorMessage(err))
     }
   }, [message])
 
   useEffect(() => {
-    void Promise.all([loadHistory(), loadAuditLogs()])
-  }, [loadAuditLogs, loadHistory])
+    void loadHistory()
+  }, [loadHistory])
 
   useEffect(() => {
     localFilesRef.current = localFiles
@@ -170,59 +163,88 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     return () => window.clearInterval(timer)
   }, [job?.id, job?.status, loadHistory, loadJob])
 
-  const serverFiles = useMemo<DisplayFile[]>(() => {
-    const items: DisplayFile[] = []
-    history.forEach((item) => {
-      item.files.forEach((file, fileIndex) => {
-        items.push({
-          ...file,
-          id: `${item.id}:${fileIndex}`,
-          job_id: item.id,
-          job_status: item.status,
-          file_index: fileIndex,
-          created_at: item.created_at,
-        })
-      })
-    })
-    return items
-  }, [history])
+  const activeJob = job?.id === activeTaskId ? job : null
+  const activeFiles = useMemo<DisplayFile[]>(() => {
+    if (activeTaskId === DRAFT_TASK_ID) return localFiles
+    const source = activeJob ?? history.find((item) => item.id === activeTaskId)
+    if (!source) return []
+    return source.files.map((file, fileIndex) => toDisplayFile(file, source, fileIndex))
+  }, [activeJob, activeTaskId, history, localFiles])
 
-  const allFiles = useMemo<DisplayFile[]>(() => [...localFiles, ...serverFiles], [localFiles, serverFiles])
+  const taskItems = useMemo<DisplayTask[]>(() => {
+    const shouldShowDraft = activeTaskId === DRAFT_TASK_ID || localFiles.length > 0
+    const draft: DisplayTask[] = shouldShowDraft ? [{
+      id: DRAFT_TASK_ID,
+      title: localFiles.length ? `新任务草稿（${localFiles.length} 个文件）` : '新任务草稿',
+      description: '文件尚未提交生成。',
+      status: 'draft',
+      files: localFiles,
+      isDraft: true,
+    }] : []
+    return [
+      ...draft,
+      ...history.map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        status: item.status,
+        created_at: item.created_at,
+        files: item.files.map((file, fileIndex) => toDisplayFile(file, item, fileIndex)),
+        summary: item,
+      })),
+    ]
+  }, [activeTaskId, history, localFiles])
 
-  const displayFiles = useMemo(() => {
+  const displayTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
-    return allFiles.filter((file) => {
-      const category = fileCategory(file)
-      const categoryMatch = fileFilter === 'all' || category === fileFilter
-      const searchMatch = !normalizedSearch || file.filename.toLowerCase().includes(normalizedSearch)
-      return categoryMatch && searchMatch
+    return taskItems.filter((task) => {
+      const statusMatch = taskFilter === 'all'
+        || (taskFilter === 'active' && (task.status === 'draft' || task.status === 'queued' || task.status === 'running'))
+        || task.status === taskFilter
+      const searchText = [
+        task.title,
+        task.description ?? '',
+        task.id,
+        ...task.files.map((file) => file.filename),
+      ].join(' ').toLowerCase()
+      return statusMatch && (!normalizedSearch || searchText.includes(normalizedSearch))
     })
-  }, [allFiles, fileFilter, search])
+  }, [search, taskFilter, taskItems])
 
-  const selectedFile = useMemo(() => (
-    displayFiles.find((file) => file.id === selectedFileId) ?? displayFiles[0] ?? null
-  ), [displayFiles, selectedFileId])
+  const activeTask = useMemo(() => (
+    taskItems.find((item) => item.id === activeTaskId) ?? null
+  ), [activeTaskId, taskItems])
 
   useEffect(() => {
-    if (!selectedFile) {
-      setSelectedFileId(null)
+    if (activeTaskId && taskItems.some((item) => item.id === activeTaskId)) return
+    const nextTask = taskItems[0]
+    if (!nextTask) {
+      setActiveTaskId(null)
+      setJob(null)
+      setResult(null)
       return
     }
-    if (selectedFile.id !== selectedFileId) {
-      setSelectedFileId(selectedFile.id)
+    if (nextTask.isDraft) {
+      setActiveTaskId(DRAFT_TASK_ID)
+      setJob(null)
+      setResult(null)
+      return
     }
-  }, [selectedFile, selectedFileId])
+    void loadJob(nextTask.id, true)
+  }, [activeTaskId, loadJob, taskItems])
 
   const stats = useMemo(() => {
-    const documentCount = allFiles.filter((file) => fileCategory(file) === 'document').length
-    const spreadsheetCount = allFiles.filter((file) => fileCategory(file) === 'spreadsheet').length
+    const serverTasks = history.length
+    const activeCount = history.filter((item) => item.status === 'queued' || item.status === 'running').length
+    const completedCount = history.filter((item) => item.status === 'completed').length
+    const fileCount = history.reduce((total, item) => total + item.files.length, localFiles.length)
     return {
-      documentCount,
-      spreadsheetCount,
-      displayCount: displayFiles.length,
-      totalCount: allFiles.length,
+      serverTasks,
+      activeCount,
+      completedCount,
+      fileCount,
     }
-  }, [allFiles, displayFiles.length])
+  }, [history, localFiles.length])
 
   const entriesBySlug = useMemo(() => (
     new Map((result?.wiki_entries ?? []).map((entry) => [entry.slug, entry]))
@@ -245,20 +267,25 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     setSelectedTerms([])
   }, [availableTerms])
 
-  const handleFilesSelected = async (fileList: FileList | null) => {
-    const files = Array.from(fileList ?? [])
-    if (fileInputRef.current) fileInputRef.current.value = ''
+  const handleFilesSelected = async (files: File[]) => {
     if (!files.length) return
     try {
       const startIndex = localFilesRef.current.length
       const previews = await Promise.all(files.map((file, index) => buildLocalFile(file, startIndex + index)))
       setLocalFiles((items) => [...items, ...previews])
-      if (!selectedFileId) {
-        setSelectedFileId(previews[0]?.id ?? null)
-      }
+      setActiveTaskId(DRAFT_TASK_ID)
+      setJob(null)
+      setResult(null)
     } catch (err) {
       message.error(resolveErrorMessage(err))
     }
+  }
+
+  const startNewTask = () => {
+    setActiveTaskId(DRAFT_TASK_ID)
+    setJob(null)
+    setResult(null)
+    setActiveEntrySlug(null)
   }
 
   const submitFiles = async () => {
@@ -281,11 +308,12 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
       )
       revokeLocalUrls(localFiles)
       setLocalFiles([])
-      setSelectedFileId(`${created.id}:0`)
+      setActiveTaskId(created.id)
       setJob(created)
       setResult(null)
-      message.success('知识库生成任务已提交')
-      await Promise.all([loadHistory(), loadAuditLogs()])
+      setPreviewFile(null)
+      message.success('知识库任务已创建')
+      await loadHistory()
       void loadJob(created.id, true)
     } catch (err) {
       setLocalFiles((items) => items.map((item) => ({ ...item, uploadState: 'failed' })))
@@ -295,57 +323,76 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     }
   }
 
-  const selectFile = async (file: DisplayFile) => {
-    setSelectedFileId(file.id)
-    if (file.job_id && file.job_id !== job?.id) {
-      await loadJob(file.job_id)
+  const selectTask = async (task: DisplayTask) => {
+    setActiveEntrySlug(null)
+    if (task.isDraft) {
+      setActiveTaskId(DRAFT_TASK_ID)
+      setJob(null)
+      setResult(null)
+      return
     }
+    await loadJob(task.id)
   }
 
-  const openAuditFile = async (auditLog: AiwikiAuditLog, filename: string) => {
-    if (!auditLog.job_id) return
-    try {
-      const latest = await getAiwikiJob(auditLog.job_id)
-      const fileIndex = latest.files.findIndex((file) => file.filename === filename)
-      if (fileIndex < 0) {
-        message.warning('没有找到这份上传文件')
-        return
-      }
-      setJob(latest)
-      setResult(latest.status === 'completed' ? await getAiwikiResult(latest.id) : null)
-      setSelectedFileId(`${latest.id}:${fileIndex}`)
-      setHistory((items) => (
-        items.some((item) => item.id === latest.id)
-          ? items.map((item) => (item.id === latest.id ? { ...item, files: latest.files, status: latest.status, message: latest.message, summary: item.summary } : item))
-          : [{
-              id: latest.id,
-              owner_user_id: latest.owner_user_id,
-              owner_username: latest.owner_username,
-              status: latest.status,
-              message: latest.message,
-              created_at: latest.created_at,
-              started_at: latest.started_at,
-              finished_at: latest.finished_at,
-              files: latest.files,
-              summary: {},
-            }, ...items]
-      ))
-    } catch (err) {
-      message.error(resolveErrorMessage(err))
-    }
+  const removeLocalFile = (file: DisplayFile) => {
+    revokeLocalUrls([file])
+    setLocalFiles((items) => items.filter((item) => item.id !== file.id))
+    if (previewFile?.id === file.id) setPreviewFile(null)
   }
 
   const handleDeleteJob = async (targetJob: AiwikiJobSummary | AiwikiJob) => {
     try {
       await deleteAiwikiJob(targetJob.id)
       message.success('知识库任务已删除')
-      if (job?.id === targetJob.id) {
+      if (activeTaskId === targetJob.id) {
+        setActiveTaskId(null)
         setJob(null)
         setResult(null)
       }
-      await Promise.all([loadHistory(), loadAuditLogs()])
+      await loadHistory()
     } catch (err) {
       message.error(resolveErrorMessage(err))
+    }
+  }
+
+  const confirmDeleteJob = (targetJob: AiwikiJobSummary | AiwikiJob) => {
+    modal.confirm({
+      title: `删除任务「${targetJob.title}」？`,
+      content: '此操作无法撤回。任务记录和生成文件会从服务端删除，审计日志会保留。',
+      okText: '确认删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      async onOk() {
+        await handleDeleteJob(targetJob)
+      },
+    })
+  }
+
+  const openEditModal = (target: AiwikiJob | AiwikiJobSummary) => {
+    setEditingJob(target)
+    editForm.setFieldsValue({
+      title: target.title,
+      description: target.description ?? '',
+    })
+  }
+
+  const saveMetadata = async () => {
+    if (!editingJob) return
+    const values = await editForm.validateFields()
+    setSavingMetadata(true)
+    try {
+      const updated = await updateAiwikiJob(editingJob.id, {
+        title: values.title?.trim() || null,
+        description: values.description?.trim() || null,
+      })
+      setHistory((items) => upsertHistory(items, updated))
+      if (job?.id === updated.id) setJob(updated)
+      message.success('任务信息已更新')
+      setEditingJob(null)
+    } catch (err) {
+      message.error(resolveErrorMessage(err))
+    } finally {
+      setSavingMetadata(false)
     }
   }
 
@@ -359,56 +406,87 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
           <span className="aiwiki-logo"><FileTextOutlined /></span>
           <div className="aiwiki-brand-text">
             <Typography.Text className="aiwiki-kicker">AI Wiki</Typography.Text>
-            <Typography.Title level={5} className="aiwiki-sidebar-title">知识库</Typography.Title>
+            <Typography.Title level={5} className="aiwiki-sidebar-title">知识库任务</Typography.Title>
           </div>
         </div>
-        <Button block type="primary" icon={<UploadOutlined />} disabled={submitting} onClick={() => fileInputRef.current?.click()} className="aiwiki-upload-button">
-          上传内容
+        <Button block type="primary" icon={<PlusOutlined />} disabled={submitting} onClick={startNewTask} className="aiwiki-upload-button">
+          创建新任务
         </Button>
-        <Button block icon={<PlayCircleOutlined />} loading={submitting} disabled={!localFiles.length} onClick={() => void submitFiles()}>
-          生成知识库
-        </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept={ACCEPTED_TYPES}
-          style={{ display: 'none' }}
-          onChange={(event) => void handleFilesSelected(event.target.files)}
-        />
         <div className="aiwiki-filter-stack">
-          <Input.Search value={search} allowClear placeholder="搜索文件" onChange={(event) => setSearch(event.target.value)} />
+          <Input.Search value={search} allowClear placeholder="搜索任务或文件" onChange={(event) => setSearch(event.target.value)} />
           <Segmented
             block
-            value={fileFilter}
-            onChange={(value) => setFileFilter(value as FileFilter)}
+            value={taskFilter}
+            onChange={(value) => setTaskFilter(value as TaskFilter)}
             options={[
               { label: '全部', value: 'all' },
-              { label: '文档', value: 'document' },
-              { label: '表格', value: 'spreadsheet' },
+              { label: '进行中', value: 'active' },
+              { label: '完成', value: 'completed' },
+              { label: '失败', value: 'failed' },
             ]}
           />
         </div>
-        <div className="aiwiki-file-list">
+        <div className="aiwiki-task-list">
           <List
             size="small"
             loading={historyLoading}
-            dataSource={displayFiles}
-            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无文件" /> }}
-            renderItem={(file) => (
+            dataSource={displayTasks}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无任务" /> }}
+            renderItem={(task) => (
               <List.Item>
-                <button
-                  type="button"
-                  className={file.id === selectedFile?.id ? 'aiwiki-file-item is-active' : 'aiwiki-file-item'}
-                  onClick={() => void selectFile(file)}
+                <div
+                  className={task.id === activeTaskId ? 'aiwiki-task-item is-active' : 'aiwiki-task-item'}
+                  onClick={() => void selectTask(task)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      void selectTask(task)
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
                 >
-                  <span className="aiwiki-file-icon">{fileIcon(file)}</span>
+                  <span className="aiwiki-file-icon">{task.isDraft ? <UploadOutlined /> : <FileTextOutlined />}</span>
                   <span className="aiwiki-file-copy">
-                    <span className="aiwiki-file-name">{file.filename}</span>
-                    <span className="aiwiki-file-meta">{categoryLabel(fileCategory(file))} · {formatBytes(file.size_bytes)}</span>
+                    <span className="aiwiki-file-name">{task.title}</span>
+                    <span className="aiwiki-file-meta">
+                      {task.files.length} 个文件 · {taskStatusLabel(task.status)}
+                    </span>
                   </span>
-                  {file.isLocal && <span className="aiwiki-local-dot" />}
-                </button>
+                  {task.isDraft ? (
+                    <span className="aiwiki-local-dot" />
+                  ) : task.summary ? (
+                    <span className="aiwiki-task-list-actions" onKeyDown={(event) => event.stopPropagation()}>
+                      <Tooltip title="编辑">
+                        <button
+                          aria-label={`编辑任务 ${task.summary.title}`}
+                          className="aiwiki-task-action-button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            openEditModal(task.summary!)
+                          }}
+                          type="button"
+                        >
+                          <EditOutlined />
+                        </button>
+                      </Tooltip>
+                      <Tooltip title="删除">
+                        <button
+                          aria-label={`删除任务 ${task.summary.title}`}
+                          className="aiwiki-task-action-button is-danger"
+                          disabled={task.summary.status === 'queued' || task.summary.status === 'running'}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            confirmDeleteJob(task.summary!)
+                          }}
+                          type="button"
+                        >
+                          <DeleteOutlined />
+                        </button>
+                      </Tooltip>
+                    </span>
+                  ) : null}
+                </div>
               </List.Item>
             )}
           />
@@ -423,32 +501,21 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
         <header className="aiwiki-topbar">
           <Flex vertical gap={4} className="aiwiki-heading">
             <Typography.Text className="aiwiki-kicker">{workspaceSubtitle}</Typography.Text>
-            <Typography.Title level={3} className="aiwiki-title">知识库</Typography.Title>
+            <Typography.Title level={3} className="aiwiki-title">{activeTask?.title ?? '知识库'}</Typography.Title>
           </Flex>
           <Space wrap className="aiwiki-top-actions">
-            <Button icon={<ReloadOutlined />} loading={historyLoading || auditLoading} onClick={() => void Promise.all([loadHistory(), loadAuditLogs()])}>刷新</Button>
-            <Button icon={<UploadOutlined />} disabled={submitting} onClick={() => fileInputRef.current?.click()}>上传内容</Button>
-            <Button type="primary" icon={<PlayCircleOutlined />} loading={submitting} disabled={!localFiles.length} onClick={() => void submitFiles()}>生成知识库</Button>
+            <Button icon={<ReloadOutlined />} loading={historyLoading} onClick={() => void loadHistory()}>刷新</Button>
+            <Button type="primary" icon={<PlusOutlined />} disabled={submitting} onClick={startNewTask}>创建新任务</Button>
           </Space>
         </header>
 
         <section className="aiwiki-canvas">
           <div className="aiwiki-stat-strip">
-            <Statistic title="文档数量" value={stats.documentCount} />
-            <Statistic title="表格数量" value={stats.spreadsheetCount} />
-            <Statistic title="展示数量" value={stats.displayCount} />
-            <Statistic title="总文件" value={stats.totalCount} />
+            <Statistic title="历史任务" value={stats.serverTasks} />
+            <Statistic title="进行中" value={stats.activeCount} />
+            <Statistic title="已完成" value={stats.completedCount} />
+            <Statistic title="总文件" value={stats.fileCount} />
           </div>
-          <div className="aiwiki-format-strip">
-            {formatOptions.map(([label, detail]) => (
-              <Tag key={label} className="aiwiki-format-tag">
-                {label}
-                <Tooltip title={detail}><QuestionCircleOutlined /></Tooltip>
-              </Tag>
-            ))}
-            <Tag className="aiwiki-format-tag">暂不支持音视频上传</Tag>
-          </div>
-
           <div className="aiwiki-stage">
             {result ? (
               <div className="aiwiki-result-scroll">
@@ -466,33 +533,40 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
                 />
               </div>
             ) : (
-              <FileGraph files={displayFiles} selectedId={selectedFile?.id ?? null} onSelect={(file) => void selectFile(file)} />
+              <TaskOverview
+                task={activeTask}
+                files={activeFiles}
+                uploading={submitting && activeTask?.isDraft}
+                uploadProgress={uploadProgress}
+                onPreview={setPreviewFile}
+                onRemoveLocal={removeLocalFile}
+                onFilesSelected={(files) => void handleFilesSelected(files)}
+                onStartNewTask={startNewTask}
+                onSubmit={() => void submitFiles()}
+              />
             )}
           </div>
 
           {submitting && (
             <div className="aiwiki-upload-progress">
-              <Typography.Text>上传并创建生成任务</Typography.Text>
+              <Typography.Text>上传并创建新任务</Typography.Text>
               <Progress percent={uploadProgress} size="small" status="active" />
             </div>
           )}
 
           <aside className="aiwiki-right-panel">
-            <PreviewPanel file={selectedFile} job={job} uploading={submitting && Boolean(selectedFile?.isLocal)} onRemoveLocal={(file) => {
-              revokeLocalUrls([file])
-              setLocalFiles((items) => items.filter((item) => item.id !== file.id))
-            }} />
-            <TaskAndAuditPanel
-              job={job}
-              history={history}
-              auditLogs={auditLogs}
-              auditLoading={auditLoading}
-              isAdmin={isAdmin}
-              auditScope={auditScope}
+            <TaskPanel
+              task={activeTask}
+              job={activeJob}
               meta={meta}
-              onScopeChange={setAuditScope}
-              onDeleteJob={handleDeleteJob}
-              onOpenAuditFile={(auditLog, filename) => void openAuditFile(auditLog, filename)}
+              refreshing={historyLoading}
+              onRefresh={() => activeTask && !activeTask.isDraft ? void loadJob(activeTask.id) : void loadHistory()}
+            />
+            <SourceFilesPanel
+              files={activeFiles}
+              uploading={submitting && activeTask?.isDraft}
+              onPreview={setPreviewFile}
+              onRemoveLocal={removeLocalFile}
             />
           </aside>
         </section>
@@ -510,54 +584,335 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
         }}
         onClose={() => setKeywordModalOpen(false)}
       />
+
+      <Modal
+        title={previewFile?.filename ?? '文件预览'}
+        open={Boolean(previewFile)}
+        onCancel={() => setPreviewFile(null)}
+        footer={null}
+        width="min(1120px, 92vw)"
+        destroyOnHidden
+      >
+        {previewFile && (
+          <div className="aiwiki-preview-modal-body">
+            <Space wrap className="aiwiki-preview-meta">
+              <Tag>{categoryLabel(fileCategory(previewFile))}</Tag>
+              <Tag>{(previewFile.extension ?? extensionOf(previewFile.filename)).replace('.', '').toUpperCase()}</Tag>
+              <Tag>{formatBytes(previewFile.size_bytes)}</Tag>
+              {previewFile.job_status && <Tag color={previewFile.job_status === 'completed' ? 'green' : previewFile.job_status === 'failed' ? 'red' : 'blue'}>{statusMeta(previewFile.job_status).label}</Tag>}
+              {previewFile.isLocal && <Tag color={previewFile.uploadState === 'failed' ? 'red' : 'gold'}>{previewFile.uploadState === 'failed' ? '上传失败' : '上传前预览'}</Tag>}
+            </Space>
+            <PreviewContent file={previewFile} job={activeJob} />
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        title="编辑任务信息"
+        open={Boolean(editingJob)}
+        onCancel={() => setEditingJob(null)}
+        onOk={() => void saveMetadata()}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={savingMetadata}
+        destroyOnHidden
+      >
+        <Form form={editForm} layout="vertical">
+          <Form.Item name="title" label="任务名称">
+            <Input maxLength={120} placeholder="留空则使用文件名自动显示" />
+          </Form.Item>
+          <Form.Item name="description" label="备注">
+            <Input.TextArea rows={4} maxLength={1000} showCount />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   )
 }
 
-function PreviewPanel({
-  file,
-  job,
+function TaskOverview({
+  task,
+  files,
   uploading,
+  uploadProgress,
+  onPreview,
+  onRemoveLocal,
+  onFilesSelected,
+  onStartNewTask,
+  onSubmit,
+}: {
+  task: DisplayTask | null
+  files: DisplayFile[]
+  uploading?: boolean
+  uploadProgress: number
+  onPreview: (file: DisplayFile) => void
+  onRemoveLocal: (file: DisplayFile) => void
+  onFilesSelected: (files: File[]) => void
+  onStartNewTask: () => void
+  onSubmit: () => void
+}) {
+  if (!task) {
+    return (
+      <div className="aiwiki-task-empty">
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="创建一个新任务，或选择一个历史任务" />
+        <Button type="primary" icon={<PlusOutlined />} onClick={onStartNewTask}>创建新任务</Button>
+      </div>
+    )
+  }
+  return (
+    <div className={task.isDraft ? 'aiwiki-task-overview is-draft' : 'aiwiki-task-overview'}>
+      <Flex align="center" justify="space-between" wrap="wrap" gap={12}>
+        <div>
+          <Typography.Text className="aiwiki-kicker">{task.isDraft ? '新任务' : task.id}</Typography.Text>
+          <Typography.Title level={3} style={{ marginTop: 4 }}>{task.title}</Typography.Title>
+          {task.description && <Typography.Paragraph type="secondary">{task.description}</Typography.Paragraph>}
+        </div>
+        <Space wrap>
+          <Tag color={taskStatusColor(task.status)}>{taskStatusLabel(task.status)}</Tag>
+          {task.created_at && <Tag>{formatDateTime(task.created_at)}</Tag>}
+        </Space>
+      </Flex>
+      {uploading && <Progress percent={uploadProgress} status="active" />}
+      {task.isDraft && (
+        <TaskUploadDropzone disabled={uploading} onFilesSelected={onFilesSelected} />
+      )}
+      {files.length > 0 && (
+        <FileList files={files} uploading={uploading} onPreview={onPreview} onRemoveLocal={onRemoveLocal} />
+      )}
+      {task.isDraft && files.length > 0 && (
+        <Button
+          type="primary"
+          size="large"
+          icon={<PlusOutlined />}
+          loading={uploading}
+          disabled={!files.length}
+          onClick={onSubmit}
+          className="aiwiki-create-task-submit"
+        >
+          创建新任务
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function TaskUploadDropzone({
+  disabled,
+  onFilesSelected,
+}: {
+  disabled?: boolean
+  onFilesSelected: (files: File[]) => void
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const [dragging, setDragging] = useState(false)
+
+  const acceptFiles = (fileList: FileList | null) => {
+    const files = Array.from(fileList ?? [])
+    if (!files.length) return
+    onFilesSelected(files)
+  }
+
+  return (
+    <div
+      className={dragging ? 'aiwiki-upload-dropzone is-dragging' : 'aiwiki-upload-dropzone'}
+      onClick={() => {
+        if (!disabled) inputRef.current?.click()
+      }}
+      onDragEnter={(event) => {
+        event.preventDefault()
+        if (!disabled) setDragging(true)
+      }}
+      onDragLeave={(event) => {
+        event.preventDefault()
+        setDragging(false)
+      }}
+      onDragOver={(event) => {
+        event.preventDefault()
+      }}
+      onDrop={(event) => {
+        event.preventDefault()
+        setDragging(false)
+        if (!disabled) acceptFiles(event.dataTransfer.files)
+      }}
+      onKeyDown={(event) => {
+        if (disabled) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          inputRef.current?.click()
+        }
+      }}
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept={ACCEPTED_TYPES}
+        disabled={disabled}
+        className="aiwiki-upload-input"
+        onChange={(event) => {
+          acceptFiles(event.target.files)
+          event.currentTarget.value = ''
+        }}
+      />
+      <div className="aiwiki-upload-dropzone-icon"><CloudUploadOutlined /></div>
+      <Typography.Title level={3} className="aiwiki-upload-dropzone-title">拖拽文件到这里，或点击选择</Typography.Title>
+      <Typography.Paragraph type="secondary" className="aiwiki-upload-dropzone-copy">
+        一个任务可以包含多个文件。先添加文件，确认清单后再创建任务。
+      </Typography.Paragraph>
+      <Space wrap className="aiwiki-upload-type-list">
+        {ACCEPTED_TYPE_LABELS.map((label) => <Tag key={label}>{label}</Tag>)}
+      </Space>
+      <Typography.Text type="secondary" className="aiwiki-upload-limit">
+        支持 .md、.markdown、.txt、.xlsx、.pdf
+      </Typography.Text>
+    </div>
+  )
+}
+
+function TaskPanel({
+  task,
+  job,
+  meta,
+  refreshing,
+  onRefresh,
+}: {
+  task: DisplayTask | null
+  job: AiwikiJob | null
+  meta: ReturnType<typeof statusMeta>
+  refreshing: boolean
+  onRefresh: () => void
+}) {
+  const [logView, setLogView] = useState<'task' | 'opencode'>('task')
+  const progressEvents = job?.progress?.events ?? []
+  return (
+    <section className="aiwiki-panel-section aiwiki-audit-section">
+      <Flex align="center" justify="space-between" gap={10}>
+        <div>
+          <Typography.Text className="aiwiki-panel-kicker">任务</Typography.Text>
+          <Typography.Title level={5} className="aiwiki-panel-title">{task?.title ?? '未选择任务'}</Typography.Title>
+        </div>
+        <Button size="small" icon={<ReloadOutlined />} loading={refreshing} onClick={onRefresh} />
+      </Flex>
+      {task ? (
+        <>
+          <div className="aiwiki-task-card">
+            <Progress percent={task.isDraft ? 0 : meta.percent} status={task.isDraft ? 'normal' : meta.status} />
+            <Space wrap>
+              <Tag color={taskStatusColor(task.status)}>{taskStatusLabel(task.status)}</Tag>
+              <Tag>{task.files.length} 个文件</Tag>
+            </Space>
+            {job?.message && <Typography.Text>{job.message}</Typography.Text>}
+          </div>
+          {!task.isDraft && (
+            <>
+              <Segmented
+                block
+                size="small"
+                value={logView}
+                onChange={(value) => setLogView(value as 'task' | 'opencode')}
+                options={[
+                  { label: '任务日志', value: 'task' },
+                  { label: '处理日志', value: 'opencode' },
+                ]}
+              />
+              {logView === 'task' && (
+                <List
+                  size="small"
+                  dataSource={progressEvents}
+                  locale={{ emptyText: job ? '暂无任务事件' : '任务详情加载后显示日志' }}
+                  className="aiwiki-audit-list"
+                  renderItem={(item) => (
+                    <List.Item>
+                      <Flex vertical gap={4}>
+                        <Space wrap>
+                          <Tag color={progressEventColor(item.event)}>{item.step}</Tag>
+                          <Typography.Text className="aiwiki-audit-message">{item.summary}</Typography.Text>
+                        </Space>
+                      </Flex>
+                    </List.Item>
+                  )}
+                />
+              )}
+              {logView === 'opencode' && (
+                job?.log_tail?.length ? (
+                  <pre className="aiwiki-opencode-log">{job.log_tail.join('\n')}</pre>
+                ) : (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={job ? '暂无 OpenCode 输出' : '任务详情加载后显示处理日志'} />
+                )
+              )}
+            </>
+          )}
+        </>
+      ) : (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未选择任务" />
+      )}
+    </section>
+  )
+}
+
+function SourceFilesPanel({
+  files,
+  uploading,
+  onPreview,
   onRemoveLocal,
 }: {
-  file: DisplayFile | null
-  job: AiwikiJob | null
-  uploading: boolean
+  files: DisplayFile[]
+  uploading?: boolean
+  onPreview: (file: DisplayFile) => void
   onRemoveLocal: (file: DisplayFile) => void
 }) {
   return (
-    <section className="aiwiki-panel-section aiwiki-preview-section">
-      <Flex align="center" justify="space-between" gap={10}>
-        <div>
-          <Typography.Text className="aiwiki-panel-kicker">文件预览</Typography.Text>
-          <Typography.Title level={5} className="aiwiki-panel-title">{file?.filename ?? '未选择文件'}</Typography.Title>
-        </div>
-        {file?.isLocal && (
-          <Button danger type="text" icon={<DeleteOutlined />} disabled={uploading} onClick={() => onRemoveLocal(file)} />
-        )}
-      </Flex>
-      {file ? (
-        <>
-          <Space wrap className="aiwiki-preview-meta">
-            <Tag>{categoryLabel(fileCategory(file))}</Tag>
-            <Tag>{(file.extension ?? extensionOf(file.filename)).replace('.', '').toUpperCase()}</Tag>
-            <Tag>{formatBytes(file.size_bytes)}</Tag>
-            {file.job_status && <Tag color={file.job_status === 'completed' ? 'green' : file.job_status === 'failed' ? 'red' : 'blue'}>{statusMeta(file.job_status).label}</Tag>}
-            {file.isLocal && <Tag color={file.uploadState === 'failed' ? 'red' : 'gold'}>{file.uploadState === 'failed' ? '上传失败' : '上传前预览'}</Tag>}
-          </Space>
-          <div className="aiwiki-preview-body">
-            {uploading && (
-              <div className="aiwiki-preview-uploading">
-                <Progress type="circle" percent={file.uploadProgress ?? 0} size={74} />
-              </div>
-            )}
-            <PreviewContent file={file} job={job} />
-          </div>
-        </>
-      ) : (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择或上传文件后可预览" />
-      )}
+    <section className="aiwiki-panel-section aiwiki-source-section">
+      <Typography.Text className="aiwiki-panel-kicker">任务文件</Typography.Text>
+      <Typography.Title level={5} className="aiwiki-panel-title">文件清单</Typography.Title>
+      <FileList files={files} compact uploading={uploading} onPreview={onPreview} onRemoveLocal={onRemoveLocal} />
     </section>
+  )
+}
+
+function FileList({
+  files,
+  compact,
+  uploading,
+  onPreview,
+  onRemoveLocal,
+}: {
+  files: DisplayFile[]
+  compact?: boolean
+  uploading?: boolean
+  onPreview: (file: DisplayFile) => void
+  onRemoveLocal: (file: DisplayFile) => void
+}) {
+  return (
+    <List
+      size="small"
+      dataSource={files}
+      locale={{ emptyText: '暂无文件' }}
+      className={compact ? 'aiwiki-source-file-list is-compact' : 'aiwiki-source-file-list'}
+      renderItem={(file) => (
+        <List.Item>
+          <Flex align="center" justify="space-between" gap={10} className="aiwiki-source-file-row">
+            <Space size={10} style={{ minWidth: 0 }}>
+              <span className="aiwiki-file-icon">{fileIcon(file)}</span>
+              <Space direction="vertical" size={0} style={{ minWidth: 0 }}>
+                <Typography.Text strong ellipsis>{file.filename}</Typography.Text>
+                <Typography.Text type="secondary">{categoryLabel(fileCategory(file))} · {formatBytes(file.size_bytes)}</Typography.Text>
+              </Space>
+            </Space>
+            <Space size={4}>
+              {uploading && file.isLocal && <Progress type="circle" percent={file.uploadProgress ?? 0} size={28} />}
+              <Button size="small" icon={<EyeOutlined />} onClick={() => onPreview(file)}>预览</Button>
+              {file.isLocal && (
+                <Button danger size="small" type="text" icon={<DeleteOutlined />} disabled={uploading} onClick={() => onRemoveLocal(file)} />
+              )}
+            </Space>
+          </Flex>
+        </List.Item>
+      )}
+    />
   )
 }
 
@@ -614,7 +969,7 @@ function SpreadsheetPreview({ preview }: { preview: AiwikiSpreadsheetPreview }) 
         <Tag>{sheet.column_count} 列</Tag>
         {sheet.truncated && <Tag color="gold">已截断</Tag>}
       </Space>
-      <Table size="small" bordered pagination={false} columns={columns} dataSource={data} scroll={{ x: width * 120, y: 360 }} />
+      <Table size="small" bordered pagination={false} columns={columns} dataSource={data} scroll={{ x: width * 120, y: 420 }} />
     </Flex>
   )
 }
@@ -651,329 +1006,6 @@ function PdfPreview({ file, job }: { file: DisplayFile; job: AiwikiJob | null })
   if (error) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={error} />
   if (!url) return <div className="aiwiki-pdf-loading">PDF 加载中</div>
   return <iframe className="aiwiki-pdf-preview" title={file.filename} src={url} />
-}
-
-function TaskAndAuditPanel({
-  job,
-  history,
-  auditLogs,
-  auditLoading,
-  isAdmin,
-  auditScope,
-  meta,
-  onScopeChange,
-  onDeleteJob,
-  onOpenAuditFile,
-}: {
-  job: AiwikiJob | null
-  history: AiwikiJobSummary[]
-  auditLogs: AiwikiAuditLog[]
-  auditLoading: boolean
-  isAdmin: boolean
-  auditScope: 'mine' | 'all'
-  meta: ReturnType<typeof statusMeta>
-  onScopeChange: (scope: 'mine' | 'all') => void
-  onDeleteJob: (job: AiwikiJobSummary | AiwikiJob) => Promise<void>
-  onOpenAuditFile: (auditLog: AiwikiAuditLog, filename: string) => void
-}) {
-  const [logView, setLogView] = useState<'task' | 'opencode' | 'audit'>('task')
-  const logOptions = [
-    { label: '任务日志', value: 'task' },
-    { label: '处理日志', value: 'opencode' },
-    { label: '管理员审计', value: 'audit', disabled: !isAdmin },
-  ]
-  const progressEvents = job?.progress?.events ?? []
-  return (
-    <section className="aiwiki-panel-section aiwiki-audit-section">
-      <Flex align="center" justify="space-between" gap={10}>
-        <div>
-          <Typography.Text className="aiwiki-panel-kicker">日志</Typography.Text>
-          <Typography.Title level={5} className="aiwiki-panel-title">{job ? meta.label : '任务历史'}</Typography.Title>
-        </div>
-      </Flex>
-      <Segmented
-        block
-        size="small"
-        value={logView}
-        onChange={(value) => setLogView(value as 'task' | 'opencode' | 'audit')}
-        options={logOptions}
-      />
-      {job && (
-        <div className="aiwiki-task-card">
-          <Progress percent={meta.percent} status={meta.status} />
-          <Typography.Text>{job.message || meta.label}</Typography.Text>
-          <Popconfirm
-            title="删除知识库任务"
-            description="会删除该任务记录和生成文件，但保留审计日志。"
-            okText="删除"
-            cancelText="取消"
-            okButtonProps={{ danger: true }}
-            disabled={job.status === 'queued' || job.status === 'running'}
-            onConfirm={() => void onDeleteJob(job)}
-          >
-            <Button danger size="small" disabled={job.status === 'queued' || job.status === 'running'} icon={<DeleteOutlined />}>删除任务</Button>
-          </Popconfirm>
-        </div>
-      )}
-      {logView === 'task' && (
-        <List
-          size="small"
-          dataSource={progressEvents}
-          locale={{ emptyText: job ? '暂无任务事件' : '选择任务后查看任务日志' }}
-          className="aiwiki-audit-list"
-          renderItem={(item) => (
-            <List.Item>
-              <Flex vertical gap={4}>
-                <Space wrap>
-                  <Tag color={progressEventColor(item.event)}>{item.step}</Tag>
-                  <Typography.Text className="aiwiki-audit-message">{item.summary}</Typography.Text>
-                </Space>
-              </Flex>
-            </List.Item>
-          )}
-        />
-      )}
-      {logView === 'opencode' && (
-        job?.log_tail?.length ? (
-          <pre className="aiwiki-opencode-log">{job.log_tail.join('\n')}</pre>
-        ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={job ? '暂无 OpenCode 输出' : '选择任务后查看处理日志'} />
-        )
-      )}
-      {logView === 'audit' && (
-        <>
-          {isAdmin && (
-            <Segmented size="small" value={auditScope} onChange={(value) => onScopeChange(value as 'mine' | 'all')} options={[
-              { label: '我的', value: 'mine' },
-              { label: '全部用户', value: 'all' },
-            ]} />
-          )}
-          <List
-            size="small"
-            loading={auditLoading}
-            dataSource={auditLogs}
-            locale={{ emptyText: '暂无审计记录' }}
-            className="aiwiki-audit-list"
-            renderItem={(item) => (
-              <List.Item>
-                <Flex vertical gap={6}>
-                  <Space wrap size={[4, 4]}>
-                    <Typography.Text className="aiwiki-audit-message">
-                      {item.actor_username} 进行了 {auditActionLabel(item.action)}
-                    </Typography.Text>
-                    {extractAuditFilenames(item).map((filename) => (
-                      <Tag
-                        key={`${item.id}-${filename}`}
-                        color="blue"
-                        className={item.job_id && item.action !== 'delete' ? 'aiwiki-clickable-file-tag' : undefined}
-                        onClick={item.job_id && item.action !== 'delete' ? () => onOpenAuditFile(item, filename) : undefined}
-                      >
-                        {filename}
-                      </Tag>
-                    ))}
-                  </Space>
-                  <Typography.Text className="aiwiki-audit-time">{formatDateTime(item.created_at)}</Typography.Text>
-                </Flex>
-              </List.Item>
-            )}
-          />
-        </>
-      )}
-      {!auditLogs.length && history.length > 0 && logView === 'audit' && <Typography.Text type="secondary">历史任务 {history.length} 个</Typography.Text>}
-    </section>
-  )
-}
-
-function FileGraph({
-  files,
-  selectedId,
-  onSelect,
-}: {
-  files: DisplayFile[]
-  selectedId: string | null
-  onSelect: (file: DisplayFile) => void
-}) {
-  const graphRef = useRef<SVGSVGElement | null>(null)
-  const dragRef = useRef<{
-    kind: 'canvas' | 'node'
-    id?: string
-    lastX: number
-    lastY: number
-    moved: boolean
-  } | null>(null)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-  const [nodeOffsets, setNodeOffsets] = useState<Record<string, { x: number; y: number }>>({})
-  const model = useMemo(() => buildGraphModel(files), [files])
-  const positionedModel = useMemo(() => {
-    const nodes = model.nodes.map((node) => {
-      const offset = nodeOffsets[node.id]
-      return offset ? { ...node, x: node.x + offset.x, y: node.y + offset.y } : node
-    })
-    const nodesById = new Map(nodes.map((node) => [node.id, node]))
-    return { nodes, edges: model.edges, nodesById }
-  }, [model, nodeOffsets])
-
-  const pointerDelta = useCallback((clientX: number, clientY: number) => {
-    const drag = dragRef.current
-    const rect = graphRef.current?.getBoundingClientRect()
-    if (!drag || !rect) return { dx: 0, dy: 0 }
-    const dx = (clientX - drag.lastX) * (920 / rect.width)
-    const dy = (clientY - drag.lastY) * (580 / rect.height)
-    drag.lastX = clientX
-    drag.lastY = clientY
-    if (Math.abs(dx) > 0 || Math.abs(dy) > 0) drag.moved = true
-    return { dx, dy }
-  }, [])
-
-  useEffect(() => {
-    const handleMove = (event: PointerEvent) => {
-      const drag = dragRef.current
-      if (!drag) return
-      const { dx, dy } = pointerDelta(event.clientX, event.clientY)
-      if (drag.kind === 'canvas') {
-        setPan((current) => ({ x: current.x + dx, y: current.y + dy }))
-      } else if (drag.id) {
-        setNodeOffsets((current) => {
-          const offset = current[drag.id!] ?? { x: 0, y: 0 }
-          return { ...current, [drag.id!]: { x: offset.x + dx, y: offset.y + dy } }
-        })
-      }
-    }
-    const handleUp = () => {
-      dragRef.current = null
-    }
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', handleUp)
-    return () => {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', handleUp)
-    }
-  }, [pointerDelta])
-
-  if (!files.length) {
-    return <div className="aiwiki-graph-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="上传内容后生成知识库图谱" /></div>
-  }
-  return (
-    <div className="aiwiki-file-graph">
-      <div className="aiwiki-graph-toolbar">
-        <Button size="small" icon={<RotateLeftOutlined />} onClick={() => {
-          setPan({ x: 0, y: 0 })
-          setNodeOffsets({})
-        }}>重置视图</Button>
-      </div>
-      <svg
-        ref={graphRef}
-        viewBox="0 0 920 580"
-        className="aiwiki-graph-svg"
-        role="img"
-        aria-label="知识库文件图谱"
-        onPointerDown={(event) => {
-          if (event.target !== event.currentTarget) return
-          dragRef.current = { kind: 'canvas', lastX: event.clientX, lastY: event.clientY, moved: false }
-        }}
-      >
-        <g transform={`translate(${pan.x} ${pan.y})`}>
-          {positionedModel.edges.map((edge) => (
-            <line
-              key={`${edge.from}-${edge.to}`}
-              x1={positionedModel.nodesById.get(edge.from)?.x ?? 0}
-              y1={positionedModel.nodesById.get(edge.from)?.y ?? 0}
-              x2={positionedModel.nodesById.get(edge.to)?.x ?? 0}
-              y2={positionedModel.nodesById.get(edge.to)?.y ?? 0}
-              className="aiwiki-graph-edge"
-            />
-          ))}
-          {positionedModel.nodes.map((node) => (
-            <foreignObject key={node.id} x={node.x - node.width / 2} y={node.y - node.height / 2} width={node.width} height={node.height}>
-              {node.file ? (
-                <button
-                  type="button"
-                  className={node.file.id === selectedId ? `aiwiki-graph-node ${node.kind} is-active` : `aiwiki-graph-node ${node.kind}`}
-                  onPointerDown={(event) => {
-                    event.stopPropagation()
-                    dragRef.current = { kind: 'node', id: node.id, lastX: event.clientX, lastY: event.clientY, moved: false }
-                  }}
-                  onClick={() => onSelect(node.file!)}
-                >
-                  <span>{node.label}</span>
-                </button>
-              ) : (
-                <div
-                  className={`aiwiki-graph-node ${node.kind}`}
-                  onPointerDown={(event) => {
-                    event.stopPropagation()
-                    dragRef.current = { kind: 'node', id: node.id, lastX: event.clientX, lastY: event.clientY, moved: false }
-                  }}
-                >
-                  <span>{node.label}</span>
-                </div>
-              )}
-            </foreignObject>
-          ))}
-        </g>
-      </svg>
-    </div>
-  )
-}
-
-type GraphNode = {
-  id: string
-  label: string
-  kind: string
-  x: number
-  y: number
-  width: number
-  height: number
-  file?: DisplayFile
-}
-
-function buildGraphModel(files: DisplayFile[]) {
-  const nodes: GraphNode[] = [
-    { id: 'root', label: '知识库', kind: 'root', x: 460, y: 72, width: 132, height: 54 },
-    { id: 'document', label: '文档', kind: 'group document', x: 270, y: 178, width: 132, height: 50 },
-    { id: 'spreadsheet', label: '表格', kind: 'group spreadsheet', x: 650, y: 178, width: 132, height: 50 },
-  ]
-  const edges = [{ from: 'root', to: 'document' }, { from: 'root', to: 'spreadsheet' }]
-  const groups = new Map<string, DisplayFile[]>()
-  files.slice(0, 28).forEach((file) => {
-    const key = `${fileCategory(file)}:${file.extension ?? extensionOf(file.filename)}`
-    groups.set(key, [...(groups.get(key) ?? []), file])
-  })
-  placeExtensionNodes(nodes, edges, Array.from(groups.entries()).filter(([key]) => key.startsWith('document:')), 'document', 270)
-  placeExtensionNodes(nodes, edges, Array.from(groups.entries()).filter(([key]) => key.startsWith('spreadsheet:')), 'spreadsheet', 650)
-  const nodesById = new Map(nodes.map((node) => [node.id, node]))
-  return { nodes, edges, nodesById }
-}
-
-function placeExtensionNodes(
-  nodes: GraphNode[],
-  edges: Array<{ from: string; to: string }>,
-  entries: Array<[string, DisplayFile[]]>,
-  parentId: string,
-  centerX: number,
-) {
-  entries.forEach(([key, items], extensionIndex) => {
-    const extension = key.split(':')[1]
-    const x = centerX + (extensionIndex - (entries.length - 1) / 2) * 132
-    const extensionId = `${parentId}-${extension}`
-    nodes.push({ id: extensionId, label: extension.toUpperCase().replace('.', ''), kind: 'extension', x, y: 300, width: 92, height: 42 })
-    edges.push({ from: parentId, to: extensionId })
-    items.slice(0, 5).forEach((file, fileIndex) => {
-      const row = Math.floor(fileIndex / 2)
-      const column = fileIndex % 2
-      nodes.push({
-        id: `file-${file.id}`,
-        label: file.filename,
-        kind: file.isLocal ? 'file pending' : 'file',
-        x: x + (column === 0 ? -54 : 54),
-        y: 414 + row * 68,
-        width: 142,
-        height: 48,
-        file,
-      })
-      edges.push({ from: extensionId, to: `file-${file.id}` })
-    })
-  })
 }
 
 async function buildLocalFile(file: File, index: number): Promise<DisplayFile> {
@@ -1034,31 +1066,51 @@ async function buildLocalPreview(file: File, extension: string): Promise<AiwikiF
   return { kind: 'pdf', filename: file.name, size_bytes: file.size }
 }
 
+function upsertHistory(items: AiwikiJobSummary[], latest: AiwikiJob): AiwikiJobSummary[] {
+  const summary = jobSummaryFromJob(latest)
+  return items.some((item) => item.id === latest.id)
+    ? items.map((item) => (item.id === latest.id ? { ...item, ...summary, summary: item.summary } : item))
+    : [summary, ...items]
+}
+
+function jobSummaryFromJob(job: AiwikiJob): AiwikiJobSummary {
+  return {
+    id: job.id,
+    owner_user_id: job.owner_user_id,
+    owner_username: job.owner_username,
+    title: job.title,
+    description: job.description,
+    status: job.status,
+    message: job.message,
+    created_at: job.created_at,
+    started_at: job.started_at,
+    finished_at: job.finished_at,
+    files: job.files,
+    summary: {},
+  }
+}
+
+function toDisplayFile(
+  file: AiwikiUploadedFile,
+  job: AiwikiJob | AiwikiJobSummary,
+  fileIndex: number,
+): DisplayFile {
+  return {
+    ...file,
+    id: `${job.id}:${fileIndex}`,
+    job_id: job.id,
+    job_status: job.status,
+    file_index: fileIndex,
+    created_at: job.created_at,
+  }
+}
+
 function isTextPreview(preview: AiwikiFilePreview): preview is AiwikiTextPreview {
   return preview.kind === 'text'
 }
 
 function isSpreadsheetPreview(preview: AiwikiFilePreview): preview is AiwikiSpreadsheetPreview {
   return preview.kind === 'spreadsheet'
-}
-
-function auditActionLabel(action: string): string {
-  return {
-    upload: '上传',
-    execute: '执行任务',
-    delete: '删除',
-  }[action] ?? action
-}
-
-function extractAuditFilenames(item: AiwikiAuditLog): string[] {
-  const filenames = item.metadata?.filenames
-  if (Array.isArray(filenames)) {
-    return filenames.filter((filename): filename is string => typeof filename === 'string' && Boolean(filename.trim()))
-  }
-  return item.target_filename
-    .split(',')
-    .map((filename) => filename.trim())
-    .filter(Boolean)
 }
 
 function fileCategory(file: DisplayFile): FileCategory {
@@ -1076,6 +1128,18 @@ function fileIcon(file: DisplayFile) {
   if (extension === '.xlsx') return <TableOutlined />
   if (extension === '.md' || extension === '.markdown') return <FileMarkdownOutlined />
   return <FileTextOutlined />
+}
+
+function taskStatusLabel(status: DisplayTask['status']): string {
+  if (status === 'draft') return '草稿'
+  return statusMeta(status).label
+}
+
+function taskStatusColor(status: DisplayTask['status']): string {
+  if (status === 'draft') return 'gold'
+  if (status === 'completed') return 'green'
+  if (status === 'failed') return 'red'
+  return 'blue'
 }
 
 function extensionOf(filename: string): string {

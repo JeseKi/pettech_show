@@ -27,6 +27,8 @@ class JobOut(BaseModel):
     id: str
     owner_user_id: int | None = None
     owner_username: str | None = None
+    title: str
+    description: str | None = None
     status: JobStatus
     queue_position: int | None = None
     message: str | None = None
@@ -42,6 +44,8 @@ class JobSummaryOut(BaseModel):
     id: str
     owner_user_id: int | None = None
     owner_username: str | None = None
+    title: str
+    description: str | None = None
     status: JobStatus
     message: str | None = None
     created_at: datetime
@@ -64,6 +68,11 @@ class JobListOut(BaseModel):
     limit: int
     offset: int
     stats: AiwikiStatsOut = Field(default_factory=AiwikiStatsOut)
+
+
+class JobUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=120)
+    description: str | None = Field(default=None, max_length=1000)
 
 
 class AiwikiAuditLogOut(BaseModel):

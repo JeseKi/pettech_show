@@ -27,6 +27,7 @@ from ..schemas import (
     AiwikiStatsOut,
     JobListOut,
     JobOut,
+    JobUpdate,
 )
 from .constants import ALLOWED_EXTENSIONS
 from .files import (
@@ -136,6 +137,8 @@ async def create_job(
     manifest = {
         "id": job_id,
         "owner_user_id": current_user.id,
+        "title": _default_job_title(saved_files, job_id),
+        "description": None,
         "status": "queued",
         "message": "任务已进入队列",
         "created_at": now.isoformat(),
@@ -231,7 +234,53 @@ def get_job(db: Session, job_id: str, current_user: User) -> JobOut:
     if job is None or not _can_access_job(current_user, job.owner_user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     manifest["owner_user_id"] = job.owner_user_id
+    manifest["title"] = job.title or manifest.get("title")
+    manifest["description"] = job.description
     return job_out_from_manifest(workdir, manifest, dao.owner_username(job.owner_user_id))
+
+
+def update_job(
+    db: Session, job_id: str, payload: JobUpdate, current_user: User
+) -> JobOut:
+    workdir = existing_job_workdir(job_id, db)
+    dao = AiwikiJobDAO(db)
+    job = dao.get(job_id)
+    if job is None or not _can_access_job(current_user, job.owner_user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+
+    fields = payload.model_dump(exclude_unset=True)
+    normalized: dict[str, Any] = {}
+    if "title" in fields:
+        normalized["title"] = _normalize_optional_text(fields.get("title"))
+    if "description" in fields:
+        normalized["description"] = _normalize_optional_text(fields.get("description"))
+
+    manifest = read_manifest(workdir)
+    manifest.update(normalized)
+    write_manifest(workdir, manifest)
+    dao.append_audit_log(
+        actor_user_id=current_user.id,
+        actor_username=current_user.username,
+        action="update",
+        job_id=job.id,
+        target_filename=", ".join(
+            item.get("filename", "")
+            for item in parse_manifest_files(workdir)
+            if isinstance(item, dict)
+        ) or job.id,
+        message=f"{current_user.username} 更新了知识库任务 {job.id}",
+        metadata={
+            "job_id": job.id,
+            "fields": sorted(normalized.keys()),
+        },
+    )
+    updated = dao.upsert_from_payload(manifest_db_payload(workdir, manifest))
+    manifest["owner_user_id"] = updated.owner_user_id
+    manifest["title"] = updated.title or manifest.get("title")
+    manifest["description"] = updated.description
+    return job_out_from_manifest(
+        workdir, manifest, dao.owner_username(updated.owner_user_id)
+    )
 
 
 def get_result(db: Session, job_id: str, current_user: User) -> AiwikiResultOut:
@@ -530,3 +579,17 @@ def _can_access_job(user: User, owner_user_id: int | None) -> bool:
 
 def _default_admin_user_id(db: Session) -> int | None:
     return AiwikiJobDAO(db).default_admin_user_id()
+
+
+def _default_job_title(files: list[dict[str, Any]], fallback_id: str) -> str:
+    first = files[0].get("filename") if files else None
+    if isinstance(first, str) and first.strip():
+        return f"{first.strip()} 等 {len(files)} 个文件" if len(files) > 1 else first.strip()
+    return fallback_id
+
+
+def _normalize_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None

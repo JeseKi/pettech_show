@@ -18,6 +18,13 @@ def job_out_from_manifest(
     workdir: Path, manifest: dict[str, Any], owner_username: str | None = None
 ) -> JobOut:
     payload = dict(manifest)
+    files = payload.get("files")
+    payload["title"] = display_job_title(
+        payload.get("title"),
+        files if isinstance(files, list) else [],
+        str(payload.get("id") or workdir.name),
+    )
+    payload["description"] = payload.get("description")
     payload["owner_username"] = owner_username
     payload["queue_position"] = get_queue().queue_position(manifest["id"])
     payload["progress"] = read_progress(workdir)
@@ -32,6 +39,8 @@ def job_summary_from_model(
         id=job.id,
         owner_user_id=job.owner_user_id,
         owner_username=owner_username,
+        title=display_job_title(job.title, parse_json_list(job.files_json), job.id),
+        description=job.description,
         status=coerce_job_status(job.status),
         message=job.message,
         created_at=job.created_at,
@@ -74,3 +83,19 @@ def coerce_job_status(value: str) -> JobStatus:
     if value not in {"queued", "running", "completed", "failed"}:
         return "failed"
     return cast(JobStatus, value)
+
+
+def display_job_title(
+    title: Any,
+    files: list[Any],
+    fallback_id: str,
+) -> str:
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    first_file = next((item for item in files if isinstance(item, dict)), None)
+    filename = first_file.get("filename") if isinstance(first_file, dict) else None
+    if isinstance(filename, str) and filename.strip():
+        if len(files) > 1:
+            return f"{filename.strip()} 等 {len(files)} 个文件"
+        return filename.strip()
+    return fallback_id

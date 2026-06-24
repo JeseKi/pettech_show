@@ -87,6 +87,8 @@ class AiwikiJobDAO(BaseDAO):
             "owner_user_id": fields.get("owner_user_id", job.owner_user_id),
             "workdir": job.workdir,
             "status": fields.get("status", job.status),
+            "title": fields.get("title", job.title),
+            "description": fields.get("description", job.description),
             "message": fields.get("message", job.message),
             "raw_date": fields.get("raw_date", job.raw_date),
             "files": fields.get("files_json", job.files_json),
@@ -108,6 +110,8 @@ class AiwikiJobDAO(BaseDAO):
         if "owner_user_id" in payload:
             job.owner_user_id = _coerce_int(payload.get("owner_user_id"))
         job.status = str(payload.get("status") or job.status or "queued")
+        job.title = payload.get("title")
+        job.description = payload.get("description")
         job.message = payload.get("message")
         job.workdir = str(payload.get("workdir") or job.workdir)
         job.raw_date = payload.get("raw_date")

@@ -226,6 +226,8 @@ def test_create_aiwiki_job_and_get_result(
     assert created["status"] == "queued"
     assert created["owner_user_id"] == user.id
     assert created["owner_username"] == user.username
+    assert created["title"] == "sample.md"
+    assert created["description"] is None
     assert created["files"][0]["raw_path"].endswith("_1_sample.md")
     assert created["files"][0]["extension"] == ".md"
     assert created["files"][0]["category"] == "graphic_text"
@@ -274,6 +276,7 @@ def test_create_aiwiki_job_and_get_result(
     listed = list_resp.json()
     assert listed["total"] >= 1
     assert listed["items"][0]["id"] == created["id"]
+    assert listed["items"][0]["title"] == "sample.md"
     assert listed["items"][0]["status"] == "completed"
     assert listed["stats"]["graphic_text_count"] >= 1
     assert listed["stats"]["display_count"] >= 1
@@ -369,6 +372,69 @@ def test_aiwiki_jobs_are_scoped_to_owner_and_admin_can_view_all_logs(
     admin_messages = [item["message"] for item in admin_logs.json()["items"]]
     assert "aiwiki_owner_scope 上传了 sample.md" in admin_messages
     assert "aiwiki_owner_scope 执行了知识库生成任务" in admin_messages
+
+
+def test_update_aiwiki_job_metadata_scoped_to_owner_and_admin(
+    test_client, test_db_session, fake_aiwiki_runtime
+):
+    owner = _create_user(test_db_session, "aiwiki_update_owner")
+    other = _create_user(test_db_session, "aiwiki_update_other")
+    admin = _create_user(test_db_session, "aiwiki_update_admin", UserRole.ADMIN)
+    owner_headers = _auth_headers(owner)
+    other_headers = _auth_headers(other)
+    admin_headers = _auth_headers(admin)
+
+    create_resp = test_client.post(
+        "/api/aiwiki/jobs",
+        headers=owner_headers,
+        files=[
+            ("files", ("alpha.md", b"# Alpha", "text/markdown")),
+            ("files", ("beta.txt", b"Beta", "text/plain")),
+        ],
+    )
+    assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
+    created = create_resp.json()
+    assert created["title"] == "alpha.md 等 2 个文件"
+
+    other_update = test_client.patch(
+        f"/api/aiwiki/jobs/{created['id']}",
+        headers=other_headers,
+        json={"title": "Other title"},
+    )
+    assert other_update.status_code == HTTPStatus.NOT_FOUND
+
+    owner_update = test_client.patch(
+        f"/api/aiwiki/jobs/{created['id']}",
+        headers=owner_headers,
+        json={"title": "运营素材任务", "description": "两份上传文件统一生成。"},
+    )
+    assert owner_update.status_code == HTTPStatus.OK, owner_update.text
+    updated = owner_update.json()
+    assert updated["title"] == "运营素材任务"
+    assert updated["description"] == "两份上传文件统一生成。"
+    assert len(updated["files"]) == 2
+
+    admin_update = test_client.patch(
+        f"/api/aiwiki/jobs/{created['id']}",
+        headers=admin_headers,
+        json={"title": "管理员修订标题"},
+    )
+    assert admin_update.status_code == HTTPStatus.OK, admin_update.text
+    assert admin_update.json()["title"] == "管理员修订标题"
+    assert admin_update.json()["description"] == "两份上传文件统一生成。"
+
+    detail_resp = test_client.get(
+        f"/api/aiwiki/jobs/{created['id']}", headers=owner_headers
+    )
+    assert detail_resp.status_code == HTTPStatus.OK
+    assert detail_resp.json()["title"] == "管理员修订标题"
+
+    logs_resp = test_client.get("/api/aiwiki/audit-logs", headers=owner_headers)
+    assert logs_resp.status_code == HTTPStatus.OK, logs_resp.text
+    assert any(
+        item["action"] == "update" and item["job_id"] == created["id"]
+        for item in logs_resp.json()["items"]
+    )
 
 
 def test_rejects_unsupported_upload_type(

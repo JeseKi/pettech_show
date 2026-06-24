@@ -13,7 +13,13 @@ from src.server.auth.dependencies import get_current_user
 from src.server.auth.models import User
 from src.server.database import get_db
 from . import service
-from .schemas import AiwikiAuditLogListOut, AiwikiResultOut, JobListOut, JobOut
+from .schemas import (
+    AiwikiAuditLogListOut,
+    AiwikiResultOut,
+    JobListOut,
+    JobOut,
+    JobUpdate,
+)
 
 router = APIRouter(prefix="/api/aiwiki", tags=["AI Wiki"])
 
@@ -72,6 +78,20 @@ async def get_aiwiki_job(
     current_user: User = Depends(get_current_user),
 ):
     return service.get_job(db, job_id, current_user)
+
+
+@router.patch(
+    "/jobs/{job_id}",
+    response_model=JobOut,
+    summary="更新 AI Wiki 任务元数据",
+)
+async def update_aiwiki_job(
+    job_id: str,
+    payload: JobUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return service.update_job(db, job_id, payload, current_user)
 
 
 @router.get(

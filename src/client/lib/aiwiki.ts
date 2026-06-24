@@ -67,6 +67,8 @@ export interface AiwikiJob {
   id: string
   owner_user_id: number | null
   owner_username: string | null
+  title: string
+  description: string | null
   status: AiwikiJobStatus
   queue_position: number | null
   message: string | null
@@ -82,6 +84,8 @@ export interface AiwikiJobSummary {
   id: string
   owner_user_id: number | null
   owner_username: string | null
+  title: string
+  description: string | null
   status: AiwikiJobStatus
   message: string | null
   created_at: string
@@ -185,6 +189,11 @@ export interface CreateAiwikiJobOptions {
   generate_search_assets?: boolean
 }
 
+export interface UpdateAiwikiJobPayload {
+  title?: string | null
+  description?: string | null
+}
+
 export async function createAiwikiJob(
   files: File[],
   options: CreateAiwikiJobOptions = {},
@@ -205,6 +214,11 @@ export async function createAiwikiJob(
 
 export async function getAiwikiJob(jobId: string): Promise<AiwikiJob> {
   const { data } = await api.get<AiwikiJob>(`/aiwiki/jobs/${jobId}`)
+  return data
+}
+
+export async function updateAiwikiJob(jobId: string, payload: UpdateAiwikiJobPayload): Promise<AiwikiJob> {
+  const { data } = await api.patch<AiwikiJob>(`/aiwiki/jobs/${jobId}`, payload)
   return data
 }
 

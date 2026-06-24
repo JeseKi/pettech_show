@@ -108,6 +108,8 @@ def manifest_db_payload(workdir: Path, manifest: dict[str, Any]) -> dict[str, An
         "id": manifest.get("id") or workdir.name,
         "owner_user_id": manifest.get("owner_user_id"),
         "status": manifest.get("status") or "queued",
+        "title": manifest.get("title"),
+        "description": manifest.get("description"),
         "message": manifest.get("message"),
         "workdir": manifest.get("workdir") or workdir.as_posix(),
         "raw_date": manifest.get("raw_date"),

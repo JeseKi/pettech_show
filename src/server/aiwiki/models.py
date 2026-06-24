@@ -19,6 +19,8 @@ class AiwikiJob(Base):
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+    title: Mapped[str | None] = mapped_column(String(255), default=None)
+    description: Mapped[str | None] = mapped_column(Text, default=None)
     message: Mapped[str | None] = mapped_column(Text, default=None)
     workdir: Mapped[str] = mapped_column(Text, nullable=False)
     raw_date: Mapped[str | None] = mapped_column(String(16), default=None)

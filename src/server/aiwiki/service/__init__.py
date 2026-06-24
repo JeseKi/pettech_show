@@ -10,6 +10,7 @@ from .jobs import (
     list_audit_logs,
     list_jobs,
     sync_job_records,
+    update_job,
 )
 from .queue_state import reset_queue_for_tests
 
@@ -23,4 +24,5 @@ __all__ = [
     "list_jobs",
     "reset_queue_for_tests",
     "sync_job_records",
+    "update_job",
 ]

@@ -1,9 +1,10 @@
-import { ApiOutlined, KeyOutlined, LockOutlined, TeamOutlined } from '@ant-design/icons'
+import { ApiOutlined, FileSearchOutlined, KeyOutlined, LockOutlined, TeamOutlined } from '@ant-design/icons'
 import { Tabs } from 'antd'
 import UserManagementPage from './UserManagementPage'
 import PermissionManagementPage from './PermissionManagementPage'
 import ScopeManagementPage from './ScopeManagementPage'
 import OAuthClientManagementPage from './OAuthClientManagementPage'
+import AiwikiAuditPage from './AiwikiAuditPage'
 
 const tabItems = [
   {
@@ -45,6 +46,16 @@ const tabItems = [
       </span>
     ),
     children: <OAuthClientManagementPage />,
+  },
+  {
+    key: 'aiwiki-audit',
+    label: (
+      <span>
+        <FileSearchOutlined />
+        知识库审计
+      </span>
+    ),
+    children: <AiwikiAuditPage />,
   },
 ]
 
