@@ -4,8 +4,10 @@ from __future__ import annotations
 import sys
 import time
 import json
+import zipfile
 from datetime import datetime, timezone
 from http import HTTPStatus
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -161,6 +163,31 @@ def _auth_headers(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _xlsx_bytes() -> bytes:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("xl/workbook.xml", """<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="素材清单" sheetId="1" r:id="rId1"/></sheets>
+</workbook>""")
+        archive.writestr("xl/_rels/workbook.xml.rels", """<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>""")
+        archive.writestr("xl/sharedStrings.xml", """<?xml version="1.0" encoding="UTF-8"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <si><t>标题</t></si><si><t>类型</t></si><si><t>猫咪呕吐判断表</t></si><si><t>PDF</t></si>
+</sst>""")
+        archive.writestr("xl/worksheets/sheet1.xml", """<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>
+    <row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2" t="s"><v>3</v></c></row>
+  </sheetData>
+</worksheet>""")
+    return buffer.getvalue()
+
+
 def _wait_for_terminal_status(test_client, job_id: str, headers: dict[str, str]) -> dict:
     deadline = time.time() + 5
     latest = None
@@ -200,6 +227,9 @@ def test_create_aiwiki_job_and_get_result(
     assert created["owner_user_id"] == user.id
     assert created["owner_username"] == user.username
     assert created["files"][0]["raw_path"].endswith("_1_sample.md")
+    assert created["files"][0]["extension"] == ".md"
+    assert created["files"][0]["category"] == "graphic_text"
+    assert created["files"][0]["preview"]["kind"] == "text"
     assert created["progress"]["status"] == "queued"
     assert created["progress"]["current_step"] == "任务排队中"
 
@@ -245,6 +275,20 @@ def test_create_aiwiki_job_and_get_result(
     assert listed["total"] >= 1
     assert listed["items"][0]["id"] == created["id"]
     assert listed["items"][0]["status"] == "completed"
+    assert listed["stats"]["graphic_text_count"] >= 1
+    assert listed["stats"]["display_count"] >= 1
+
+    file_resp = test_client.get(
+        f"/api/aiwiki/jobs/{created['id']}/files/0", headers=headers
+    )
+    assert file_resp.status_code == HTTPStatus.OK, file_resp.text
+    assert file_resp.content.startswith(b"# Sample")
+
+    logs_resp = test_client.get("/api/aiwiki/audit-logs", headers=headers)
+    assert logs_resp.status_code == HTTPStatus.OK, logs_resp.text
+    messages = [item["message"] for item in logs_resp.json()["items"]]
+    assert f"{user.username} 上传了 sample.md" in messages
+    assert f"{user.username} 执行了知识库生成任务" in messages
 
 
 def test_create_aiwiki_job_can_skip_search_assets(
@@ -285,7 +329,7 @@ def test_create_aiwiki_job_can_skip_search_assets(
     assert "AI Wiki 怎么做" not in result["highlight_terms"]
 
 
-def test_aiwiki_jobs_are_scoped_to_owner_and_visible_to_admin(
+def test_aiwiki_jobs_are_scoped_to_owner_and_admin_can_view_all_logs(
     test_client, test_db_session, fake_aiwiki_runtime
 ):
     owner = _create_user(test_db_session, "aiwiki_owner_scope")
@@ -311,8 +355,20 @@ def test_aiwiki_jobs_are_scoped_to_owner_and_visible_to_admin(
     assert all(item["id"] != job_id for item in other_list.json()["items"])
 
     admin_detail = test_client.get(f"/api/aiwiki/jobs/{job_id}", headers=admin_headers)
-    assert admin_detail.status_code == HTTPStatus.OK, admin_detail.text
-    assert admin_detail.json()["owner_username"] == owner.username
+    assert admin_detail.status_code == HTTPStatus.OK
+
+    admin_file = test_client.get(f"/api/aiwiki/jobs/{job_id}/files/0", headers=admin_headers)
+    assert admin_file.status_code == HTTPStatus.OK
+    assert admin_file.content.startswith(b"# Sample")
+
+    user_all_logs = test_client.get("/api/aiwiki/audit-logs?scope=all", headers=owner_headers)
+    assert user_all_logs.status_code == HTTPStatus.FORBIDDEN
+
+    admin_logs = test_client.get("/api/aiwiki/audit-logs?scope=all", headers=admin_headers)
+    assert admin_logs.status_code == HTTPStatus.OK, admin_logs.text
+    admin_messages = [item["message"] for item in admin_logs.json()["items"]]
+    assert "aiwiki_owner_scope 上传了 sample.md" in admin_messages
+    assert "aiwiki_owner_scope 执行了知识库生成任务" in admin_messages
 
 
 def test_rejects_unsupported_upload_type(
@@ -322,11 +378,38 @@ def test_rejects_unsupported_upload_type(
     resp = test_client.post(
         "/api/aiwiki/jobs",
         headers=headers,
-        files=[("files", ("sample.pdf", b"%PDF", "application/pdf"))],
+        files=[("files", ("sample.docx", b"docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))],
     )
 
     assert resp.status_code == HTTPStatus.BAD_REQUEST
     assert "不支持" in resp.json()["detail"]
+
+
+def test_aiwiki_accepts_xlsx_and_pdf_previews(
+    test_client, test_db_session, fake_aiwiki_runtime
+):
+    headers = _auth_headers(_create_user(test_db_session, "aiwiki_preview_types"))
+    resp = test_client.post(
+        "/api/aiwiki/jobs",
+        headers=headers,
+        files=[
+            (
+                "files",
+                (
+                    "matrix.xlsx",
+                    _xlsx_bytes(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+            ),
+            ("files", ("sample.pdf", b"%PDF-1.4\n%test", "application/pdf")),
+        ],
+    )
+
+    assert resp.status_code == HTTPStatus.ACCEPTED, resp.text
+    created = resp.json()
+    assert created["files"][0]["preview"]["kind"] == "spreadsheet"
+    assert created["files"][0]["preview"]["sheets"][0]["rows"][1] == ["猫咪呕吐判断表", "PDF"]
+    assert created["files"][1]["preview"]["kind"] == "pdf"
 
 
 def test_delete_completed_aiwiki_job(
@@ -350,6 +433,12 @@ def test_delete_completed_aiwiki_job(
 
     detail_resp = test_client.get(f"/api/aiwiki/jobs/{job_id}", headers=headers)
     assert detail_resp.status_code == HTTPStatus.NOT_FOUND
+
+    logs_resp = test_client.get("/api/aiwiki/audit-logs", headers=headers)
+    assert logs_resp.status_code == HTTPStatus.OK, logs_resp.text
+    messages = [item["message"] for item in logs_resp.json()["items"]]
+    assert any("删除了知识库任务" in item for item in messages)
+    assert any(item == f"{user.username} 上传了 sample.md" for item in messages)
 
 
 def test_result_requires_completed_job(test_client, test_db_session, fake_aiwiki_runtime):

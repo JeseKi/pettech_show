@@ -1,7 +1,7 @@
 """create persistent chat sessions
 
-Revision ID: 2026062402
-Revises: 2026062401
+Revision ID: 2026062403
+Revises: 2026062402
 Create Date: 2026-06-24
 
 """
@@ -11,8 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "2026062402"
-down_revision: Union[str, Sequence[str], None] = "2026062401"
+revision: str = "2026062403"
+down_revision: Union[str, Sequence[str], None] = "2026062402"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

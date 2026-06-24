@@ -6,7 +6,50 @@ export interface AiwikiUploadedFile {
   filename: string
   size_bytes: number
   raw_path: string
+  upload_path?: string | null
+  extension?: string | null
+  mime_type?: string | null
+  category?: 'graphic_text' | 'document' | null
+  preview_status?: 'ready' | 'failed' | null
+  preview?: AiwikiFilePreview
 }
+
+export type AiwikiTextPreview = {
+  kind: 'text'
+  format: 'markdown' | 'plain'
+  text: string
+  truncated: boolean
+  character_count: number
+}
+
+export type AiwikiSpreadsheetSheet = {
+  name: string
+  row_count: number
+  column_count: number
+  truncated: boolean
+  rows: string[][]
+}
+
+export type AiwikiSpreadsheetPreview = {
+  kind: 'spreadsheet'
+  filename: string
+  sheets: AiwikiSpreadsheetSheet[]
+  sheet_count: number
+  max_rows: number
+  max_columns: number
+}
+
+export type AiwikiPdfPreview = {
+  kind: 'pdf'
+  filename: string
+  size_bytes: number
+}
+
+export type AiwikiFilePreview =
+  | AiwikiTextPreview
+  | AiwikiSpreadsheetPreview
+  | AiwikiPdfPreview
+  | Record<string, unknown>
 
 export interface AiwikiProgressEvent {
   event: string
@@ -53,6 +96,32 @@ export interface AiwikiJobList {
   total: number
   limit: number
   offset: number
+  stats?: {
+    graphic_text_count: number
+    document_count: number
+    display_count: number
+    total_count: number
+  }
+}
+
+export interface AiwikiAuditLog {
+  id: number
+  actor_user_id: number
+  actor_username: string
+  action: string
+  job_id: string | null
+  target_filename: string
+  message: string
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export interface AiwikiAuditLogList {
+  items: AiwikiAuditLog[]
+  total: number
+  limit: number
+  offset: number
+  scope: 'mine' | 'all'
 }
 
 export interface AiwikiMaterial {
@@ -116,12 +185,20 @@ export interface CreateAiwikiJobOptions {
   generate_search_assets?: boolean
 }
 
-export async function createAiwikiJob(files: File[], options: CreateAiwikiJobOptions = {}): Promise<AiwikiJob> {
+export async function createAiwikiJob(
+  files: File[],
+  options: CreateAiwikiJobOptions = {},
+  onProgress?: (percent: number) => void,
+): Promise<AiwikiJob> {
   const formData = new FormData()
   files.forEach((file) => formData.append('files', file))
   formData.append('generate_search_assets', String(options.generate_search_assets ?? true))
   const { data } = await api.post<AiwikiJob>('/aiwiki/jobs', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (event) => {
+      if (!event.total) return
+      onProgress?.(Math.round((event.loaded * 100) / event.total))
+    },
   })
   return data
 }
@@ -138,6 +215,22 @@ export async function listAiwikiJobs(params: { limit?: number; offset?: number; 
 
 export async function getAiwikiResult(jobId: string): Promise<AiwikiResult> {
   const { data } = await api.get<AiwikiResult>(`/aiwiki/jobs/${jobId}/result`)
+  return data
+}
+
+export async function getAiwikiFile(jobId: string, fileIndex: number): Promise<Blob> {
+  const { data } = await api.get<Blob>(`/aiwiki/jobs/${jobId}/files/${fileIndex}`, {
+    responseType: 'blob',
+  })
+  return data
+}
+
+export async function listAiwikiAuditLogs(params: {
+  scope?: 'mine' | 'all'
+  limit?: number
+  offset?: number
+} = {}): Promise<AiwikiAuditLogList> {
+  const { data } = await api.get<AiwikiAuditLogList>('/aiwiki/audit-logs', { params })
   return data
 }
 

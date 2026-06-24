@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, List
 
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,7 @@ from src.server.dao.dao_base import BaseDAO
 from src.server.auth.models import User
 from src.server.auth.schemas import UserRole
 
-from .models import AiwikiJob
+from .models import AiwikiAuditLog, AiwikiJob
 
 
 class AiwikiJobDAO(BaseDAO):
@@ -34,7 +34,7 @@ class AiwikiJobDAO(BaseDAO):
         offset: int,
         owner_user_id: int | None = None,
         status: str | None = None,
-    ) -> list[AiwikiJob]:
+    ) -> List[AiwikiJob]:
         query = self.db_session.query(AiwikiJob)
         if owner_user_id is not None:
             query = query.filter(AiwikiJob.owner_user_id == owner_user_id)
@@ -46,6 +46,19 @@ class AiwikiJobDAO(BaseDAO):
             .limit(limit)
             .all()
         )
+
+    def list_for_stats(
+        self,
+        *,
+        owner_user_id: int | None = None,
+        status: str | None = None,
+    ) -> List[AiwikiJob]:
+        query = self.db_session.query(AiwikiJob)
+        if owner_user_id is not None:
+            query = query.filter(AiwikiJob.owner_user_id == owner_user_id)
+        if status is not None:
+            query = query.filter(AiwikiJob.status == status)
+        return query.all()
 
     def count(self, *, owner_user_id: int | None = None, status: str | None = None) -> int:
         query = self.db_session.query(AiwikiJob)
@@ -129,6 +142,52 @@ class AiwikiJobDAO(BaseDAO):
             return None
         user = self.db_session.query(User).filter(User.id == owner_user_id).first()
         return user.username if user else None
+
+    def append_audit_log(
+        self,
+        *,
+        actor_user_id: int,
+        actor_username: str,
+        action: str,
+        job_id: str | None,
+        target_filename: str,
+        message: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> AiwikiAuditLog:
+        log = AiwikiAuditLog(
+            actor_user_id=actor_user_id,
+            actor_username=actor_username,
+            action=action,
+            job_id=job_id,
+            target_filename=target_filename,
+            message=message,
+            metadata_json=_json_string(metadata or {}),
+        )
+        self.db_session.add(log)
+        return log
+
+    def list_audit_logs(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        actor_user_id: int | None = None,
+    ) -> List[AiwikiAuditLog]:
+        query = self.db_session.query(AiwikiAuditLog)
+        if actor_user_id is not None:
+            query = query.filter(AiwikiAuditLog.actor_user_id == actor_user_id)
+        return (
+            query.order_by(AiwikiAuditLog.created_at.desc(), AiwikiAuditLog.id.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+    def count_audit_logs(self, *, actor_user_id: int | None = None) -> int:
+        query = self.db_session.query(AiwikiAuditLog)
+        if actor_user_id is not None:
+            query = query.filter(AiwikiAuditLog.actor_user_id == actor_user_id)
+        return query.count()
 
 
 def _coerce_datetime(value: Any) -> datetime | None:

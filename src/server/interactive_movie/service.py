@@ -252,7 +252,7 @@ def _s3_config() -> dict[str, str]:
 
 def _s3_client(config: dict[str, str]) -> Any:
     try:
-        import boto3  # type: ignore[import-untyped]
+        import boto3  # type: ignore[import-not-found, import-untyped]
     except ImportError as exc:
         raise RuntimeError("S3 上传需要安装 boto3") from exc
 
