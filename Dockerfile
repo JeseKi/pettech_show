@@ -1,6 +1,7 @@
 FROM node:23-alpine AS builder
 WORKDIR /app
 ARG MIRROR_MODE=auto
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 COPY package.json pnpm-lock.yaml* ./
 RUN set -eux; \
