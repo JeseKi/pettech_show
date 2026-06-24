@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Alert, Button, Card, Col, DatePicker, Empty, Flex, Row, Segmented, Space, Statistic, Table, Tabs, Tag, Typography } from 'antd'
 import type { TableColumnsType, TabsProps } from 'antd'
 import { BarChartOutlined, ReloadOutlined } from '@ant-design/icons'
@@ -20,6 +21,7 @@ import { resolveErrorMessage } from '../../lib/errorMessage'
 const { RangePicker } = DatePicker
 
 type RangeValue = [Dayjs, Dayjs]
+type RangeKind = 'today' | 'last7' | null
 
 const DETAIL_MODULES = [
   { key: 'aiwiki', label: '数据资产' },
@@ -33,12 +35,19 @@ const DETAIL_MODULES = [
   { key: 'chat', label: '智能体聊天' },
 ]
 
-const DEFAULT_RANGE: RangeValue = [dayjs().subtract(7, 'day'), dayjs()]
+const DEFAULT_RANGE: RangeValue = [dayjs().subtract(7, 'day').startOf('day'), dayjs().endOf('day')]
+
+const metricTagStyle: CSSProperties = {
+  maxWidth: '100%',
+  whiteSpace: 'normal',
+  wordBreak: 'break-word',
+  lineHeight: 1.45,
+}
 
 function queryFromRange(range: RangeValue): MonitoringQuery {
   return {
-    startAt: range[0].toISOString(),
-    endAt: range[1].toISOString(),
+    startAt: range[0].startOf('day').toISOString(),
+    endAt: range[1].endOf('day').toISOString(),
     tz: 'Asia/Shanghai',
   }
 }
@@ -59,8 +68,40 @@ function formatMetricTagValue(value: number | null | undefined, unit: string): s
   return `${formatNumber(value)}${normalizedUnit}`
 }
 
+function normalizeRange(range: RangeValue): RangeValue {
+  return [range[0].startOf('day'), range[1].endOf('day')]
+}
+
 function formatRangeLabel(range: RangeValue): string {
-  return `${range[0].format('YYYY-MM-DD HH:mm')} 至 ${range[1].format('YYYY-MM-DD HH:mm')}`
+  const [start, end] = normalizeRange(range)
+  const today = dayjs()
+  if (end.isSame(today, 'day')) {
+    if (start.isSame(end, 'day')) {
+      return '今天新增'
+    }
+    const days = Math.max(1, end.startOf('day').diff(start.startOf('day'), 'day'))
+    return `近${days}天新增`
+  }
+  const dateFormat = start.year() === end.year() ? 'M.D' : 'YYYY.M.D'
+  if (start.isSame(end, 'day')) {
+    return `${start.format(dateFormat)} 新增`
+  }
+  return `${start.format(dateFormat)} 至 ${end.format(dateFormat)} 新增`
+}
+
+function rangeKind(range: RangeValue): RangeKind {
+  const [start, end] = normalizeRange(range)
+  const today = dayjs()
+  if (!end.isSame(today, 'day')) {
+    return null
+  }
+  if (start.isSame(end, 'day')) {
+    return 'today'
+  }
+  if (end.startOf('day').diff(start.startOf('day'), 'day') === 7) {
+    return 'last7'
+  }
+  return null
 }
 
 export default function AdminMonitoringPage() {
@@ -74,6 +115,7 @@ export default function AdminMonitoringPage() {
 
   const query = useMemo(() => queryFromRange(range), [range])
   const rangeLabel = useMemo(() => formatRangeLabel(range), [range])
+  const selectedRangeKind = useMemo(() => rangeKind(range), [range])
 
   const loadOverview = useCallback(async () => {
     setLoading(true)
@@ -121,6 +163,7 @@ export default function AdminMonitoringPage() {
           loading={loading}
           overview={overview}
           rangeLabel={rangeLabel}
+          rangeKind={selectedRangeKind}
           onOpenModule={setActiveKey}
         />
       ),
@@ -133,10 +176,11 @@ export default function AdminMonitoringPage() {
           loading={detailLoading}
           module={activeKey === item.key ? detail : overview?.modules.find((module) => module.key === item.key) ?? null}
           rangeLabel={rangeLabel}
+          rangeKind={selectedRangeKind}
         />
       ),
     })),
-  ], [activeKey, detail, detailLoading, loading, overview, rangeLabel])
+  ], [activeKey, detail, detailLoading, loading, overview, rangeLabel, selectedRangeKind])
 
   return (
     <Flex vertical gap={16}>
@@ -148,17 +192,17 @@ export default function AdminMonitoringPage() {
         <Space wrap>
           <RangePicker
             allowClear={false}
-            showTime
             value={range}
+            format="YYYY-MM-DD"
             presets={[
-              { label: '今天', value: [dayjs().startOf('day'), dayjs()] },
-              { label: '近 7 日', value: [dayjs().subtract(7, 'day'), dayjs()] },
-              { label: '近 30 日', value: [dayjs().subtract(30, 'day'), dayjs()] },
-              { label: '近 90 日', value: [dayjs().subtract(90, 'day'), dayjs()] },
+              { label: '今天', value: [dayjs().startOf('day'), dayjs().endOf('day')] },
+              { label: '近 7 天', value: [dayjs().subtract(7, 'day').startOf('day'), dayjs().endOf('day')] },
+              { label: '近 30 日', value: [dayjs().subtract(30, 'day').startOf('day'), dayjs().endOf('day')] },
+              { label: '近 90 日', value: [dayjs().subtract(90, 'day').startOf('day'), dayjs().endOf('day')] },
             ]}
             onChange={(next) => {
               if (next?.[0] && next?.[1]) {
-                setRange([next[0], next[1]])
+                setRange(normalizeRange([next[0], next[1]]))
               }
             }}
           />
@@ -177,11 +221,13 @@ function OverviewContent({
   loading,
   overview,
   rangeLabel,
+  rangeKind,
   onOpenModule,
 }: {
   loading: boolean
   overview: MonitoringOverview | null
   rangeLabel: string
+  rangeKind: RangeKind
   onOpenModule: (key: string) => void
 }) {
   if (!overview && !loading) {
@@ -190,14 +236,19 @@ function OverviewContent({
 
   return (
     <Flex vertical gap={16}>
-      <MetricGrid cards={overview?.cards ?? []} loading={loading} rangeLabel={rangeLabel} />
-      <TrendPanel title="企业总趋势" data={overview?.trends ?? []} />
+      <MetricGrid cards={overview?.cards ?? []} loading={loading} rangeLabel={rangeLabel} rangeKind={rangeKind} />
+      <TrendPanel title="企业总趋势" data={overview?.trends ?? []} loading={loading} />
       <Row gutter={[16, 16]}>
-        {(overview?.modules ?? []).map((module) => (
+        {loading && !overview ? Array.from({ length: 6 }).map((_, index) => (
+          <Col key={`module-loading-${index}`} xs={24} lg={12} xl={8}>
+            <Card title="加载中" loading styles={{ body: { minHeight: 260 } }} />
+          </Col>
+        )) : (overview?.modules ?? []).map((module) => (
           <Col key={module.key} xs={24} lg={12} xl={8}>
             <Card
               title={module.title}
-              extra={<Button type="link" onClick={() => onOpenModule(module.key)}>详情</Button>}
+              loading={loading}
+              extra={loading ? null : <Button type="link" onClick={() => onOpenModule(module.key)}>详情</Button>}
               styles={{ body: { minHeight: 260 } }}
             >
               <Flex vertical gap={12}>
@@ -216,10 +267,12 @@ function ModuleDetail({
   loading,
   module,
   rangeLabel,
+  rangeKind,
 }: {
   loading: boolean
   module: MonitoringModule | null
   rangeLabel: string
+  rangeKind: RangeKind
 }) {
   const [breakdownKey, setBreakdownKey] = useState<string | null>(null)
   const breakdownKeys = Object.keys(module?.breakdowns ?? {})
@@ -239,16 +292,17 @@ function ModuleDetail({
 
   return (
     <Flex vertical gap={16}>
-      <MetricGrid cards={module?.cards ?? []} loading={loading} rangeLabel={rangeLabel} />
+      <MetricGrid cards={module?.cards ?? []} loading={loading} rangeLabel={rangeLabel} rangeKind={rangeKind} />
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={14}>
-          <TrendPanel title={`${module?.title ?? ''}趋势`} data={module?.trends ?? []} />
+          <TrendPanel title={`${module?.title ?? ''}趋势`} data={module?.trends ?? []} loading={loading} />
         </Col>
         <Col xs={24} xl={10}>
           <BreakdownPanel
             activeKey={selectedBreakdownKey}
             data={breakdown}
             keys={breakdownKeys}
+            loading={loading}
             onChange={setBreakdownKey}
           />
         </Col>
@@ -263,11 +317,13 @@ function MetricGrid({
   loading = false,
   compact = false,
   rangeLabel,
+  rangeKind,
 }: {
   cards: MetricCard[]
   loading?: boolean
   compact?: boolean
   rangeLabel?: string
+  rangeKind?: RangeKind
 }) {
   if (!cards.length && !loading) {
     return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无指标" />
@@ -290,15 +346,23 @@ function MetricGrid({
           <Card size={compact ? 'small' : 'default'} loading={loading}>
             <Statistic title={card.title} value={formatNumber(card.value)} suffix={card.unit} />
             {!compact && (
-              <Space size={[6, 4]} wrap style={{ marginTop: 10 }}>
+              <Space size={[6, 4]} wrap style={{ marginTop: 10, maxWidth: '100%' }}>
                 {card.range_value !== null && (
-                  <Tag color="blue">
-                    {rangeLabel ? `${rangeLabel} 新增 ` : '新增 '}
+                  <Tag color="blue" style={metricTagStyle}>
+                    {rangeLabel ? `${rangeLabel} ` : '新增 '}
                     {formatMetricTagValue(card.range_value, card.unit)}
                   </Tag>
                 )}
-                {card.today_value !== null && <Tag color="green">今日新增 {formatMetricTagValue(card.today_value, card.unit)}</Tag>}
-                {card.last_7_days_value !== null && <Tag>近7日新增 {formatMetricTagValue(card.last_7_days_value, card.unit)}</Tag>}
+                {card.today_value !== null && rangeKind !== 'today' && (
+                  <Tag color="green" style={metricTagStyle}>
+                    今日新增 {formatMetricTagValue(card.today_value, card.unit)}
+                  </Tag>
+                )}
+                {card.last_7_days_value !== null && rangeKind !== 'last7' && (
+                  <Tag style={metricTagStyle}>
+                    近7天新增 {formatMetricTagValue(card.last_7_days_value, card.unit)}
+                  </Tag>
+                )}
               </Space>
             )}
           </Card>
@@ -308,9 +372,9 @@ function MetricGrid({
   )
 }
 
-function TrendPanel({ title, data }: { title: string; data: TrendPoint[] }) {
+function TrendPanel({ title, data, loading = false }: { title: string; data: TrendPoint[]; loading?: boolean }) {
   return (
-    <Card title={title || '趋势'} styles={{ body: { height: 340 } }}>
+    <Card title={title || '趋势'} loading={loading} styles={{ body: { height: 340 } }}>
       {data.length ? (
         <Line
           data={data}
@@ -320,6 +384,15 @@ function TrendPanel({ title, data }: { title: string; data: TrendPoint[] }) {
           height={280}
           point
           legend={{ color: { position: 'bottom' } }}
+          tooltip={{
+            title: (datum: TrendPoint) => datum.date,
+            items: [
+              (datum: TrendPoint) => ({
+                name: datum.metric,
+                value: datum.value,
+              }),
+            ],
+          }}
         />
       ) : (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无趋势" />
@@ -332,17 +405,20 @@ function BreakdownPanel({
   activeKey,
   data,
   keys,
+  loading = false,
   onChange,
 }: {
   activeKey: string | undefined
   data: BreakdownItem[]
   keys: string[]
+  loading?: boolean
   onChange: (key: string) => void
 }) {
   return (
     <Card
       title="结构分布"
-      extra={keys.length > 1 ? (
+      loading={loading}
+      extra={!loading && keys.length > 1 ? (
         <Segmented
           size="small"
           value={activeKey}
@@ -360,6 +436,15 @@ function BreakdownPanel({
           height={280}
           innerRadius={0.58}
           legend={{ color: { position: 'bottom' } }}
+          tooltip={{
+            title: (datum: BreakdownItem) => datum.label,
+            items: [
+              (datum: BreakdownItem) => ({
+                name: datum.label,
+                value: datum.value,
+              }),
+            ],
+          }}
         />
       ) : (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无分布" />
@@ -381,6 +466,15 @@ function MiniBreakdown({ module }: { module: MonitoringModule }) {
       yField="value"
       height={160}
       axis={{ x: { labelTransform: 'rotate(0)' } }}
+      tooltip={{
+        title: (datum: BreakdownItem) => datum.label,
+        items: [
+          (datum: BreakdownItem) => ({
+            name: datum.label,
+            value: datum.value,
+          }),
+        ],
+      }}
     />
   )
 }
