@@ -8,7 +8,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
@@ -267,7 +267,14 @@ def _full_key(prefix: str, object_key: str) -> str:
 
 def _access_url(config: dict[str, str], full_key: str) -> str | None:
     if config["public_base_url"]:
-        return f"{config['public_base_url'].rstrip('/')}/{quote(full_key, safe='/')}"
+        base_url = config["public_base_url"].rstrip("/")
+        bucket = config["bucket"].strip("/")
+        bucket_segment = quote(bucket, safe="")
+        base_path_segments = [segment for segment in urlsplit(base_url).path.split("/") if segment]
+        key_path = quote(full_key, safe="/")
+        if base_path_segments and base_path_segments[-1] == bucket:
+            return f"{base_url}/{key_path}"
+        return f"{base_url}/{bucket_segment}/{key_path}"
 
     try:
         return _s3_client(config).generate_presigned_url(
