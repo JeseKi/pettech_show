@@ -45,46 +45,76 @@ export default function AiwikiAuditPage() {
       title: '时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 190,
-      render: (value: string) => new Date(value).toLocaleString(),
+      width: 170,
+      render: (value: string) => (
+        <Typography.Text style={{ whiteSpace: 'nowrap' }}>{new Date(value).toLocaleString()}</Typography.Text>
+      ),
     },
     {
       title: '操作者',
       dataIndex: 'actor_username',
       key: 'actor_username',
-      width: 150,
-      render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+      width: 130,
+      render: (value: string) => (
+        <Typography.Text strong ellipsis={{ tooltip: value }} style={{ display: 'inline-block', maxWidth: 104 }}>
+          {value}
+        </Typography.Text>
+      ),
     },
     {
       title: '动作',
       dataIndex: 'action',
       key: 'action',
-      width: 120,
-      render: (value: string) => <Tag color={auditActionColor(value)}>{auditActionLabel(value)}</Tag>,
-    },
-    {
-      title: '任务',
-      dataIndex: 'job_id',
-      key: 'job_id',
-      width: 260,
-      render: (value: string | null) => value ? <Typography.Text code copyable>{value}</Typography.Text> : '-',
-    },
-    {
-      title: '文件',
-      key: 'files',
-      render: (_, record) => (
-        <Flex wrap="wrap" gap={6}>
-          {extractAuditFilenames(record).map((filename) => (
-            <Tag key={`${record.id}-${filename}`}>{filename}</Tag>
-          ))}
-        </Flex>
+      width: 110,
+      align: 'center',
+      render: (value: string) => (
+        <Tag color={auditActionColor(value)} style={{ marginInlineEnd: 0 }}>
+          {auditActionLabel(value)}
+        </Tag>
       ),
+    },
+    {
+      title: '对象',
+      key: 'target',
+      width: 470,
+      render: (_, record) => {
+        const filenames = extractAuditFilenames(record)
+        return (
+          <Flex vertical gap={8} style={{ minWidth: 0 }}>
+            {record.job_id ? (
+              <Flex align="center" gap={8} style={{ minWidth: 0 }}>
+                <Typography.Text type="secondary" style={{ flex: 'none' }}>任务</Typography.Text>
+                <Typography.Text code ellipsis={{ tooltip: record.job_id }} style={{ flex: 1, minWidth: 0 }}>
+                  {record.job_id}
+                </Typography.Text>
+              </Flex>
+            ) : null}
+            <Flex wrap="wrap" gap={6}>
+              {filenames.length ? filenames.map((filename, index) => (
+                <Tag key={`${record.id}-${filename}-${index}`} style={{ maxWidth: 190, marginInlineEnd: 0 }}>
+                  <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {filename}
+                  </span>
+                </Tag>
+              )) : <Typography.Text type="secondary">-</Typography.Text>}
+            </Flex>
+          </Flex>
+        )
+      },
     },
     {
       title: '消息',
       dataIndex: 'message',
       key: 'message',
-      render: (value: string) => <Typography.Text>{value}</Typography.Text>,
+      width: 420,
+      render: (value: string) => (
+        <Typography.Paragraph
+          ellipsis={{ rows: 2, tooltip: value }}
+          style={{ marginBottom: 0, overflowWrap: 'anywhere' }}
+        >
+          {value}
+        </Typography.Paragraph>
+      ),
     },
   ], [])
 
@@ -94,6 +124,7 @@ export default function AiwikiAuditPage() {
         <Space>
           <FileSearchOutlined style={{ fontSize: 20 }} />
           <Typography.Title level={4} style={{ margin: 0 }}>知识库审计</Typography.Title>
+          <Typography.Text type="secondary">共 {filteredLogs.length} 条记录</Typography.Text>
         </Space>
         <Space wrap>
           <Input
@@ -112,7 +143,8 @@ export default function AiwikiAuditPage() {
         columns={columns}
         dataSource={filteredLogs}
         pagination={{ pageSize: 20, showSizeChanger: true }}
-        scroll={{ x: 1120 }}
+        scroll={{ x: 1300 }}
+        tableLayout="fixed"
       />
     </Card>
   )
