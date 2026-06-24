@@ -162,6 +162,7 @@ const NODE_WIDTH = 292
 const NODE_HEIGHT = 236
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2
+const CREATE_SCENE_SELECT_VALUE = '__create_scene__'
 
 const roleLabels: Record<SceneRole, string> = {
   start: '开场',
@@ -308,6 +309,21 @@ const createDefaultProject = (title = '互动电影草稿'): InteractiveMoviePro
     ],
   }
 }
+
+const createDraftScene = (title: string, position: { x: number; y: number }): SceneNode => ({
+  id: uniqueId('scene'),
+  title,
+  role: 'middle',
+  position,
+  media: { kind: 'placeholder', status: 'mock' },
+  script: {
+    synopsis: '补充这个场景要发生的关键事件。',
+    visualDescription: '描述画面、人物位置、镜头运动和情绪氛围。',
+    videoPrompt: 'describe the cinematic shot, action, mood and camera movement',
+    promptParts: defaultPromptParts(title),
+    lines: [{ id: uniqueId('line'), speaker: '角色', text: '新的剧情片段从这里开始。' }],
+  },
+})
 
 const loadWorkspace = (): StoredWorkspace => {
   if (typeof window === 'undefined') {
@@ -527,10 +543,17 @@ const mergeDraftWithCloudMeta = (
   cloudUpdatedAt: cloud.cloudUpdatedAt,
 })
 
+const firstSelectableObject = (scenes: SceneNode[], choices: ChoiceEdge[]): SelectedObject => {
+  if (scenes[0]) return { type: 'scene', id: scenes[0].id }
+  if (choices[0]) return { type: 'choice', id: choices[0].id }
+  return { type: 'scene', id: '' }
+}
+
 export default function InteractiveMoviePage() {
   const { message, modal } = App.useApp()
   const canvasRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<InteractionState | null>(null)
+  const lastCanvasSceneIdByProjectRef = useRef<Record<string, string>>({})
 
   const [workspace, setWorkspace] = useState<StoredWorkspace>(() => loadWorkspace())
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false)
@@ -559,12 +582,13 @@ export default function InteractiveMoviePage() {
   const selectedChoice = selectedObject.type === 'choice'
     ? choices.find((choice) => choice.id === selectedObject.id) ?? null
     : null
+  const sceneMap = useMemo(() => new Map(scenes.map((scene) => [scene.id, scene])), [scenes])
   const startScene = scenes.find((scene) => scene.role === 'start') ?? scenes[0]
   const previewScene = scenes.find((scene) => scene.id === previewSceneId) ?? startScene
-  const outgoingPreviewChoices = choices.filter((choice) => choice.fromSceneId === previewScene?.id)
+  const outgoingPreviewChoices = choices.filter((choice) => (
+    choice.fromSceneId === previewScene?.id && sceneMap.has(choice.toSceneId)
+  ))
   const currentPreviewLine = previewScene?.script.lines[previewLineIndex]
-
-  const sceneMap = useMemo(() => new Map(scenes.map((scene) => [scene.id, scene])), [scenes])
 
   useEffect(() => {
     persistWorkspaceLocally(workspace)
@@ -695,6 +719,11 @@ export default function InteractiveMoviePage() {
 
   const setSelectedObject = (nextSelectedObject: SelectedObject) => {
     updateActiveProject((project) => ({ ...project, selectedObject: nextSelectedObject }))
+  }
+
+  const selectCanvasScene = (sceneId: string) => {
+    lastCanvasSceneIdByProjectRef.current[activeProject.id] = sceneId
+    setSelectedObject({ type: 'scene', id: sceneId })
   }
 
   const setViewport = (nextViewport: CanvasViewport | ((current: CanvasViewport) => CanvasViewport)) => {
@@ -953,42 +982,62 @@ export default function InteractiveMoviePage() {
     })
   }
 
+  const defaultNewScenePosition = () => ({
+    x: (-viewport.x + 260) / viewport.zoom,
+    y: (-viewport.y + 180) / viewport.zoom,
+  })
+
   const addScene = () => {
-    const sceneId = uniqueId('scene')
-    const scene: SceneNode = {
-      id: sceneId,
-      title: `新场景 ${scenes.length + 1}`,
-      role: 'middle',
-      position: {
-        x: (-viewport.x + 260) / viewport.zoom,
-        y: (-viewport.y + 180) / viewport.zoom,
-      },
-      media: { kind: 'placeholder', status: 'mock' },
-      script: {
-        synopsis: '补充这个场景要发生的关键事件。',
-        visualDescription: '描述画面、人物位置、镜头运动和情绪氛围。',
-        videoPrompt: 'describe the cinematic shot, action, mood and camera movement',
-        promptParts: defaultPromptParts(`新场景 ${scenes.length + 1}`),
-        lines: [{ id: uniqueId('line'), speaker: '角色', text: '新的剧情片段从这里开始。' }],
-      },
-    }
+    const scene = createDraftScene(`新场景 ${scenes.length + 1}`, defaultNewScenePosition())
     updateActiveProject((project) => ({
       ...project,
       scenes: [...project.scenes, scene],
-      selectedObject: { type: 'scene', id: sceneId },
+      selectedObject: { type: 'scene', id: scene.id },
     }))
   }
 
+  const createSceneForChoice = (choiceId: string, endpoint: 'from' | 'to') => {
+    updateActiveProject((project) => {
+      const choice = project.choices.find((item) => item.id === choiceId)
+      if (!choice) return project
+      const fromScene = project.scenes.find((scene) => scene.id === choice.fromSceneId)
+      const toScene = project.scenes.find((scene) => scene.id === choice.toSceneId)
+      const anchorScene = endpoint === 'to' ? fromScene ?? toScene : toScene ?? fromScene
+      const direction = endpoint === 'to' ? 1 : -1
+      const position = anchorScene
+        ? {
+          x: anchorScene.position.x + direction * (NODE_WIDTH + 180),
+          y: anchorScene.position.y + 40,
+        }
+        : defaultNewScenePosition()
+      const scene = createDraftScene(`新场景 ${project.scenes.length + 1}`, position)
+      return {
+        ...project,
+        scenes: [...project.scenes, scene],
+        choices: project.choices.map((item) => (
+          item.id === choiceId
+            ? {
+              ...item,
+              fromSceneId: endpoint === 'from' ? scene.id : item.fromSceneId,
+              toSceneId: endpoint === 'to' ? scene.id : item.toSceneId,
+            }
+            : item
+        )),
+        selectedObject: { type: 'choice', id: choiceId },
+      }
+    })
+  }
+
   const addChoice = () => {
-    const fromScene = selectedScene ?? scenes[0]
-    const targetScene = scenes.find((scene) => scene.id !== fromScene.id)
-    if (!targetScene) {
-      message.warning('至少需要两个不同场景才能添加选择')
+    const lastCanvasSceneId = lastCanvasSceneIdByProjectRef.current[activeProject.id]
+    const fromScene = scenes.find((scene) => scene.id === lastCanvasSceneId) ?? selectedScene ?? scenes[0]
+    if (!fromScene) {
+      message.warning('请先添加或选择一个场景')
       return
     }
     const choiceId = uniqueId('choice')
     const siblingCount = choices.filter((choice) => (
-      choice.fromSceneId === fromScene.id && choice.toSceneId === targetScene.id
+      choice.fromSceneId === fromScene.id && !choice.toSceneId
     )).length
     updateActiveProject((project) => ({
       ...project,
@@ -997,13 +1046,92 @@ export default function InteractiveMoviePage() {
         {
           id: choiceId,
           fromSceneId: fromScene.id,
-          toSceneId: targetScene.id,
+          toSceneId: '',
           label: siblingCount > 0 ? `新的选择 ${siblingCount + 1}` : '新的选择',
           trigger: 'after_scene',
         },
       ],
       selectedObject: { type: 'choice', id: choiceId },
     }))
+  }
+
+  const deleteChoice = (choiceId: string) => {
+    updateActiveProject((project) => {
+      const nextChoices = project.choices.filter((choice) => choice.id !== choiceId)
+      const selectedObjectWasDeleted = project.selectedObject.type === 'choice' && project.selectedObject.id === choiceId
+      return {
+        ...project,
+        choices: nextChoices,
+        selectedObject: selectedObjectWasDeleted
+          ? firstSelectableObject(project.scenes, nextChoices)
+          : project.selectedObject,
+      }
+    })
+  }
+
+  const confirmDeleteChoice = (choiceId: string) => {
+    const choice = choices.find((item) => item.id === choiceId)
+    if (!choice) return
+    modal.confirm({
+      title: `删除选择「${choice.label}」？`,
+      content: '删除后会移除这条选择连线。',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk() {
+        deleteChoice(choiceId)
+        message.success('选择已删除')
+      },
+    })
+  }
+
+  const deleteScene = (sceneId: string) => {
+    updateActiveProject((project) => {
+      const deletedChoiceIds = new Set(
+        project.choices
+          .filter((choice) => choice.fromSceneId === sceneId || choice.toSceneId === sceneId)
+          .map((choice) => choice.id),
+      )
+      const nextScenes = project.scenes.filter((scene) => scene.id !== sceneId)
+      const nextChoices = project.choices.filter((choice) => !deletedChoiceIds.has(choice.id))
+      const selectedObjectWasDeleted = (
+        (project.selectedObject.type === 'scene' && project.selectedObject.id === sceneId)
+        || (project.selectedObject.type === 'choice' && deletedChoiceIds.has(project.selectedObject.id))
+      )
+      const nextSelectedObject = selectedObjectWasDeleted
+        ? firstSelectableObject(nextScenes, nextChoices)
+        : project.selectedObject
+      if (lastCanvasSceneIdByProjectRef.current[project.id] === sceneId) {
+        lastCanvasSceneIdByProjectRef.current[project.id] = nextSelectedObject.type === 'scene' ? nextSelectedObject.id : ''
+      }
+      return {
+        ...project,
+        scenes: nextScenes,
+        choices: nextChoices,
+        selectedObject: nextSelectedObject,
+      }
+    })
+  }
+
+  const confirmDeleteScene = (sceneId: string) => {
+    const scene = scenes.find((item) => item.id === sceneId)
+    if (!scene) return
+    const connectedChoiceCount = choices.filter((choice) => (
+      choice.fromSceneId === sceneId || choice.toSceneId === sceneId
+    )).length
+    modal.confirm({
+      title: `删除场景「${scene.title}」？`,
+      content: connectedChoiceCount > 0
+        ? `会同时删除 ${connectedChoiceCount} 个关联选择。`
+        : '删除后会从画布中移除这个场景节点。',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk() {
+        deleteScene(sceneId)
+        message.success('场景已删除')
+      },
+    })
   }
 
   const addLine = (sceneId: string) => {
@@ -1055,6 +1183,7 @@ export default function InteractiveMoviePage() {
   }
 
   const choosePreviewEdge = (choice: ChoiceEdge) => {
+    if (!sceneMap.has(choice.toSceneId)) return
     setPreviewSceneId(choice.toSceneId)
     setPreviewLineIndex(0)
     setPreviewChoicesVisible(false)
@@ -1376,15 +1505,30 @@ export default function InteractiveMoviePage() {
                         setSelectedObject({ type: 'choice', id: choice.id })
                       }}
                     />
-                    <foreignObject x={midX - 72} y={midY - 22} width="144" height="44">
-                      <button
-                        type="button"
-                        className="movie-choice-label"
-                        onPointerDown={(event) => beginChoiceDrag(event, choice.id)}
-                        onClick={() => setSelectedObject({ type: 'choice', id: choice.id })}
-                      >
-                        {choice.label}
-                      </button>
+                    <foreignObject x={midX - 88} y={midY - 22} width="176" height="44">
+                      <div className="movie-choice-pill">
+                        <button
+                          type="button"
+                          className="movie-choice-label"
+                          onPointerDown={(event) => beginChoiceDrag(event, choice.id)}
+                          onClick={() => setSelectedObject({ type: 'choice', id: choice.id })}
+                        >
+                          {choice.label}
+                        </button>
+                        <button
+                          type="button"
+                          className="movie-choice-delete"
+                          title="删除选择"
+                          aria-label={`删除选择 ${choice.label}`}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            confirmDeleteChoice(choice.id)
+                          }}
+                        >
+                          <DeleteOutlined />
+                        </button>
+                      </div>
                     </foreignObject>
                   </g>
                 )
@@ -1401,7 +1545,7 @@ export default function InteractiveMoviePage() {
                   onPointerDown={(event) => beginNodeDrag(event, scene.id)}
                   onClick={(event) => {
                     event.stopPropagation()
-                    setSelectedObject({ type: 'scene', id: scene.id })
+                    selectCanvasScene(scene.id)
                   }}
                 >
                   <Flex align="center" justify="space-between" className="movie-node-header">
@@ -1409,7 +1553,22 @@ export default function InteractiveMoviePage() {
                       <Typography.Text className="movie-node-eyebrow">Scene · {roleLabels[scene.role]}</Typography.Text>
                       <Typography.Text className="movie-node-title">{scene.title}</Typography.Text>
                     </div>
-                    <BorderOuterOutlined />
+                    <div className="movie-node-actions">
+                      <BorderOuterOutlined />
+                      <button
+                        type="button"
+                        className="movie-node-delete"
+                        title="删除场景"
+                        aria-label={`删除场景 ${scene.title}`}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          confirmDeleteScene(scene.id)
+                        }}
+                      >
+                        <DeleteOutlined />
+                      </button>
+                    </div>
                   </Flex>
                   <div className="movie-node-preview">
                     {scene.media.posterUrl ? (
@@ -1460,8 +1619,10 @@ export default function InteractiveMoviePage() {
                     onAddLine={() => addLine(selectedScene.id)}
                     onDeleteLine={(lineId) => deleteLine(selectedScene.id, lineId)}
                     onSelectChoice={(choiceId) => setSelectedObject({ type: 'choice', id: choiceId })}
+                    onDeleteChoice={confirmDeleteChoice}
                     onUploadVideo={(file) => void uploadSceneVideo(selectedScene, file)}
                     onPreview={() => startPreview(selectedScene.id)}
+                    onDeleteScene={() => confirmDeleteScene(selectedScene.id)}
                   />
               )}
               {selectedChoice && (
@@ -1469,6 +1630,8 @@ export default function InteractiveMoviePage() {
                   choice={selectedChoice}
                   scenes={scenes}
                   onChange={(updater) => updateChoice(selectedChoice.id, updater)}
+                  onCreateScene={(endpoint) => createSceneForChoice(selectedChoice.id, endpoint)}
+                  onDeleteChoice={() => confirmDeleteChoice(selectedChoice.id)}
                 />
               )}
               {!selectedScene && !selectedChoice && (
@@ -1568,8 +1731,10 @@ function SceneEditor({
   onAddLine,
   onDeleteLine,
   onSelectChoice,
+  onDeleteChoice,
   onUploadVideo,
   onPreview,
+  onDeleteScene,
 }: {
   scene: SceneNode
   outgoingChoices: ChoiceEdge[]
@@ -1579,8 +1744,10 @@ function SceneEditor({
   onAddLine: () => void
   onDeleteLine: (lineId: string) => void
   onSelectChoice: (choiceId: string) => void
+  onDeleteChoice: (choiceId: string) => void
   onUploadVideo: (file: File) => void
   onPreview: () => void
+  onDeleteScene: () => void
 }) {
   const promptParts = scene.script.promptParts ?? defaultPromptParts(scene.title)
   const generatedPrompt = buildVideoPrompt(scene)
@@ -1619,14 +1786,17 @@ function SceneEditor({
 
   return (
     <Flex vertical gap={16}>
-      <div>
-        <Typography.Text className="movie-panel-kicker">当前场景</Typography.Text>
-        <Input
-          value={scene.title}
-          onChange={(event) => onChange((current) => ({ ...current, title: event.target.value }))}
-          className="movie-panel-title-input"
-        />
-      </div>
+      <Flex align="flex-start" justify="space-between" gap={12}>
+        <div className="movie-panel-title-block">
+          <Typography.Text className="movie-panel-kicker">当前场景</Typography.Text>
+          <Input
+            value={scene.title}
+            onChange={(event) => onChange((current) => ({ ...current, title: event.target.value }))}
+            className="movie-panel-title-input"
+          />
+        </div>
+        <Button danger type="text" icon={<DeleteOutlined />} onClick={onDeleteScene} aria-label={`删除场景 ${scene.title}`} />
+      </Flex>
 
       <Flex gap={8}>
         <Select
@@ -1703,15 +1873,25 @@ function SceneEditor({
         {outgoingChoices.length > 0 ? (
           <Flex vertical gap={8}>
             {outgoingChoices.map((choice) => (
-              <button
-                key={choice.id}
-                type="button"
-                className="movie-choice-row"
-                onClick={() => onSelectChoice(choice.id)}
-              >
-                <BranchesOutlined />
-                <span>{choice.label}</span>
-              </button>
+              <div key={choice.id} className="movie-choice-row">
+                <button
+                  type="button"
+                  className="movie-choice-row-main"
+                  onClick={() => onSelectChoice(choice.id)}
+                >
+                  <BranchesOutlined />
+                  <span>{choice.label}</span>
+                </button>
+                <button
+                  type="button"
+                  className="movie-choice-row-delete"
+                  title="删除选择"
+                  aria-label={`删除选择 ${choice.label}`}
+                  onClick={() => onDeleteChoice(choice.id)}
+                >
+                  <DeleteOutlined />
+                </button>
+              </div>
             ))}
           </Flex>
         ) : (
@@ -1845,19 +2025,34 @@ function ChoiceEditor({
   choice,
   scenes,
   onChange,
+  onCreateScene,
+  onDeleteChoice,
 }: {
   choice: ChoiceEdge
   scenes: SceneNode[]
   onChange: (updater: (choice: ChoiceEdge) => ChoiceEdge) => void
+  onCreateScene: (endpoint: 'from' | 'to') => void
+  onDeleteChoice: () => void
 }) {
-  const fromSceneOptions = scenes
-    .filter((scene) => scene.id !== choice.toSceneId)
-    .map((scene) => ({ value: scene.id, label: scene.title }))
-  const toSceneOptions = scenes
-    .filter((scene) => scene.id !== choice.fromSceneId)
-    .map((scene) => ({ value: scene.id, label: scene.title }))
+  const createSceneOption = { value: CREATE_SCENE_SELECT_VALUE, label: '创建新场景' }
+  const fromSceneOptions = [
+    createSceneOption,
+    ...scenes
+      .filter((scene) => scene.id !== choice.toSceneId)
+      .map((scene) => ({ value: scene.id, label: scene.title })),
+  ]
+  const toSceneOptions = [
+    createSceneOption,
+    ...scenes
+      .filter((scene) => scene.id !== choice.fromSceneId)
+      .map((scene) => ({ value: scene.id, label: scene.title })),
+  ]
 
   const changeFromScene = (fromSceneId: string) => {
+    if (fromSceneId === CREATE_SCENE_SELECT_VALUE) {
+      onCreateScene('from')
+      return
+    }
     onChange((current) => {
       const fallbackTarget = scenes.find((scene) => scene.id !== fromSceneId)?.id
       return {
@@ -1868,27 +2063,37 @@ function ChoiceEditor({
     })
   }
 
-  const changeToScene = (toSceneId: string) => {
+  const changeToScene = (toSceneId?: string) => {
+    if (toSceneId === CREATE_SCENE_SELECT_VALUE) {
+      onCreateScene('to')
+      return
+    }
     onChange((current) => {
-      const fallbackSource = scenes.find((scene) => scene.id !== toSceneId)?.id
+      const nextToSceneId = toSceneId ?? ''
+      const fallbackSource = scenes.find((scene) => scene.id !== nextToSceneId)?.id
       return {
         ...current,
-        fromSceneId: current.fromSceneId === toSceneId && fallbackSource ? fallbackSource : current.fromSceneId,
-        toSceneId,
+        fromSceneId: nextToSceneId && current.fromSceneId === nextToSceneId && fallbackSource
+          ? fallbackSource
+          : current.fromSceneId,
+        toSceneId: nextToSceneId,
       }
     })
   }
 
   return (
     <Flex vertical gap={16}>
-      <div>
-        <Typography.Text className="movie-panel-kicker">当前选择</Typography.Text>
-        <Input
-          value={choice.label}
-          onChange={(event) => onChange((current) => ({ ...current, label: event.target.value }))}
-          className="movie-panel-title-input"
-        />
-      </div>
+      <Flex align="flex-start" justify="space-between" gap={12}>
+        <div className="movie-panel-title-block">
+          <Typography.Text className="movie-panel-kicker">当前选择</Typography.Text>
+          <Input
+            value={choice.label}
+            onChange={(event) => onChange((current) => ({ ...current, label: event.target.value }))}
+            className="movie-panel-title-input"
+          />
+        </div>
+        <Button danger type="text" icon={<DeleteOutlined />} onClick={onDeleteChoice} aria-label={`删除选择 ${choice.label}`} />
+      </Flex>
 
       <section className="movie-panel-section">
         <Typography.Text className="movie-panel-label">来源场景</Typography.Text>
@@ -1903,9 +2108,11 @@ function ChoiceEditor({
       <section className="movie-panel-section">
         <Typography.Text className="movie-panel-label">目标场景</Typography.Text>
         <Select
-          value={choice.toSceneId}
+          value={choice.toSceneId || undefined}
           onChange={changeToScene}
           options={toSceneOptions}
+          allowClear
+          placeholder="未选择目标场景"
           className="movie-panel-wide-control"
         />
       </section>
