@@ -7,7 +7,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .constants import PROGRESS_COMPLETE_EVENT, PROGRESS_FILE_NAME
+from .constants import (
+    LEGACY_PROGRESS_COMPLETE_EVENT,
+    PROGRESS_COMPLETE_EVENT,
+    PROGRESS_FILE_NAME,
+)
 
 
 def initial_progress() -> dict[str, Any]:
@@ -16,8 +20,8 @@ def initial_progress() -> dict[str, Any]:
         "current_step": "任务排队中",
         "events": [
             {
-                "event": "started",
-                "step": "queued",
+                "event": "开始",
+                "step": "排队",
                 "summary": "任务已进入队列",
             }
         ],
@@ -35,9 +39,41 @@ def progress_marked_complete(workdir: Path) -> bool:
         or not isinstance(events[-1], dict)
     ):
         return False
-    return all(
-        events[-1].get(key) == value
-        for key, value in PROGRESS_COMPLETE_EVENT.items()
+    return any(
+        all(events[-1].get(key) == value for key, value in complete_event.items())
+        for complete_event in (PROGRESS_COMPLETE_EVENT, LEGACY_PROGRESS_COMPLETE_EVENT)
+    )
+
+
+def mark_progress_running(workdir: Path, *, step: str, summary: str) -> None:
+    progress = read_progress(workdir)
+    events = progress.get("events")
+    if not isinstance(events, list):
+        events = []
+    events.append({"event": "开始", "step": step, "summary": summary})
+    write_progress(
+        workdir,
+        {
+            "status": "running",
+            "current_step": step,
+            "events": events,
+        },
+    )
+
+
+def mark_progress_failure(workdir: Path, summary: str) -> None:
+    progress = read_progress(workdir)
+    events = progress.get("events")
+    if not isinstance(events, list):
+        events = []
+    events.append({"event": "失败", "step": "任务失败", "summary": summary})
+    write_progress(
+        workdir,
+        {
+            "status": "failure",
+            "current_step": "任务失败",
+            "events": events,
+        },
     )
 
 

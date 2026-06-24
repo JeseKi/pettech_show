@@ -14,11 +14,14 @@ from loguru import logger
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.server.aiwiki.dao import AiwikiJobDAO
+from src.server.aiwiki.service.checks import python_args, run_check_command
 from src.server.aiwiki.service.logs import append_log
 from src.server.aiwiki.service.opencode import prepare_opencode_config
 from src.server.aiwiki.service.persistence import existing_job_workdir
 from src.server.aiwiki.service.progress import (
     initial_progress,
+    mark_progress_failure,
+    mark_progress_running,
     progress_marked_complete,
     write_progress,
 )
@@ -40,7 +43,7 @@ from ..schemas import (
 )
 from .artifacts import copy_source_artifacts, prepare_skill
 from .constants import MAX_VARIANT_COUNT, RESULT_ZIP_NAME, SELECTED_SEED_ROW_PATH
-from .opencode import run_opencode, run_variant_opencode
+from .opencode import run_opencode, run_repair_opencode, run_variant_opencode
 from .permissions import is_admin
 from .persistence import (
     build_session_factory,
@@ -298,6 +301,7 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
         )
         if not progress_marked_complete(workdir):
             raise RuntimeError("progress.json 未写入任务完成标记")
+        _run_daily_writer_json_check_with_repair(workdir)
 
         result = parse_daily_writer_result(
             job_id=job.id,
@@ -336,6 +340,11 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
                 )
                 if not progress_marked_complete(workdir):
                     raise RuntimeError("progress.json 未写入变体任务完成标记")
+                _run_daily_writer_json_check_with_repair(
+                    workdir,
+                    article_dir=Path(result.metadata_path).parent.as_posix(),
+                    include_variants=True,
+                )
                 result = parse_daily_writer_result(
                     job_id=job.id,
                     source_seed_matrix_job_id=job.source_seed_matrix_job_id,
@@ -360,6 +369,7 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
             except Exception as variant_exc:
                 logger.exception("Daily writer variant generation failed: {}", job_id)
                 append_log(Path(job.workdir), f"VARIANT ERROR: {variant_exc}")
+                mark_progress_failure(Path(job.workdir), f"长文变体生成失败：{variant_exc}")
                 result.summary.update(
                     {
                         "variant_requested_count": variant_count,
@@ -407,6 +417,7 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
             job = DailyWriterJobDAO(session).get(job_id)
             if job is not None:
                 append_log(Path(job.workdir), f"ERROR: {exc}")
+                mark_progress_failure(Path(job.workdir), str(exc))
                 update_job(
                     session,
                     job_id,
@@ -438,3 +449,41 @@ def _coerce_variant_count(value: object) -> int:
     except (TypeError, ValueError):
         return 0
     return max(0, min(count, MAX_VARIANT_COUNT))
+
+
+def _run_daily_writer_json_check_with_repair(
+    workdir: Path, *, article_dir: str | None = None, include_variants: bool = False
+) -> None:
+    try:
+        _run_daily_writer_json_check(
+            workdir,
+            article_dir=article_dir,
+            include_variants=include_variants,
+        )
+        return
+    except Exception as first_error:
+        append_log(workdir, f"DAILY WRITER JSON CHECK ERROR: {first_error}")
+        mark_progress_running(
+            workdir,
+            step="修复 metadata JSON",
+            summary="metadata JSON 校验失败，正在下发 OpenCode 修复任务",
+        )
+        run_repair_opencode(workdir, error=str(first_error), article_dir=article_dir)
+        if not progress_marked_complete(workdir):
+            raise RuntimeError("修复后 progress.json 未写入任务完成标记")
+        _run_daily_writer_json_check(
+            workdir,
+            article_dir=article_dir,
+            include_variants=include_variants,
+        )
+
+
+def _run_daily_writer_json_check(
+    workdir: Path, *, article_dir: str | None = None, include_variants: bool = False
+) -> None:
+    args = python_args(".agents/skills/wechat-daily-writer/scripts/check_article_json.py")
+    if article_dir:
+        args.extend(["--article-dir", article_dir])
+    if include_variants:
+        args.append("--include-variants")
+    run_check_command(workdir, args, label="长文 metadata JSON 校验")

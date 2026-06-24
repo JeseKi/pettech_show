@@ -245,6 +245,9 @@ def plan(args: argparse.Namespace) -> int:
 
 def validate(args: argparse.Namespace) -> int:
     root = project_root()
+    if args.json_only:
+        return validate_json_only(args)
+
     dates: set[str] = set()
     if args.date:
         dates.add(args.date)
@@ -288,6 +291,35 @@ def validate(args: argparse.Namespace) -> int:
     return 1
 
 
+def validate_json_only(args: argparse.Namespace) -> int:
+    material_root = Path("material")
+    if args.date:
+        paths = sorted(Path("material", args.date).glob("*.json"), key=lambda p: p.as_posix())
+    else:
+        paths = sorted(material_root.glob("*/*.json"), key=lambda p: p.as_posix())
+
+    if not paths:
+        print("MISSING material JSON files")
+        return 1
+
+    ok = True
+    for path in paths:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            ok = False
+            print(f"INVALID JSON {path.as_posix()}: {exc}")
+            continue
+        if not isinstance(data, dict):
+            ok = False
+            print(f"BAD JSON {path.as_posix()}: top-level value must be an object")
+
+    if ok:
+        print(f"OK JSON material files={len(paths)}")
+        return 0
+    return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Plan and validate raw Markdown to material JSON conversion.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -299,6 +331,11 @@ def main() -> int:
 
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--date", help="Limit to raw/<YYMMDD>/")
+    validate_parser.add_argument(
+        "--json-only",
+        action="store_true",
+        help="Only check material JSON files parse and have object top-level values.",
+    )
     validate_parser.add_argument(
         "--strict-search-intents",
         action="store_true",

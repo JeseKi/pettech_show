@@ -13,10 +13,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.server.aiwiki.dao import AiwikiJobDAO
 from src.server.aiwiki.service.logs import append_log
+from src.server.aiwiki.service.checks import python_args, run_check_command
 from src.server.aiwiki.service.opencode import prepare_opencode_config
 from src.server.aiwiki.service.persistence import existing_job_workdir
 from src.server.aiwiki.service.progress import (
     initial_progress,
+    mark_progress_failure,
+    mark_progress_running,
     progress_marked_complete,
     write_progress,
 )
@@ -35,7 +38,7 @@ from ..schemas import (
 )
 from .artifacts import copy_source_artifacts, material_count, prepare_skill
 from .constants import RESULT_CSV_PATH
-from .opencode import build_generation_params, run_opencode
+from .opencode import build_generation_params, run_opencode, run_repair_opencode
 from .permissions import can_access_job, is_admin
 from .persistence import (
     build_session_factory,
@@ -224,9 +227,8 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
         workdir = Path(job.workdir)
         write_manifest(workdir, job)
         prepare_opencode_config(workdir)
-        run_opencode(workdir, parse_json_dict(job.params_json))
-        if not progress_marked_complete(workdir):
-            raise RuntimeError("progress.json 未写入任务完成标记")
+        params = parse_json_dict(job.params_json)
+        _run_opencode_with_check(workdir, params)
 
         result = parse_seed_matrix_result(
             job_id=job.id,
@@ -250,6 +252,7 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
             job = SeedMatrixJobDAO(session).get(job_id)
             if job is not None:
                 append_log(Path(job.workdir), f"ERROR: {exc}")
+                mark_progress_failure(Path(job.workdir), str(exc))
                 update_job(
                     session,
                     job_id,
@@ -262,3 +265,35 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
             pass
     finally:
         session.close()
+
+
+def _run_opencode_with_check(workdir: Path, params: dict[str, object]) -> None:
+    run_opencode(workdir, params)
+    if not progress_marked_complete(workdir):
+        raise RuntimeError("progress.json 未写入任务完成标记")
+    try:
+        _run_seed_matrix_check(workdir)
+        return
+    except Exception as first_error:
+        append_log(workdir, f"SEED MATRIX CHECK ERROR: {first_error}")
+        mark_progress_running(
+            workdir,
+            step="修复选题矩阵",
+            summary="选题矩阵校验失败，正在下发 OpenCode 修复任务",
+        )
+        run_repair_opencode(workdir, params, error=str(first_error))
+        if not progress_marked_complete(workdir):
+            raise RuntimeError("修复后 progress.json 未写入任务完成标记")
+        _run_seed_matrix_check(workdir)
+
+
+def _run_seed_matrix_check(workdir: Path) -> None:
+    run_check_command(
+        workdir,
+        python_args(
+            ".agents/skills/wechat-seed-matrix-builder/scripts/validate_seed_matrix.py",
+            "--source-table",
+            RESULT_CSV_PATH,
+        ),
+        label="选题矩阵校验",
+    )

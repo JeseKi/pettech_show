@@ -20,6 +20,22 @@ from .constants import RESULT_CSV_PATH
 
 
 def run_opencode(workdir: Path, params: dict[str, Any]) -> None:
+    _run_opencode_prompt(
+        workdir,
+        title="Seed matrix generation",
+        prompt=build_prompt(workdir, params),
+    )
+
+
+def run_repair_opencode(workdir: Path, params: dict[str, Any], *, error: str) -> None:
+    _run_opencode_prompt(
+        workdir,
+        title="Seed matrix repair",
+        prompt=build_repair_prompt(workdir, params, error=error),
+    )
+
+
+def _run_opencode_prompt(workdir: Path, *, title: str, prompt: str) -> None:
     command = shlex.split(global_config.aiwiki_opencode_command)
     if not command:
         raise RuntimeError("AIWIKI_OPENCODE_COMMAND 不能为空")
@@ -29,7 +45,7 @@ def run_opencode(workdir: Path, params: dict[str, Any]) -> None:
         "--dir",
         workdir.as_posix(),
         "--title",
-        "Seed matrix generation",
+        title,
     ]
     if global_config.aiwiki_opencode_model:
         args.extend(["--model", global_config.aiwiki_opencode_model])
@@ -37,7 +53,7 @@ def run_opencode(workdir: Path, params: dict[str, Any]) -> None:
         args.extend(["--agent", global_config.aiwiki_opencode_agent])
     if global_config.aiwiki_opencode_extra_args:
         args.extend(shlex.split(global_config.aiwiki_opencode_extra_args))
-    args.append(build_prompt(workdir, params))
+    args.append(prompt)
 
     log_path = workdir / "logs" / "opencode.log"
     append_log(workdir, "$ " + " ".join(shlex.quote(arg) for arg in args[:-1]) + " <prompt>")
@@ -96,10 +112,12 @@ def build_prompt(workdir: Path, params: dict[str, Any]) -> str:
 进度协议：
 - 当前目录下必须维护 `progress.json`，并保证它始终是合法 JSON。
 - `progress.json` 顶层必须包含 `status`、`current_step`、`events`。
-- `events` 必须是数组，每项至少包含 `event`、`step`、`summary`，其中 `event` 使用 `started`、`completed` 或 `failed`。
-- 每开始一个步骤，立刻重写 `progress.json`，追加一条 `started` 事件，并把 `status` 设为 `running`、`current_step` 设为当前正在做的事。
-- 每完成一个步骤，立刻重写 `progress.json`，追加一条 `completed` 事件，`summary` 简要概括刚完成的内容。
-- 所有矩阵生成和校验都完成后，必须把 `status` 设为 `completed`，`current_step` 设为 `任务完成`，且最后一个事件必须精确为 `{{"event":"completed","step":"all","summary":"任务完成"}}`。
+- `events` 必须是数组，每项至少包含 `event`、`step`、`summary`；`event`、`step` 的值必须使用中文。
+- `event` 只能使用 `开始`、`完成` 或 `失败`。
+- 每开始一个步骤，立刻重写 `progress.json`，追加一条 `开始` 事件，并把 `status` 设为 `running`、`current_step` 设为当前正在做的中文步骤名。
+- 每完成一个步骤，立刻重写 `progress.json`，追加一条 `完成` 事件，`summary` 简要概括刚完成的内容。
+- 如果任务失败，必须把 `status` 设为 `failure`，`current_step` 设为 `任务失败`，并追加 `失败` 事件。
+- 所有矩阵生成和校验都完成后，必须把 `status` 设为 `completed`，`current_step` 设为 `任务完成`，且最后一个事件必须精确为 `{{"event":"完成","step":"全部","summary":"任务完成"}}`。
 
 目标：
 1. 使用 $wechat-seed-matrix-builder，从当前目录的 `material/` 和 `wiki/` 生成选题矩阵 CSV。
@@ -127,6 +145,35 @@ def build_prompt(workdir: Path, params: dict[str, Any]) -> str:
 - 不要重新处理 uploads/raw 原文，只使用已存在的 material/wiki 资产。
 - 如果 material 有坏文件，按 skill 约束跳过并在日志里说明。
 - CSV 必须包含 seed_id、topic、pain_point、solution、hook、mother_topic_prompt 等规划字段。
+""".strip()
+
+
+def build_repair_prompt(workdir: Path, params: dict[str, Any], *, error: str) -> str:
+    return f"""
+你在一个隔离的选题矩阵生成工作目录中工作：{workdir.as_posix()}
+
+请严格只读写当前目录内的文件，不要访问或修改其他项目目录。
+
+后端在 AI 标记完成后执行选题矩阵校验失败，错误如下：
+{error}
+
+任务：
+1. 修复 `{RESULT_CSV_PATH}`，不要重新处理 uploads/raw 原文。
+2. 必须自行运行：
+   python3 .agents/skills/wechat-seed-matrix-builder/scripts/validate_seed_matrix.py --source-table {RESULT_CSV_PATH}
+3. 如果校验仍失败，继续修复并重跑，直到通过或明确失败原因。
+
+关键生成参数：
+- start_seed: {params.get("start_seed") or "S001"}
+- max_seeds: {params.get("max_seeds") or "不限制"}
+- expected_article_count: {params.get("expected_article_count") or 10}
+
+进度协议：
+- `progress.json` 顶层必须包含 `status`、`current_step`、`events`。
+- `event`、`step` 的值必须使用中文；`event` 只能使用 `开始`、`完成` 或 `失败`。
+- 修复开始时写入 `status: running`，`current_step: 修复选题矩阵`，并追加 `开始` 事件。
+- 校验通过后，必须把 `status` 设为 `completed`，`current_step` 设为 `任务完成`，且最后一个事件必须精确为 `{{"event":"完成","step":"全部","summary":"任务完成"}}`。
+- 如果无法修复，必须把 `status` 设为 `failure`，`current_step` 设为 `任务失败`，并追加 `失败` 事件说明原因。
 """.strip()
 
 

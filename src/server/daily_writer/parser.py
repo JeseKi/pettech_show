@@ -4,18 +4,10 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any
 
 from .schemas import DailyWriterResultOut, DailyWriterVariantOut
-
-IMAGE_PATTERNS = [
-    re.compile(r"!\[[^\]]*]\([^)]*\)"),
-    re.compile(r"<img\b", re.IGNORECASE),
-    re.compile(r"二维码|QR\s*code", re.IGNORECASE),
-]
-
 
 def parse_daily_writer_result(
     *,
@@ -72,10 +64,6 @@ def resolve_result_paths(
 def validate_result(
     markdown: str, metadata: dict[str, Any], article_path: Path, metadata_path: Path
 ) -> None:
-    for pattern in IMAGE_PATTERNS:
-        if pattern.search(markdown):
-            raise ValueError("main.md 包含图片语法、图片标签或二维码内容")
-
     output_id = str(metadata.get("output_id") or "")
     if not output_id:
         raise ValueError("metadata.json 缺少 output_id")

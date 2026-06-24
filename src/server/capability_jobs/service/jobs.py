@@ -15,7 +15,13 @@ from loguru import logger
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.server.aiwiki.service.logs import append_log
-from src.server.aiwiki.service.progress import initial_progress, write_progress
+from src.server.aiwiki.service.progress import (
+    initial_progress,
+    mark_progress_failure,
+    mark_progress_running,
+    progress_marked_complete,
+    write_progress,
+)
 from src.server.auth.models import User
 from src.server.config import global_config
 
@@ -32,7 +38,7 @@ from ..schemas import (
     CapabilityJobOut,
     CapabilityResultOut,
 )
-from .opencode import run_opencode, run_validator
+from .opencode import run_opencode, run_repair_opencode, run_validator
 from .permissions import is_admin
 from .persistence import (
     build_session_factory,
@@ -205,8 +211,11 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
         update_job(session, job_id, status="running", message="能力任务执行中", started_at=started_at)
         write_manifest(Path(job.workdir), CapabilityJobDAO(session).get(job_id))
         append_log(Path(job.workdir), "开始执行能力任务")
-        run_opencode(Path(job.workdir), config, parse_json_dict(job.input_json))
-        run_validator(Path(job.workdir), config)
+        inputs = parse_json_dict(job.input_json)
+        run_opencode(Path(job.workdir), config, inputs)
+        if not progress_marked_complete(Path(job.workdir)):
+            raise RuntimeError("progress.json 未写入任务完成标记")
+        _run_validator_with_repair(Path(job.workdir), config, inputs)
         summary = _result_summary(Path(job.workdir), config)
         finished_at = datetime.now(timezone.utc)
         update_job(
@@ -234,6 +243,7 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
             if job:
                 write_manifest(Path(job.workdir), job)
                 append_log(Path(job.workdir), f"任务失败：{exc}")
+                mark_progress_failure(Path(job.workdir), str(exc))
         except Exception:
             logger.exception("更新能力任务失败状态失败")
     finally:
@@ -249,6 +259,25 @@ def _normalize_inputs(config: CapabilityConfig, inputs: dict[str, Any]) -> dict[
         if value is not None:
             normalized[item.key] = str(value).strip() if item.type in {"text", "textarea"} else value
     return normalized
+
+
+def _run_validator_with_repair(
+    workdir: Path, config: CapabilityConfig, inputs: dict[str, Any]
+) -> None:
+    try:
+        run_validator(workdir, config, json_only=True)
+        return
+    except Exception as first_error:
+        append_log(workdir, f"CAPABILITY JSON CHECK ERROR: {first_error}")
+        mark_progress_running(
+            workdir,
+            step="修复 result JSON",
+            summary="result JSON 校验失败，正在下发 OpenCode 修复任务",
+        )
+        run_repair_opencode(workdir, config, inputs, error=str(first_error))
+        if not progress_marked_complete(workdir):
+            raise RuntimeError("修复后 progress.json 未写入任务完成标记")
+        run_validator(workdir, config, json_only=True)
 
 
 def _result_summary(workdir: Path, config: CapabilityConfig) -> dict[str, Any]:

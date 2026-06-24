@@ -244,6 +244,8 @@ def test_create_aiwiki_job_and_get_result(
     assert created["files"][0]["preview"]["kind"] == "text"
     assert created["progress"]["status"] == "queued"
     assert created["progress"]["current_step"] == "任务排队中"
+    assert created["progress"]["events"][0]["event"] == "开始"
+    assert created["progress"]["events"][0]["step"] == "排队"
 
     finished = _wait_for_terminal_status(test_client, created["id"], headers)
     assert finished["status"] == "completed", finished
@@ -600,6 +602,8 @@ root = Path.cwd()
 
     finished = _wait_for_terminal_status(test_client, create_resp.json()["id"], headers)
     assert finished["status"] == "failed"
+    assert finished["progress"]["status"] == "failure"
+    assert finished["progress"]["events"][-1]["event"] == "失败"
     assert "progress.json" in finished["message"]
 
 

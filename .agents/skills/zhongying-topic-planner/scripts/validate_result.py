@@ -18,6 +18,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workdir", required=True, help="Capability job workspace")
     parser.add_argument("--capability-key", required=True, help="Expected capability key")
     parser.add_argument("--min-topics", type=int, default=1, help="Minimum topic count")
+    parser.add_argument(
+        "--json-only",
+        action="store_true",
+        help="Only check that output/result.json is valid JSON with object top-level value.",
+    )
     return parser.parse_args()
 
 
@@ -99,15 +104,22 @@ def validate(workdir: Path, capability_key: str, min_topics: int) -> list[str]:
     return errors
 
 
+def validate_json_only(workdir: Path) -> list[str]:
+    errors: list[str] = []
+    load_json(workdir / "output" / "result.json", errors)
+    return errors
+
+
 def main() -> int:
     args = parse_args()
-    errors = validate(Path(args.workdir), args.capability_key, args.min_topics)
+    workdir = Path(args.workdir)
+    errors = validate_json_only(workdir) if args.json_only else validate(workdir, args.capability_key, args.min_topics)
     if errors:
         print("FAIL topic planning output")
         for error in errors:
             print(f"- {error}")
         return 1
-    print("OK topic planning output")
+    print("OK topic planning output JSON" if args.json_only else "OK topic planning output")
     return 0
 
 

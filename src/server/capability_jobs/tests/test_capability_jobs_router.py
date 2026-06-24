@@ -286,6 +286,8 @@ def test_topic_capability_fails_when_validator_rejects_bad_json(
     assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
     finished = _wait_for_terminal_status(test_client, create_resp.json()["id"], headers)
     assert finished["status"] == "failed", finished
+    assert finished["progress"]["status"] == "failure"
+    assert finished["progress"]["events"][-1]["event"] == "失败"
     assert "能力结果校验失败" in finished["message"]
     assert "invalid JSON" in finished["message"]
 

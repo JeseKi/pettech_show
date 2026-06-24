@@ -40,7 +40,7 @@ export function statusMeta(status?: string) {
   if (status === 'running') return { label: '生成中', percent: 55, status: 'active' as const }
   if (status === 'completed') return { label: '已完成', percent: 100, status: 'success' as const }
   if (status === 'partial_failed') return { label: '部分成功', percent: 100, status: 'exception' as const }
-  if (status === 'failed') return { label: '失败', percent: 100, status: 'exception' as const }
+  if (status === 'failed' || status === 'failure') return { label: '失败', percent: 100, status: 'exception' as const }
   return { label: '未选择', percent: 0, status: 'normal' as const }
 }
 
@@ -58,9 +58,9 @@ export function progressEvents(job: AiwikiJob | null): AiwikiProgressEvent[] {
 }
 
 export function progressEventColor(event: string): string {
-  if (event === 'completed') return 'green'
-  if (event === 'failed') return 'red'
-  if (event === 'started') return 'blue'
+  if (event === 'completed' || event === '完成') return 'green'
+  if (event === 'failed' || event === '失败') return 'red'
+  if (event === 'started' || event === '开始') return 'blue'
   return 'default'
 }
 

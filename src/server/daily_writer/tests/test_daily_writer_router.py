@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 import sys
 import time
 import zipfile
@@ -18,6 +19,8 @@ from src.server.auth.models import User
 from src.server.config import global_config
 from src.server.daily_writer.queue_state import reset_queue_for_tests
 from src.server.seed_matrix.models import SeedMatrixJob
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
 
 @pytest.fixture
@@ -158,8 +161,12 @@ write_progress("completed", "任务完成")
         "wechat-main-variant-rewriter",
     ):
         skill_dir = tmp_path / ".agents" / "skills" / skill_name
-        skill_dir.mkdir(parents=True)
+        (skill_dir / "scripts").mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(f"# fake {skill_name} skill\n", encoding="utf-8")
+    shutil.copyfile(
+        PROJECT_ROOT / ".agents" / "skills" / "wechat-daily-writer" / "scripts" / "check_article_json.py",
+        tmp_path / ".agents" / "skills" / "wechat-daily-writer" / "scripts" / "check_article_json.py",
+    )
     reset_queue_for_tests()
     yield tmp_path
     reset_queue_for_tests()
@@ -539,7 +546,7 @@ def test_rejects_unfinished_seed_matrix(
     assert "已完成" in resp.json()["detail"]
 
 
-def test_fails_when_generated_article_contains_image(
+def test_markdown_image_does_not_fail_json_only_check(
     test_client,
     test_db_session,
     fake_daily_writer_runtime: Path,
@@ -599,5 +606,10 @@ events.append({"event": "completed", "step": "all", "summary": "任务完成"})
     assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
     finished = _wait_for_terminal_status(test_client, create_resp.json()["id"], headers)
 
-    assert finished["status"] == "failed"
-    assert "图片" in finished["message"]
+    assert finished["status"] == "completed", finished
+    result_resp = test_client.get(
+        f"/api/daily-writer/jobs/{create_resp.json()['id']}/result",
+        headers=headers,
+    )
+    assert result_resp.status_code == HTTPStatus.OK, result_resp.text
+    assert "![cover](cover.png)" in result_resp.json()["markdown"]

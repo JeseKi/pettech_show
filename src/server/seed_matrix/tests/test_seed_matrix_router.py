@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import time
 from datetime import datetime, timezone
@@ -15,6 +16,8 @@ from src.server.auth import service as auth_service
 from src.server.auth.models import User
 from src.server.config import global_config
 from src.server.seed_matrix.queue_state import reset_queue_for_tests
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
 
 @pytest.fixture
@@ -105,6 +108,10 @@ write_progress("completed", "任务完成")
     skill_dir = tmp_path / ".agents" / "skills" / "wechat-seed-matrix-builder"
     (skill_dir / "scripts").mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text("# fake skill\n", encoding="utf-8")
+    shutil.copyfile(
+        PROJECT_ROOT / ".agents" / "skills" / "wechat-seed-matrix-builder" / "scripts" / "validate_seed_matrix.py",
+        skill_dir / "scripts" / "validate_seed_matrix.py",
+    )
     reset_queue_for_tests()
     yield tmp_path
     reset_queue_for_tests()

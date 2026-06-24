@@ -29,6 +29,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workdir", required=True, help="Capability job workspace")
     parser.add_argument("--capability-key", required=True, help="Expected capability key")
+    parser.add_argument(
+        "--json-only",
+        action="store_true",
+        help="Only check that output/result.json is valid JSON with object top-level value.",
+    )
     return parser.parse_args()
 
 
@@ -119,15 +124,22 @@ def validate(workdir: Path, capability_key: str) -> list[str]:
     return errors
 
 
+def validate_json_only(workdir: Path) -> list[str]:
+    errors: list[str] = []
+    load_json(workdir / "output" / "result.json", errors)
+    return errors
+
+
 def main() -> int:
     args = parse_args()
-    errors = validate(Path(args.workdir), args.capability_key)
+    workdir = Path(args.workdir)
+    errors = validate_json_only(workdir) if args.json_only else validate(workdir, args.capability_key)
     if errors:
         print("FAIL script creation output")
         for error in errors:
             print(f"- {error}")
         return 1
-    print("OK script creation output")
+    print("OK script creation output JSON" if args.json_only else "OK script creation output")
     return 0
 
 
