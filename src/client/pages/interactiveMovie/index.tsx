@@ -1855,7 +1855,7 @@ export default function InteractiveMoviePage() {
         {previewScene && (
           <div className="movie-preview-player">
             <div className={previewHasVideo ? 'movie-preview-scene has-video' : 'movie-preview-scene'}>
-              {!previewChoicesVisible && previewVideoUrl && (
+              {previewVideoUrl && (
                 <video
                   key={previewScene.id}
                   src={previewVideoUrl}

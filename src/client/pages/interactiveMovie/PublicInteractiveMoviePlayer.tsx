@@ -272,7 +272,7 @@ export default function PublicInteractiveMoviePlayer() {
   return (
     <main className="movie-public-page">
       <section className={hasVideo ? 'movie-public-stage has-video' : 'movie-public-stage'}>
-        {gameStarted && !choicesVisible && !ended && videoUrl && (
+        {gameStarted && !ended && videoUrl && (
           <video
             key={scene.id}
             ref={videoRef}
