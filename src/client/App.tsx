@@ -20,6 +20,7 @@ import CapabilityEntryPage from './pages/capabilities/CapabilityEntryPage'
 import { AuthProvider, RequireAdmin, RequireAuth } from './providers/AuthProvider'
 import { RuntimeConfigProvider } from './providers/RuntimeConfigProvider'
 import ThemeToggle from './components/theme/ThemeToggle'
+import GestureControlSidebar from './components/gesture/GestureControlSidebar'
 import { AIWIKI_MODES, DAILY_WRITER_MODES, SEED_MATRIX_MODES, VISIBLE_CAPABILITY_ENTRIES } from './lib/workflowModes'
 
 function ThemeToggleGate() {
@@ -110,6 +111,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             <ThemeToggleGate />
+            <GestureControlSidebar />
           </>
         </AuthProvider>
       </RuntimeConfigProvider>

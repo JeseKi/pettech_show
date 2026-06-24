@@ -1,4 +1,8 @@
-import { type KeyboardEvent, type PointerEvent, type WheelEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, type PointerEvent, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  GLOBAL_GESTURE_SWIPE_EVENT,
+  type GlobalGestureSwipeDetail,
+} from '../../../components/gesture/GestureControlSidebar'
 import {
   COURSE_ORBIT_ANGLE_STEP,
   COURSE_ORBIT_AUTOPLAY_DELAY_MS,
@@ -49,6 +53,7 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
   const autoScrollLastTimeRef = useRef(0)
   const autoScrollResumeTimerRef = useRef(0)
   const orbitInertiaFrameRef = useRef(0)
+  const courseSceneRef = useRef<HTMLDivElement | null>(null)
   const orbitPointerStateRef = useRef<CourseOrbitPointerState>({
     isDragging: false,
     hasDragged: false,
@@ -65,7 +70,6 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
     Math.cos(getCourseOrbitAngle(left, orbitPhase) * Math.PI / 180) -
     Math.cos(getCourseOrbitAngle(right, orbitPhase) * Math.PI / 180)
   ))
-
   const moveCourseOrbit = useCallback((deltaAngle: number) => {
     setOrbitPhase((currentPhase) => normalizeAngle(currentPhase + deltaAngle))
   }, [])
@@ -180,14 +184,14 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
     startCourseOrbitInertia()
   }
 
-  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
+  const handleWheel = useCallback((event: WheelEvent) => {
     if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return
     event.preventDefault()
     stopCourseOrbitInertia()
     stopCourseOrbitAutoplay()
     moveCourseOrbit(-event.deltaX * COURSE_ORBIT_WHEEL_SENSITIVITY)
     scheduleCourseOrbitAutoplay()
-  }
+  }, [moveCourseOrbit, scheduleCourseOrbitAutoplay, stopCourseOrbitAutoplay, stopCourseOrbitInertia])
 
   const handleSceneKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
@@ -219,6 +223,45 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
   useEffect(() => () => stopCourseOrbitInertia(), [stopCourseOrbitInertia])
 
   useEffect(() => {
+    const sceneElement = courseSceneRef.current
+    if (!sceneElement) return undefined
+
+    sceneElement.addEventListener('wheel', handleWheel, { passive: false })
+    return () => sceneElement.removeEventListener('wheel', handleWheel)
+  }, [handleWheel])
+
+  useEffect(() => {
+    const handleGestureSwipe = (event: Event) => {
+      const { deltaX, direction } = (event as CustomEvent<GlobalGestureSwipeDetail>).detail
+      if (direction !== 'left' && direction !== 'right') return
+      stopCourseOrbitInertia()
+      stopCourseOrbitAutoplay()
+      moveCourseOrbit(deltaX)
+    }
+    const handleGestureInteractionStart = () => {
+      stopCourseOrbitInertia()
+      stopCourseOrbitAutoplay()
+    }
+    const handleGestureInteractionEnd = () => {
+      scheduleCourseOrbitAutoplay()
+    }
+
+    window.addEventListener(GLOBAL_GESTURE_SWIPE_EVENT, handleGestureSwipe)
+    window.addEventListener('pettech:gesture-interaction-start', handleGestureInteractionStart)
+    window.addEventListener('pettech:gesture-interaction-end', handleGestureInteractionEnd)
+    return () => {
+      window.removeEventListener(GLOBAL_GESTURE_SWIPE_EVENT, handleGestureSwipe)
+      window.removeEventListener('pettech:gesture-interaction-start', handleGestureInteractionStart)
+      window.removeEventListener('pettech:gesture-interaction-end', handleGestureInteractionEnd)
+    }
+  }, [
+    moveCourseOrbit,
+    scheduleCourseOrbitAutoplay,
+    stopCourseOrbitAutoplay,
+    stopCourseOrbitInertia,
+  ])
+
+  useEffect(() => {
     startCourseOrbitAutoplay()
     return () => stopCourseOrbitAutoplay()
   }, [startCourseOrbitAutoplay, stopCourseOrbitAutoplay])
@@ -228,12 +271,12 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
       <div className="course-stack-stage">
         <div
           className="course-stack-scene"
+          ref={courseSceneRef}
           onKeyDown={handleSceneKeyDown}
           onPointerCancel={(event) => releasePointer(event, false)}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={releasePointer}
-          onWheel={handleWheel}
           tabIndex={0}
         >
           <div className="course-stack-content" aria-label="课程卡片轮盘">
@@ -259,6 +302,10 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
               aria-current="step"
               aria-label={`${activeOrbitItem.day} ${activeOrbitItem.title} 课程详情`}
               className="stack-course-card stack-course-card--focus is-front"
+              onClick={() => {
+                if (orbitPointerStateRef.current.hasDragged) return
+                onCourseOpen(activeOrbitItem)
+              }}
               onKeyDown={(event) => handleCourseKeyDown(event, activeOrbitItem)}
               role="button"
               data-course-index={activeOrbitItem.courseIndex}
