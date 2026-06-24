@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import re
+import csv
 import zipfile
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from statistics import median
 from typing import Any
 from xml.etree import ElementTree
 
@@ -15,7 +18,25 @@ from fastapi import HTTPException, status
 TEXT_PREVIEW_LIMIT = 200_000
 XLSX_MAX_ROWS = 200
 XLSX_MAX_COLUMNS = 50
+CSV_MAX_ROWS = 200
+CSV_MAX_COLUMNS = 50
 TEXT_EXTENSIONS = {".md", ".markdown", ".txt"}
+
+
+@dataclass
+class PdfTextSpan:
+    text: str
+    size: float
+    flags: int
+    font: str
+
+
+@dataclass
+class PdfTextLine:
+    spans: list[PdfTextSpan]
+    max_size: float
+    is_bold: bool
+    text: str
 
 
 def convert_to_markdown(path: Path, content: bytes, extension: str) -> str:
@@ -23,12 +44,10 @@ def convert_to_markdown(path: Path, content: bytes, extension: str) -> str:
         return content.decode("utf-8", errors="replace").strip() + "\n"
     if extension == ".xlsx":
         return xlsx_preview_to_markdown(build_xlsx_preview(path.name, content))
+    if extension == ".csv":
+        return csv_preview_to_markdown(build_csv_preview(path.name, content))
     if extension == ".pdf":
-        return (
-            f"# {path.stem}\n\n"
-            "该文件是 PDF 文档，目前知识库支持原文预览和留存审计。"
-            "如果需要进入 AI Wiki 生成，请补充可抽取的 Markdown/TXT 文本版本。\n"
-        )
+        return pdf_to_markdown(path.name, content)
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=f"不支持的文件类型：{extension or path.name}",
@@ -47,8 +66,19 @@ def build_file_preview(filename: str, content: bytes, extension: str) -> dict[st
         }
     if extension == ".xlsx":
         return build_xlsx_preview(filename, content)
+    if extension == ".csv":
+        return build_csv_preview(filename, content)
     if extension == ".pdf":
-        return {"kind": "pdf", "filename": filename, "size_bytes": len(content)}
+        markdown = pdf_to_markdown(filename, content)
+        return {
+            "kind": "pdf",
+            "filename": filename,
+            "size_bytes": len(content),
+            "page_count": pdf_page_count(content, filename),
+            "text": markdown[:TEXT_PREVIEW_LIMIT],
+            "truncated": len(markdown) > TEXT_PREVIEW_LIMIT,
+            "character_count": len(markdown),
+        }
     return {"kind": "unsupported", "filename": filename}
 
 
@@ -100,6 +130,271 @@ def xlsx_preview_to_markdown(preview: dict[str, Any]) -> str:
                 lines.append("| " + " | ".join(values) + " |")
         lines.append("")
     return "\n".join(lines).strip() + "\n"
+
+
+def build_csv_preview(filename: str, content: bytes) -> dict[str, Any]:
+    text = decode_tabular_text(content)
+    try:
+        sample = text[:8192]
+        dialect = csv.Sniffer().sniff(sample) if sample.strip() else csv.excel
+    except csv.Error:
+        dialect = csv.excel
+
+    rows: list[list[str]] = []
+    total_rows = 0
+    total_columns = 0
+    try:
+        reader = csv.reader(text.splitlines(), dialect)
+        for row in reader:
+            total_rows += 1
+            normalized = [cell.strip() for cell in row]
+            total_columns = max(total_columns, len(normalized))
+            if total_rows <= CSV_MAX_ROWS:
+                rows.append(normalized[:CSV_MAX_COLUMNS])
+    except csv.Error as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"CSV 文件无法读取：{filename}",
+        ) from exc
+
+    preview_width = min(max(total_columns, max((len(row) for row in rows), default=0)), CSV_MAX_COLUMNS)
+    normalized_rows = [
+        [row[index] if index < len(row) else "" for index in range(preview_width)]
+        for row in rows
+    ]
+    sheet = {
+        "name": Path(filename).stem or "CSV",
+        "row_count": total_rows,
+        "column_count": total_columns,
+        "truncated": total_rows > CSV_MAX_ROWS or total_columns > CSV_MAX_COLUMNS,
+        "rows": normalized_rows,
+    }
+    return {
+        "kind": "spreadsheet",
+        "filename": filename,
+        "sheets": [sheet],
+        "sheet_count": 1,
+        "max_rows": CSV_MAX_ROWS,
+        "max_columns": CSV_MAX_COLUMNS,
+    }
+
+
+def csv_preview_to_markdown(preview: dict[str, Any]) -> str:
+    return xlsx_preview_to_markdown(preview)
+
+
+def decode_tabular_text(content: bytes) -> str:
+    for encoding in ("utf-8-sig", "utf-8", "gb18030"):
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return content.decode("utf-8", errors="replace")
+
+
+def pdf_to_markdown(filename: str, content: bytes) -> str:
+    try:
+        import fitz  # type: ignore[import-untyped]
+    except ModuleNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="PDF 解析依赖 PyMuPDF 未安装。",
+        ) from exc
+
+    try:
+        document = fitz.open(stream=content, filetype="pdf")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"PDF 文件无法读取：{filename}",
+        ) from exc
+
+    try:
+        markdown_parts: list[str] = []
+        for page_index in range(document.page_count):
+            page = document.load_page(page_index)
+            page_markdown = pdf_page_to_markdown(page)
+            if page_markdown:
+                markdown_parts.append(page_markdown)
+        markdown = cleanup_markdown("\n\n".join(markdown_parts))
+        if markdown:
+            return markdown + "\n"
+        return (
+            f"# {Path(filename).stem}\n\n"
+            "该 PDF 未抽取到可用文本，可能是扫描件或纯图片文档。\n"
+        )
+    finally:
+        document.close()
+
+
+def pdf_page_count(content: bytes, filename: str) -> int:
+    try:
+        import fitz  # type: ignore[import-untyped]
+
+        document = fitz.open(stream=content, filetype="pdf")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"PDF 文件无法读取：{filename}",
+        ) from exc
+    try:
+        return int(document.page_count)
+    finally:
+        document.close()
+
+
+def pdf_page_to_markdown(page: Any) -> str:
+    text_lines = extract_pdf_text_lines(page)
+    if not text_lines:
+        return ""
+
+    body_size = pdf_body_font_size(text_lines)
+    blocks: list[str] = []
+    current_paragraph: list[str] = []
+    for line in text_lines:
+        heading_level = pdf_heading_level(line, body_size)
+        if heading_level:
+            if current_paragraph:
+                blocks.append(" ".join(current_paragraph))
+                current_paragraph = []
+            heading_text = clean_pdf_inline_text(line.text)
+            if heading_text:
+                blocks.append(f"{'#' * heading_level} {heading_text}")
+            continue
+
+        rendered_line = render_pdf_text_line(line)
+        if not rendered_line:
+            if current_paragraph:
+                blocks.append(" ".join(current_paragraph))
+                current_paragraph = []
+            continue
+        if looks_like_list_item(rendered_line):
+            if current_paragraph:
+                blocks.append(" ".join(current_paragraph))
+                current_paragraph = []
+            blocks.append(rendered_line)
+            continue
+        current_paragraph.append(rendered_line)
+
+    if current_paragraph:
+        blocks.append(" ".join(current_paragraph))
+    return "\n\n".join(blocks)
+
+
+def extract_pdf_text_lines(page: Any) -> list[PdfTextLine]:
+    text_dict = page.get_text("dict")
+    lines: list[PdfTextLine] = []
+    for block in text_dict.get("blocks", []):
+        if block.get("type") != 0:
+            continue
+        for raw_line in block.get("lines", []):
+            spans: list[PdfTextSpan] = []
+            for raw_span in raw_line.get("spans", []):
+                text = str(raw_span.get("text") or "")
+                if not text.strip():
+                    continue
+                spans.append(
+                    PdfTextSpan(
+                        text=text,
+                        size=float(raw_span.get("size") or 0),
+                        flags=int(raw_span.get("flags") or 0),
+                        font=str(raw_span.get("font") or ""),
+                    )
+                )
+            if not spans:
+                continue
+            text = clean_pdf_inline_text(" ".join(span.text for span in spans))
+            if not text:
+                continue
+            lines.append(
+                PdfTextLine(
+                    spans=spans,
+                    max_size=max(span.size for span in spans),
+                    is_bold=any(pdf_span_is_bold(span) for span in spans),
+                    text=text,
+                )
+            )
+    return lines
+
+
+def pdf_body_font_size(lines: list[PdfTextLine]) -> float:
+    sizes = [line.max_size for line in lines if line.max_size > 0]
+    if not sizes:
+        return 12
+    first_pass = float(median(sizes))
+    body_candidates = [size for size in sizes if size <= first_pass]
+    return float(median(body_candidates or sizes))
+
+
+def pdf_heading_level(line: PdfTextLine, body_size: float) -> int | None:
+    text = line.text.strip()
+    if not text or len(text) > 120:
+        return None
+    if line.max_size >= body_size * 1.55:
+        return 1
+    if line.max_size >= body_size * 1.28:
+        return 2
+    if line.is_bold and line.max_size >= body_size * 1.12:
+        return 3
+    return None
+
+
+def render_pdf_text_line(line: PdfTextLine) -> str:
+    rendered_parts: list[str] = []
+    for span in line.spans:
+        text = clean_pdf_inline_text(span.text)
+        if not text:
+            continue
+        rendered = apply_pdf_span_markdown(text, span)
+        if rendered_parts and not rendered_parts[-1].endswith((" ", "/", "-", "(")):
+            rendered_parts.append(" ")
+        rendered_parts.append(rendered)
+    return cleanup_inline_markdown("".join(rendered_parts))
+
+
+def apply_pdf_span_markdown(text: str, span: PdfTextSpan) -> str:
+    escaped = escape_markdown_inline(text)
+    is_bold = pdf_span_is_bold(span)
+    is_italic = pdf_span_is_italic(span)
+    if is_bold and is_italic:
+        return f"***{escaped}***"
+    if is_bold:
+        return f"**{escaped}**"
+    if is_italic:
+        return f"*{escaped}*"
+    return escaped
+
+
+def pdf_span_is_bold(span: PdfTextSpan) -> bool:
+    return bool(span.flags & 16) or "bold" in span.font.lower()
+
+
+def pdf_span_is_italic(span: PdfTextSpan) -> bool:
+    font = span.font.lower()
+    return bool(span.flags & 2) or "italic" in font or "oblique" in font
+
+
+def looks_like_list_item(value: str) -> bool:
+    return bool(re.match(r"^(\*|-|\+|\d+[.)]|[A-Za-z][.)])\s+", value))
+
+
+def clean_pdf_inline_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def escape_markdown_inline(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("`", "\\`")
+
+
+def cleanup_inline_markdown(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def cleanup_markdown(value: str) -> str:
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
+    value = re.sub(r"[ \t]+\n", "\n", value)
+    value = re.sub(r"\n{3,}", "\n\n", value)
+    return value.strip()
 
 
 def read_shared_strings(archive: zipfile.ZipFile) -> list[str]:
@@ -208,6 +503,7 @@ def default_mime_type(extension: str) -> str:
         ".markdown": "text/markdown",
         ".txt": "text/plain",
         ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".csv": "text/csv",
         ".pdf": "application/pdf",
     }.get(extension, "application/octet-stream")
 

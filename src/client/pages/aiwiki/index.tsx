@@ -49,6 +49,7 @@ import {
   type AiwikiJob,
   type AiwikiJobStatus,
   type AiwikiJobSummary,
+  type AiwikiPdfPreview,
   type AiwikiResult,
   type AiwikiSpreadsheetPreview,
   type AiwikiTextPreview,
@@ -86,9 +87,9 @@ type DisplayTask = {
   summary?: AiwikiJobSummary
 }
 
-const ACCEPTED_TYPES = '.md,.markdown,.txt,.xlsx,.pdf'
+const ACCEPTED_TYPES = '.md,.markdown,.txt,.xlsx,.csv,.pdf'
 const CREATE_TASK_ID = '__create_task__'
-const ACCEPTED_TYPE_HINT = '文档: .md、.markdown、.txt；表格: .xlsx；PDF: .pdf'
+const ACCEPTED_TYPE_HINT = '文档: .md、.markdown、.txt；表格: .xlsx、.csv；PDF: .pdf'
 
 export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const { message, modal } = App.useApp()
@@ -964,6 +965,7 @@ function SpreadsheetPreview({ preview }: { preview: AiwikiSpreadsheetPreview }) 
 function PdfPreview({ file, job }: { file: DisplayFile; job: AiwikiJob | null }) {
   const [url, setUrl] = useState(file.localObjectUrl ?? '')
   const [error, setError] = useState('')
+  const pdfPreview = isPdfPreview(file.preview) ? file.preview : null
   useEffect(() => {
     let objectUrl = ''
     setError('')
@@ -992,12 +994,26 @@ function PdfPreview({ file, job }: { file: DisplayFile; job: AiwikiJob | null })
   }, [file.file_index, file.job_id, file.localObjectUrl, job?.id])
   if (error) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={error} />
   if (!url) return <div className="aiwiki-pdf-loading">PDF 加载中</div>
-  return <iframe className="aiwiki-pdf-preview" title={file.filename} src={url} />
+  return (
+    <Flex vertical gap={12}>
+      <Space wrap>
+        {pdfPreview?.page_count !== undefined && <Tag>{pdfPreview.page_count} 页</Tag>}
+        {pdfPreview?.character_count !== undefined && <Tag>{pdfPreview.character_count} 字符</Tag>}
+        {pdfPreview?.truncated && <Tag color="gold">文本预览已截断</Tag>}
+      </Space>
+      <iframe className="aiwiki-pdf-preview" title={file.filename} src={url} />
+      {pdfPreview?.text && (
+        <div className="aiwiki-markdown-preview">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{pdfPreview.text}</ReactMarkdown>
+        </div>
+      )}
+    </Flex>
+  )
 }
 
 async function buildLocalFile(file: File, index: number): Promise<DisplayFile> {
   const extension = extensionOf(file.name)
-  if (!['.md', '.markdown', '.txt', '.xlsx', '.pdf'].includes(extension)) {
+  if (!['.md', '.markdown', '.txt', '.xlsx', '.csv', '.pdf'].includes(extension)) {
     throw new Error(`不支持的文件类型：${extension || file.name}`)
   }
   const preview = await buildLocalPreview(file, extension)
@@ -1031,8 +1047,10 @@ async function buildLocalPreview(file: File, extension: string): Promise<AiwikiF
       character_count: text.length,
     }
   }
-  if (extension === '.xlsx') {
-    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+  if (extension === '.xlsx' || extension === '.csv') {
+    const workbook = extension === '.csv'
+      ? XLSX.read(await file.text(), { type: 'string' })
+      : XLSX.read(await file.arrayBuffer(), { type: 'array' })
     const sheets = workbook.SheetNames.slice(0, 20).map((name: string) => {
       const sheet = workbook.Sheets[name]
       const range = sheet['!ref'] ? XLSX.utils.decode_range(sheet['!ref']) : null
@@ -1100,9 +1118,13 @@ function isSpreadsheetPreview(preview: AiwikiFilePreview): preview is AiwikiSpre
   return preview.kind === 'spreadsheet'
 }
 
+function isPdfPreview(preview: AiwikiFilePreview | undefined): preview is AiwikiPdfPreview {
+  return Boolean(preview && preview.kind === 'pdf')
+}
+
 function fileCategory(file: DisplayFile): FileCategory {
   const extension = file.extension ?? extensionOf(file.filename)
-  return extension === '.xlsx' ? 'spreadsheet' : 'document'
+  return extension === '.xlsx' || extension === '.csv' ? 'spreadsheet' : 'document'
 }
 
 function categoryLabel(category: FileCategory): string {
@@ -1112,7 +1134,7 @@ function categoryLabel(category: FileCategory): string {
 function fileIcon(file: DisplayFile) {
   const extension = file.extension ?? extensionOf(file.filename)
   if (extension === '.pdf') return <FilePdfOutlined />
-  if (extension === '.xlsx') return <TableOutlined />
+  if (extension === '.xlsx' || extension === '.csv') return <TableOutlined />
   if (extension === '.md' || extension === '.markdown') return <FileMarkdownOutlined />
   return <FileTextOutlined />
 }
@@ -1140,6 +1162,7 @@ function mimeTypeForExtension(extension: string): string {
     '.markdown': 'text/markdown',
     '.txt': 'text/plain',
     '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.csv': 'text/csv',
     '.pdf': 'application/pdf',
   }[extension] ?? 'application/octet-stream'
 }

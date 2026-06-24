@@ -6,6 +6,7 @@ export interface AiwikiUploadedFile {
   filename: string
   size_bytes: number
   raw_path: string
+  raw_source_path?: string | null
   upload_path?: string | null
   extension?: string | null
   mime_type?: string | null
@@ -43,6 +44,10 @@ export type AiwikiPdfPreview = {
   kind: 'pdf'
   filename: string
   size_bytes: number
+  page_count?: number
+  text?: string
+  truncated?: boolean
+  character_count?: number
 }
 
 export type AiwikiFilePreview =

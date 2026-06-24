@@ -116,23 +116,28 @@ async def create_job(
         upload_path = uploads_dir / original_name
         upload_path.write_bytes(content)
         raw_text = convert_to_markdown(upload_path, content, extension)
-        raw_name = f"{raw_date}_{index}_{Path(original_name).stem}.md"
-        raw_path = raw_dir / safe_filename(raw_name)
+        raw_base = safe_filename(f"{raw_date}_{index}_{Path(original_name).stem}")
+        raw_path = raw_dir / f"{raw_base}.md"
         raw_path.write_text(raw_text, encoding="utf-8")
+        raw_source_path: Path | None = None
+        if extension == ".pdf":
+            raw_source_path = raw_dir / f"{raw_base}.pdf"
+            raw_source_path.write_bytes(content)
         preview = build_file_preview(original_name, content, extension)
-        saved_files.append(
-            {
-                "filename": original_name,
-                "size_bytes": len(content),
-                "upload_path": upload_path.relative_to(workdir).as_posix(),
-                "raw_path": raw_path.relative_to(workdir).as_posix(),
-                "extension": extension,
-                "mime_type": item["content_type"] or default_mime_type(extension),
-                "category": category_for_extension(extension),
-                "preview_status": "ready",
-                "preview": preview,
-            }
-        )
+        file_record = {
+            "filename": original_name,
+            "size_bytes": len(content),
+            "upload_path": upload_path.relative_to(workdir).as_posix(),
+            "raw_path": raw_path.relative_to(workdir).as_posix(),
+            "extension": extension,
+            "mime_type": item["content_type"] or default_mime_type(extension),
+            "category": category_for_extension(extension),
+            "preview_status": "ready",
+            "preview": preview,
+        }
+        if raw_source_path is not None:
+            file_record["raw_source_path"] = raw_source_path.relative_to(workdir).as_posix()
+        saved_files.append(file_record)
 
     manifest = {
         "id": job_id,

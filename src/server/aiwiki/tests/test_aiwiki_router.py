@@ -11,6 +11,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+import fitz  # type: ignore[import-untyped]
 
 from src.server.aiwiki import service as aiwiki_service
 from src.server.auth import service as auth_service
@@ -186,6 +187,15 @@ def _xlsx_bytes() -> bytes:
   </sheetData>
 </worksheet>""")
     return buffer.getvalue()
+
+
+def _pdf_bytes(text: str) -> bytes:
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((72, 72), text)
+    pdf_bytes = document.tobytes()
+    document.close()
+    return pdf_bytes
 
 
 def _wait_for_terminal_status(test_client, job_id: str, headers: dict[str, str]) -> dict:
@@ -451,7 +461,7 @@ def test_rejects_unsupported_upload_type(
     assert "不支持" in resp.json()["detail"]
 
 
-def test_aiwiki_accepts_xlsx_and_pdf_previews(
+def test_aiwiki_accepts_xlsx_csv_and_pdf_previews(
     test_client, test_db_session, fake_aiwiki_runtime
 ):
     headers = _auth_headers(_create_user(test_db_session, "aiwiki_preview_types"))
@@ -467,7 +477,15 @@ def test_aiwiki_accepts_xlsx_and_pdf_previews(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 ),
             ),
-            ("files", ("sample.pdf", b"%PDF-1.4\n%test", "application/pdf")),
+            (
+                "files",
+                (
+                    "matrix.csv",
+                    "标题,类型\n猫咪呕吐判断表,CSV\n".encode("utf-8"),
+                    "text/csv",
+                ),
+            ),
+            ("files", ("sample.pdf", _pdf_bytes("PDF extracted body"), "application/pdf")),
         ],
     )
 
@@ -475,7 +493,15 @@ def test_aiwiki_accepts_xlsx_and_pdf_previews(
     created = resp.json()
     assert created["files"][0]["preview"]["kind"] == "spreadsheet"
     assert created["files"][0]["preview"]["sheets"][0]["rows"][1] == ["猫咪呕吐判断表", "PDF"]
-    assert created["files"][1]["preview"]["kind"] == "pdf"
+    assert created["files"][1]["preview"]["kind"] == "spreadsheet"
+    assert created["files"][1]["preview"]["sheets"][0]["rows"][1] == ["猫咪呕吐判断表", "CSV"]
+    assert created["files"][2]["preview"]["kind"] == "pdf"
+    assert "PDF extracted body" in created["files"][2]["preview"]["text"]
+    assert created["files"][2]["raw_path"].endswith("_3_sample.md")
+    assert created["files"][2]["raw_source_path"].endswith("_3_sample.pdf")
+    workdir = Path(global_config.project_root) / "data" / created["id"]
+    assert (workdir / created["files"][2]["raw_path"]).is_file()
+    assert (workdir / created["files"][2]["raw_source_path"]).is_file()
 
 
 def test_delete_completed_aiwiki_job(

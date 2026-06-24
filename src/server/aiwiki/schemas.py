@@ -15,6 +15,7 @@ class UploadedFileOut(BaseModel):
     filename: str
     size_bytes: int
     raw_path: str
+    raw_source_path: str | None = None
     upload_path: str | None = None
     extension: str | None = None
     mime_type: str | None = None

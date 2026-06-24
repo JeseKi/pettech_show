@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/aiwiki", tags=["AI Wiki"])
     summary="创建 AI Wiki 生成任务",
 )
 async def create_aiwiki_job(
-    files: Annotated[list[UploadFile], File(description="支持 Markdown、TXT、XLSX、PDF")],
+    files: Annotated[list[UploadFile], File(description="支持 Markdown、TXT、XLSX、CSV、PDF")],
     generate_search_assets: Annotated[
         bool, Form(description="是否生成搜索入口和 wiki/search-intents 关键词池")
     ] = True,
