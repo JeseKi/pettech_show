@@ -7,6 +7,7 @@ import {
   AIWIKI_MODES,
   CAPABILITY_GROUP_META,
   DAILY_WRITER_MODES,
+  GESTURE_CONTROL_TOOL,
   INTERACTIVE_MOVIE_TOOL,
   SEED_MATRIX_MODES,
   VISIBLE_CAPABILITY_ENTRIES,
@@ -43,7 +44,7 @@ const entryGroups = [
   {
     title: '工具',
     icon: <VideoCameraOutlined />,
-    entries: [INTERACTIVE_MOVIE_TOOL],
+    entries: [GESTURE_CONTROL_TOOL, INTERACTIVE_MOVIE_TOOL],
   },
   ...Object.entries(CAPABILITY_GROUP_META).map(([groupId, meta]) => ({
     title: meta.title,

@@ -23,6 +23,15 @@ export const INTERACTIVE_MOVIE_TOOL = {
   buttonText: '进入编辑器',
 }
 
+export const GESTURE_CONTROL_TOOL = {
+  key: 'gesture-control',
+  path: '/gesture-control',
+  navLabel: '手势操作',
+  title: '手势操作',
+  description: '从工具页开启摄像头手势识别，开启后可在站内全局使用指向、点击、拖拽和滑动。',
+  buttonText: '管理手势操作',
+}
+
 export const KNOWLEDGE_BASE_TOOL = {
   key: 'knowledge-base',
   path: '/knowledge-base',

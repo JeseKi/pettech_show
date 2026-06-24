@@ -2,7 +2,7 @@ import { type KeyboardEvent, type PointerEvent, useCallback, useEffect, useRef, 
 import {
   GLOBAL_GESTURE_SWIPE_EVENT,
   type GlobalGestureSwipeDetail,
-} from '../../../components/gesture/GestureControlSidebar'
+} from '../../../components/gesture/events'
 import {
   COURSE_ORBIT_ANGLE_STEP,
   COURSE_ORBIT_AUTOPLAY_DELAY_MS,

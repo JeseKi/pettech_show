@@ -1,66 +1,82 @@
-.gesture-control {
+.gesture-control-panel {
   position: fixed;
-  top: 92px;
-  left: 14px;
+  top: 0;
+  left: 0;
   z-index: 1100;
-  width: 222px;
+  width: min(236px, calc(100vw - 16px));
   color: #eef7eb;
-  transition: transform 180ms ease, width 180ms ease;
+  touch-action: none;
+  user-select: none;
 }
 
-.gesture-control.is-collapsed {
-  width: 46px;
+.gesture-control-panel__handle {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 7px 6px 10px;
+  background: rgba(6, 11, 9, 0.86);
+  border: 1px solid rgba(213, 255, 169, 0.18);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  cursor: grab;
+  backdrop-filter: blur(18px);
 }
 
-.gesture-control__body {
+.gesture-control-panel.is-dragging .gesture-control-panel__handle {
+  cursor: grabbing;
+}
+
+.gesture-control-panel__handle span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: rgba(245, 247, 241, 0.78);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.gesture-control-panel__icon-button {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: rgba(245, 247, 241, 0.76);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.gesture-control-panel__icon-button:hover {
+  color: #091008;
+  background: #b8ff67;
+  border-color: #b8ff67;
+}
+
+.gesture-control-panel__body {
   display: grid;
   gap: 10px;
   padding: 10px;
   background: rgba(6, 11, 9, 0.78);
   border: 1px solid rgba(213, 255, 169, 0.18);
-  border-radius: 8px;
+  border-radius: 0 0 8px 8px;
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.34);
   backdrop-filter: blur(18px);
 }
 
-.gesture-control.is-tracking .gesture-control__body {
+.gesture-control-panel.is-tracking .gesture-control-panel__body {
   border-color: rgba(56, 189, 248, 0.58);
   box-shadow:
     0 18px 46px rgba(0, 0, 0, 0.34),
     0 0 26px rgba(56, 189, 248, 0.2);
 }
 
-.gesture-control.is-collapsed .gesture-control__body {
-  overflow: hidden;
-  width: 46px;
-  height: 46px;
-  padding: 0;
-}
-
-.gesture-control.is-collapsed .gesture-control__toggle,
-.gesture-control.is-collapsed .gesture-control__status,
-.gesture-control.is-collapsed .gesture-control__video {
-  display: none;
-}
-
-.gesture-control__collapse {
-  position: absolute;
-  top: 0;
-  right: -13px;
-  z-index: 1;
-  display: inline-flex;
-  width: 28px;
-  height: 46px;
-  align-items: center;
-  justify-content: center;
-  color: #091008;
-  background: #b8ff67;
-  border: 1px solid #b8ff67;
-  border-radius: 0 8px 8px 0;
-  cursor: pointer;
-}
-
-.gesture-control__toggle {
+.gesture-control-panel__toggle {
   display: inline-flex;
   min-height: 40px;
   align-items: center;
@@ -75,29 +91,29 @@
   font-weight: 900;
 }
 
-.gesture-control__toggle:disabled {
+.gesture-control-panel__toggle:disabled {
   cursor: progress;
   opacity: 0.72;
 }
 
-.gesture-control__status {
+.gesture-control-panel__status {
   display: grid;
   min-width: 0;
   gap: 3px;
 }
 
-.gesture-control__status strong {
+.gesture-control-panel__status strong {
   color: rgba(245, 247, 241, 0.78);
   font-size: 13px;
   font-weight: 900;
   white-space: nowrap;
 }
 
-.gesture-control.is-tracking .gesture-control__status strong {
+.gesture-control-panel.is-tracking .gesture-control-panel__status strong {
   color: #7dd3fc;
 }
 
-.gesture-control__status small {
+.gesture-control-panel__status small {
   overflow: hidden;
   color: rgba(245, 247, 241, 0.48);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
@@ -107,14 +123,25 @@
   white-space: nowrap;
 }
 
-.gesture-control__video {
+.gesture-control-panel__video {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   background: rgba(0, 0, 0, 0.42);
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 8px;
-  opacity: 0.78;
+  opacity: 0.84;
+  transform: scaleX(-1);
+}
+
+.gesture-control__video-source {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
   transform: scaleX(-1);
 }
 
@@ -183,16 +210,4 @@
 .is-gesture-hovered {
   outline: 2px solid rgba(184, 255, 103, 0.78);
   outline-offset: 4px;
-}
-
-@media (max-width: 680px) {
-  .gesture-control {
-    top: auto;
-    bottom: 14px;
-    width: min(222px, calc(100vw - 28px));
-  }
-
-  .gesture-control__video {
-    display: none;
-  }
 }

@@ -38,6 +38,7 @@ import {
   AGENT_TOOL,
   CAPABILITY_GROUP_META,
   DAILY_WRITER_MODES,
+  GESTURE_CONTROL_TOOL,
   INTERACTIVE_MOVIE_TOOL,
   KNOWLEDGE_BASE_TOOL,
   SEED_MATRIX_MODES,
@@ -48,6 +49,7 @@ import {
 const workflowEntries = [
   AGENT_TOOL,
   KNOWLEDGE_BASE_TOOL,
+  GESTURE_CONTROL_TOOL,
   ...Object.values(SEED_MATRIX_MODES),
   ...Object.values(DAILY_WRITER_MODES),
   INTERACTIVE_MOVIE_TOOL,
@@ -166,6 +168,10 @@ export default function MainLayout() {
           {
             key: KNOWLEDGE_BASE_TOOL.key,
             label: <Link to={KNOWLEDGE_BASE_TOOL.path}>{KNOWLEDGE_BASE_TOOL.navLabel}</Link>,
+          },
+          {
+            key: GESTURE_CONTROL_TOOL.key,
+            label: <Link to={GESTURE_CONTROL_TOOL.path}>{GESTURE_CONTROL_TOOL.navLabel}</Link>,
           },
           {
             key: INTERACTIVE_MOVIE_TOOL.key,
