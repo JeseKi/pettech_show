@@ -15,6 +15,7 @@ import LandingPage from './pages/landing/LandingPage'
 import AiwikiPage from './pages/aiwiki'
 import SeedMatrixPage from './pages/seedMatrix'
 import DailyWriterPage from './pages/dailyWriter'
+import InteractiveMoviePage from './pages/interactiveMovie'
 import CapabilityEntryPage from './pages/capabilities/CapabilityEntryPage'
 import { AuthProvider, RequireAdmin, RequireAuth } from './providers/AuthProvider'
 import { RuntimeConfigProvider } from './providers/RuntimeConfigProvider'
@@ -23,7 +24,7 @@ import { AIWIKI_MODES, DAILY_WRITER_MODES, SEED_MATRIX_MODES, VISIBLE_CAPABILITY
 
 function ThemeToggleGate() {
   const location = useLocation()
-  if (location.pathname === '/' || location.pathname === '/landing') {
+  if (location.pathname === '/' || location.pathname === '/landing' || location.pathname === '/interactive-movie') {
     return null
   }
   return <ThemeToggle />
@@ -55,6 +56,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <OAuthDeviceAuthorizePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/interactive-movie"
+              element={
+                <RequireAuth>
+                  <InteractiveMoviePage />
                 </RequireAuth>
               }
             />

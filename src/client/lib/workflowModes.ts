@@ -5,6 +5,15 @@ export type SeedMatrixModeId = 'standard' | 'batch' | 'high-frequency' | 'hook-d
 export type DailyWriterModeId = 'single' | 'batch' | 'five-pack'
 export type CapabilityGroupId = 'competitor-insights' | 'topic-planning' | 'script-creation'
 
+export const INTERACTIVE_MOVIE_TOOL = {
+  key: 'interactive-movie',
+  path: '/interactive-movie',
+  navLabel: '互动电影生成',
+  title: '互动电影生成',
+  description: '用 GalGame 式节点画布编辑场景、选择、跳转和预览，先跑通互动电影的最小创作闭环。',
+  buttonText: '进入编辑器',
+}
+
 export const AIWIKI_MODES: Record<AiwikiModeId, {
   key: string
   path: string

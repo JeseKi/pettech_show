@@ -26,6 +26,7 @@ import {
   FileSearchOutlined,
   FileTextOutlined,
   TableOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
@@ -37,6 +38,7 @@ import {
   AIWIKI_MODES,
   CAPABILITY_GROUP_META,
   DAILY_WRITER_MODES,
+  INTERACTIVE_MOVIE_TOOL,
   SEED_MATRIX_MODES,
   VISIBLE_CAPABILITY_ENTRIES,
   type CapabilityGroupId,
@@ -46,6 +48,7 @@ const workflowEntries = [
   ...Object.values(AIWIKI_MODES),
   ...Object.values(SEED_MATRIX_MODES),
   ...Object.values(DAILY_WRITER_MODES),
+  INTERACTIVE_MOVIE_TOOL,
   ...VISIBLE_CAPABILITY_ENTRIES,
 ]
 
@@ -157,6 +160,17 @@ export default function MainLayout() {
           key: entry.key,
           label: <Link to={entry.path}>{entry.navLabel}</Link>,
         })),
+      },
+      {
+        key: 'tools-group',
+        icon: <VideoCameraOutlined />,
+        label: '工具',
+        children: [
+          {
+            key: INTERACTIVE_MOVIE_TOOL.key,
+            label: <Link to={INTERACTIVE_MOVIE_TOOL.path}>{INTERACTIVE_MOVIE_TOOL.navLabel}</Link>,
+          },
+        ],
       },
       ...Object.entries(CAPABILITY_GROUP_META).map(([groupId, meta]) => ({
         key: `${groupId}-group`,

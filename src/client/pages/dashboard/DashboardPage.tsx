@@ -1,11 +1,12 @@
 import { Button, Card, Col, Flex, Row, Typography } from 'antd'
-import { FileSearchOutlined, FileTextOutlined, RightOutlined, TableOutlined } from '@ant-design/icons'
+import { FileSearchOutlined, FileTextOutlined, RightOutlined, TableOutlined, VideoCameraOutlined } from '@ant-design/icons'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AIWIKI_MODES,
   CAPABILITY_GROUP_META,
   DAILY_WRITER_MODES,
+  INTERACTIVE_MOVIE_TOOL,
   SEED_MATRIX_MODES,
   VISIBLE_CAPABILITY_ENTRIES,
   type CapabilityGroupId,
@@ -32,6 +33,11 @@ const entryGroups = [
     title: '长文生成',
     icon: <FileTextOutlined />,
     entries: Object.values(DAILY_WRITER_MODES),
+  },
+  {
+    title: '工具',
+    icon: <VideoCameraOutlined />,
+    entries: [INTERACTIVE_MOVIE_TOOL],
   },
   ...Object.entries(CAPABILITY_GROUP_META).map(([groupId, meta]) => ({
     title: meta.title,
