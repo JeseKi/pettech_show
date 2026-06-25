@@ -37,7 +37,7 @@ export function buildKnowledgeGraph(result: AiwikiResult) {
   const graph: KnowledgeGraphModel = new Graph({ type: 'undirected', multi: false })
   const entries = result.wiki_entries
 
-  addNode(graph, 'home', result.wiki_home?.title ?? 'AI Wiki', 'home', undefined, undefined, true)
+  addNode(graph, 'home', result.wiki_home?.title ?? '内容资产库', 'home', undefined, undefined, true)
   entries.forEach((entry) => {
     addNode(graph, entry.slug, entry.title, 'entry', entry.slug, entry.type)
     addEdge(graph, 'home', entry.slug, 'home')

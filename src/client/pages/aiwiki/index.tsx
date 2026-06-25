@@ -33,7 +33,7 @@ import {
   ReloadOutlined,
   TableOutlined,
 } from '@ant-design/icons'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as XLSX from 'xlsx'
@@ -55,15 +55,24 @@ import {
   type AiwikiTextPreview,
   type AiwikiUploadedFile,
 } from '../../lib/aiwiki'
-import type { AiwikiModeId } from '../../lib/workflowModes'
+import {
+  DAILY_WRITER_MODES,
+  SEED_MATRIX_MODES,
+  type AiwikiModeId,
+  type DailyWriterModeId,
+  type SeedMatrixModeId,
+} from '../../lib/workflowModes'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import KeywordModal from './KeywordModal'
 import ResultView from './ResultView'
 import { ACTIVE_STATUSES, entryTypeLabel, formatDateTime, progressEventColor, statusMeta } from './helpers'
+import SeedMatrixPage from '../seedMatrix'
+import DailyWriterPage from '../dailyWriter'
 import './AiwikiWorkbench.css'
 
 type FileCategory = 'document' | 'spreadsheet'
 type TaskFilter = 'all' | 'active' | 'completed' | 'failed'
+type WorkbenchStage = 'assets' | 'strategy' | 'production'
 type DisplayFile = AiwikiUploadedFile & {
   id: string
   job_id?: string
@@ -90,9 +99,32 @@ type DisplayTask = {
 const ACCEPTED_TYPES = '.md,.markdown,.txt,.xlsx,.csv,.pdf'
 const CREATE_TASK_ID = '__create_task__'
 const ACCEPTED_TYPE_HINT = '文档: .md、.markdown、.txt；表格: .xlsx、.csv；PDF: .pdf'
+const STRATEGY_MODE_IDS: SeedMatrixModeId[] = ['standard', 'batch', 'high-frequency', 'hook-driven']
+const WRITER_MODE_IDS: DailyWriterModeId[] = ['single', 'batch', 'five-pack']
+
+function isWorkbenchStage(value: string | null): value is WorkbenchStage {
+  return value === 'assets' || value === 'strategy' || value === 'production'
+}
+
+function isStrategyMode(value: string | null): value is SeedMatrixModeId {
+  return STRATEGY_MODE_IDS.includes(value as SeedMatrixModeId)
+}
+
+function isWriterMode(value: string | null): value is DailyWriterModeId {
+  return WRITER_MODE_IDS.includes(value as DailyWriterModeId)
+}
 
 export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const { message, modal } = App.useApp()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawStage = searchParams.get('stage')
+  const activeStage: WorkbenchStage = isWorkbenchStage(rawStage) ? rawStage : 'assets'
+  const strategyMode: SeedMatrixModeId = isStrategyMode(searchParams.get('strategyMode'))
+    ? searchParams.get('strategyMode') as SeedMatrixModeId
+    : 'standard'
+  const writerMode: DailyWriterModeId = isWriterMode(searchParams.get('writerMode'))
+    ? searchParams.get('writerMode') as DailyWriterModeId
+    : 'single'
   const localFilesRef = useRef<DisplayFile[]>([])
   const [editForm] = Form.useForm<{ title?: string; description?: string }>()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -118,8 +150,8 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
 
   const meta = statusMeta(job?.status)
   const workspaceSubtitle = mode === 'full'
-    ? 'OpenCode + Skill 生成 / 任务管理 / 文件预览'
-    : 'OpenCode + Skill 生成 / 任务管理'
+    ? '内容资产生成 / 任务管理 / 文件预览'
+    : '内容资产生成 / 任务管理'
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
@@ -213,6 +245,17 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const activeTask = useMemo(() => (
     isCreatingTask ? draftTask : taskItems.find((item) => item.id === activeTaskId) ?? null
   ), [activeTaskId, draftTask, isCreatingTask, taskItems])
+
+  const activeTaskReadyForGrowth = Boolean(activeTask && !activeTask.isDraft && activeTask.status === 'completed')
+  const activeGrowthSourceId = activeTaskReadyForGrowth ? activeTask?.id ?? null : null
+
+  const updateWorkbenchParams = (updates: Partial<Record<'stage' | 'strategyMode' | 'writerMode', string>>) => {
+    const next = new URLSearchParams(searchParams)
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value) next.set(key, value)
+    })
+    setSearchParams(next)
+  }
 
   useEffect(() => {
     if (isCreatingTask) return
@@ -309,7 +352,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
       setJob(created)
       setResult(null)
       setPreviewFile(null)
-      message.success('知识库任务已创建')
+      message.success('内容资产任务已创建')
       await loadHistory()
       void loadJob(created.id, true)
     } catch (err) {
@@ -335,7 +378,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const handleDeleteJob = async (targetJob: AiwikiJobSummary | AiwikiJob) => {
     try {
       await deleteAiwikiJob(targetJob.id)
-      message.success('知识库任务已删除')
+      message.success('内容资产任务已删除')
       if (activeTaskId === targetJob.id) {
         setActiveTaskId(null)
         setJob(null)
@@ -397,8 +440,8 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
         <div className="aiwiki-brand">
           <span className="aiwiki-logo"><FileTextOutlined /></span>
           <div className="aiwiki-brand-text">
-            <Typography.Text className="aiwiki-kicker">AI Wiki</Typography.Text>
-            <Typography.Title level={5} className="aiwiki-sidebar-title">知识库任务</Typography.Title>
+            <Typography.Text className="aiwiki-kicker">Content Assets</Typography.Text>
+            <Typography.Title level={5} className="aiwiki-sidebar-title">内容资产任务</Typography.Title>
           </div>
         </div>
         <Button block type="primary" icon={<PlusOutlined />} disabled={submitting} onClick={startNewTask} className="aiwiki-upload-button">
@@ -489,16 +532,72 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
 
       <main className="aiwiki-main">
         <header className="aiwiki-topbar">
-          <Flex vertical gap={4} className="aiwiki-heading">
+          <Flex vertical gap={10} className="aiwiki-heading">
             <Typography.Text className="aiwiki-kicker">{workspaceSubtitle}</Typography.Text>
-            <Typography.Title level={3} className="aiwiki-title">{activeTask?.title ?? '知识库'}</Typography.Title>
+            <Typography.Title level={3} className="aiwiki-title">{activeTask?.title ?? '内容资产库'}</Typography.Title>
+            <div className="aiwiki-growth-tabs" role="tablist" aria-label="内容增长阶段">
+              <button
+                type="button"
+                className={activeStage === 'assets' ? 'aiwiki-growth-tab is-active' : 'aiwiki-growth-tab'}
+                onClick={() => updateWorkbenchParams({ stage: 'assets' })}
+              >
+                <span>资产概览</span>
+                <small>{activeTask ? taskStatusLabel(activeTask.status) : '未选择'}</small>
+              </button>
+              <button
+                type="button"
+                disabled={!activeTaskReadyForGrowth}
+                className={activeStage === 'strategy' ? 'aiwiki-growth-tab is-active' : 'aiwiki-growth-tab'}
+                onClick={() => updateWorkbenchParams({ stage: 'strategy' })}
+              >
+                <span>选题策略</span>
+                <small>{activeTaskReadyForGrowth ? '基于当前资产' : '等待资产完成'}</small>
+              </button>
+              <button
+                type="button"
+                disabled={!activeTaskReadyForGrowth}
+                className={activeStage === 'production' ? 'aiwiki-growth-tab is-active' : 'aiwiki-growth-tab'}
+                onClick={() => updateWorkbenchParams({ stage: 'production' })}
+              >
+                <span>稿件生产</span>
+                <small>{activeTaskReadyForGrowth ? '承接策略 seed' : '等待资产完成'}</small>
+              </button>
+            </div>
+            {activeStage === 'strategy' && (
+              <Space wrap size={8} className="aiwiki-growth-mode-switch">
+                {STRATEGY_MODE_IDS.map((modeId) => (
+                  <Button
+                    key={modeId}
+                    size="small"
+                    type={strategyMode === modeId ? 'primary' : 'default'}
+                    onClick={() => updateWorkbenchParams({ stage: 'strategy', strategyMode: modeId })}
+                  >
+                    {SEED_MATRIX_MODES[modeId].navLabel}
+                  </Button>
+                ))}
+              </Space>
+            )}
+            {activeStage === 'production' && (
+              <Space wrap size={8} className="aiwiki-growth-mode-switch">
+                {WRITER_MODE_IDS.map((modeId) => (
+                  <Button
+                    key={modeId}
+                    size="small"
+                    type={writerMode === modeId ? 'primary' : 'default'}
+                    onClick={() => updateWorkbenchParams({ stage: 'production', writerMode: modeId })}
+                  >
+                    {DAILY_WRITER_MODES[modeId].navLabel}
+                  </Button>
+                ))}
+              </Space>
+            )}
           </Flex>
           <Space wrap className="aiwiki-top-actions">
             <Button icon={<ReloadOutlined />} loading={historyLoading} onClick={() => void loadHistory()}>刷新</Button>
           </Space>
         </header>
 
-        <section className="aiwiki-canvas">
+        <section className={activeStage === 'assets' ? 'aiwiki-canvas' : 'aiwiki-canvas aiwiki-canvas-stage-flow'}>
           <div className="aiwiki-stat-strip">
             <Statistic title="历史任务" value={stats.serverTasks} />
             <Statistic title="进行中" value={stats.activeCount} />
@@ -506,33 +605,59 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
             <Statistic title="总文件" value={stats.fileCount} />
           </div>
           <div className="aiwiki-stage">
-            {result ? (
-              <div className="aiwiki-result-scroll">
-                <ResultView
-                  result={result}
-                  selectedTerms={selectedTerms}
-                  entryFilter={entryFilter}
-                  filteredEntries={filteredEntries}
-                  entriesBySlug={entriesBySlug}
-                  activeEntry={activeEntry}
-                  onOpenKeywordModal={() => setKeywordModalOpen(true)}
-                  onEntryFilterChange={setEntryFilter}
-                  onOpenEntry={setActiveEntrySlug}
-                  onCloseEntry={() => setActiveEntrySlug(null)}
+            {activeStage === 'assets' && (
+              result ? (
+                <div className="aiwiki-result-scroll">
+                  <ResultView
+                    result={result}
+                    selectedTerms={selectedTerms}
+                    entryFilter={entryFilter}
+                    filteredEntries={filteredEntries}
+                    entriesBySlug={entriesBySlug}
+                    activeEntry={activeEntry}
+                    onOpenKeywordModal={() => setKeywordModalOpen(true)}
+                    onEntryFilterChange={setEntryFilter}
+                    onOpenEntry={setActiveEntrySlug}
+                    onCloseEntry={() => setActiveEntrySlug(null)}
+                  />
+                </div>
+              ) : (
+                <TaskOverview
+                  task={activeTask}
+                  files={activeFiles}
+                  uploading={submitting && isCreatingTask}
+                  uploadProgress={uploadProgress}
+                  onPreview={setPreviewFile}
+                  onRemoveLocal={removeLocalFile}
+                  onFilesSelected={(files) => void handleFilesSelected(files)}
+                  onStartNewTask={startNewTask}
+                  onSubmit={() => void submitFiles()}
                 />
-              </div>
-            ) : (
-              <TaskOverview
-                task={activeTask}
-                files={activeFiles}
-                uploading={submitting && isCreatingTask}
-                uploadProgress={uploadProgress}
-                onPreview={setPreviewFile}
-                onRemoveLocal={removeLocalFile}
-                onFilesSelected={(files) => void handleFilesSelected(files)}
-                onStartNewTask={startNewTask}
-                onSubmit={() => void submitFiles()}
-              />
+              )
+            )}
+            {activeStage === 'strategy' && (
+              activeTaskReadyForGrowth ? (
+                <div className="aiwiki-growth-stage-body">
+                  <SeedMatrixPage
+                    key={`strategy-${activeGrowthSourceId}-${strategyMode}`}
+                    embedded
+                    mode={strategyMode}
+                    sourceAiwikiJobId={activeGrowthSourceId}
+                  />
+                </div>
+              ) : <GrowthStageEmpty stage="strategy" onBackToAssets={() => updateWorkbenchParams({ stage: 'assets' })} />
+            )}
+            {activeStage === 'production' && (
+              activeTaskReadyForGrowth ? (
+                <div className="aiwiki-growth-stage-body">
+                  <DailyWriterPage
+                    key={`production-${activeGrowthSourceId}-${writerMode}`}
+                    embedded
+                    mode={writerMode}
+                    sourceAiwikiJobId={activeGrowthSourceId}
+                  />
+                </div>
+              ) : <GrowthStageEmpty stage="production" onBackToAssets={() => updateWorkbenchParams({ stage: 'assets' })} />
             )}
           </div>
 
@@ -543,21 +668,23 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
             </div>
           )}
 
-          <aside className="aiwiki-right-panel">
-            <TaskPanel
-              task={activeTask}
-              job={activeJob}
-              meta={meta}
-              refreshing={historyLoading}
-              onRefresh={() => activeTask && !activeTask.isDraft ? void loadJob(activeTask.id) : void loadHistory()}
-            />
-            <SourceFilesPanel
-              files={activeFiles}
-              uploading={submitting && isCreatingTask}
-              onPreview={setPreviewFile}
-              onRemoveLocal={removeLocalFile}
-            />
-          </aside>
+          {activeStage === 'assets' && (
+            <aside className="aiwiki-right-panel">
+              <TaskPanel
+                task={activeTask}
+                job={activeJob}
+                meta={meta}
+                refreshing={historyLoading}
+                onRefresh={() => activeTask && !activeTask.isDraft ? void loadJob(activeTask.id) : void loadHistory()}
+              />
+              <SourceFilesPanel
+                files={activeFiles}
+                uploading={submitting && isCreatingTask}
+                onPreview={setPreviewFile}
+                onRemoveLocal={removeLocalFile}
+              />
+            </aside>
+          )}
         </section>
       </main>
 
@@ -615,6 +742,26 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
           </Form.Item>
         </Form>
       </Modal>
+    </div>
+  )
+}
+
+function GrowthStageEmpty({
+  stage,
+  onBackToAssets,
+}: {
+  stage: 'strategy' | 'production'
+  onBackToAssets: () => void
+}) {
+  return (
+    <div className="aiwiki-growth-empty">
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description={stage === 'strategy'
+          ? '选题策略需要先选择一个已完成的内容资产任务'
+          : '稿件生产需要先选择一个已完成的内容资产任务'}
+      />
+      <Button type="primary" onClick={onBackToAssets}>返回资产概览</Button>
     </div>
   )
 }

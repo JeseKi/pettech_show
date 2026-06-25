@@ -14,8 +14,6 @@ import LandingPage from './pages/landing/LandingPage'
 import DashboardPage from './pages/dashboard/DashboardPage'
 import ChatHomePage from './pages/chatHome'
 import AiwikiPage from './pages/aiwiki'
-import SeedMatrixPage from './pages/seedMatrix'
-import DailyWriterPage from './pages/dailyWriter'
 import InteractiveMoviePage from './pages/interactiveMovie'
 import PublicInteractiveMoviePlayer from './pages/interactiveMovie/PublicInteractiveMoviePlayer'
 import CapabilityEntryPage from './pages/capabilities/CapabilityEntryPage'
@@ -23,7 +21,7 @@ import GestureControlPage from './pages/gestureControl'
 import { AuthProvider, RequireAdmin, RequireAuth } from './providers/AuthProvider'
 import { RuntimeConfigProvider } from './providers/RuntimeConfigProvider'
 import { GestureControlProvider } from './components/gesture/GestureControlProvider'
-import { DAILY_WRITER_MODES, GESTURE_CONTROL_TOOL, SEED_MATRIX_MODES, VISIBLE_CAPABILITY_ENTRIES } from './lib/workflowModes'
+import { GESTURE_CONTROL_TOOL, VISIBLE_CAPABILITY_ENTRIES } from './lib/workflowModes'
 
 function LegacyChatSessionRedirect() {
   const { sessionId } = useParams<{ sessionId?: string }>()
@@ -69,6 +67,14 @@ export default function App() {
                   }
                 />
                 <Route
+                  path="/content-growth"
+                  element={
+                    <RequireAuth>
+                      <AiwikiPage key="content-growth" mode="full" />
+                    </RequireAuth>
+                  }
+                />
+                <Route
                   path="/interactive-movie"
                   element={
                     <RequireAuth>
@@ -107,15 +113,15 @@ export default function App() {
                   <Route path="/aiwiki/full" element={<Navigate to="/knowledge-base" replace />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path={GESTURE_CONTROL_TOOL.path} element={<GestureControlPage />} />
-                  <Route path="/seed-matrices" element={<Navigate to={SEED_MATRIX_MODES.standard.path} replace />} />
-                  <Route path="/seed-matrices/standard" element={<SeedMatrixPage key="seed-standard" mode="standard" />} />
-                  <Route path="/seed-matrices/batch" element={<SeedMatrixPage key="seed-batch" mode="batch" />} />
-                  <Route path="/seed-matrices/high-frequency" element={<SeedMatrixPage key="seed-high-frequency" mode="high-frequency" />} />
-                  <Route path="/seed-matrices/hook-driven" element={<SeedMatrixPage key="seed-hook-driven" mode="hook-driven" />} />
-                  <Route path="/daily-writer" element={<Navigate to={DAILY_WRITER_MODES.single.path} replace />} />
-                  <Route path="/daily-writer/single" element={<DailyWriterPage key="writer-single" mode="single" />} />
-                  <Route path="/daily-writer/batch" element={<DailyWriterPage key="writer-batch" mode="batch" />} />
-                  <Route path="/daily-writer/five-pack" element={<DailyWriterPage key="writer-five-pack" mode="five-pack" />} />
+                  <Route path="/seed-matrices" element={<Navigate to="/content-growth?stage=strategy&strategyMode=standard" replace />} />
+                  <Route path="/seed-matrices/standard" element={<Navigate to="/content-growth?stage=strategy&strategyMode=standard" replace />} />
+                  <Route path="/seed-matrices/batch" element={<Navigate to="/content-growth?stage=strategy&strategyMode=batch" replace />} />
+                  <Route path="/seed-matrices/high-frequency" element={<Navigate to="/content-growth?stage=strategy&strategyMode=high-frequency" replace />} />
+                  <Route path="/seed-matrices/hook-driven" element={<Navigate to="/content-growth?stage=strategy&strategyMode=hook-driven" replace />} />
+                  <Route path="/daily-writer" element={<Navigate to="/content-growth?stage=production&writerMode=single" replace />} />
+                  <Route path="/daily-writer/single" element={<Navigate to="/content-growth?stage=production&writerMode=single" replace />} />
+                  <Route path="/daily-writer/batch" element={<Navigate to="/content-growth?stage=production&writerMode=batch" replace />} />
+                  <Route path="/daily-writer/five-pack" element={<Navigate to="/content-growth?stage=production&writerMode=five-pack" replace />} />
                   {VISIBLE_CAPABILITY_ENTRIES.map((entry) => (
                     <Route
                       key={entry.key}

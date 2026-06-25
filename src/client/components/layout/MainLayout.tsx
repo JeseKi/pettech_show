@@ -23,6 +23,7 @@ import {
   SettingOutlined,
   SafetyOutlined,
   TabletOutlined,
+  BarChartOutlined,
   FileSearchOutlined,
   FileTextOutlined,
   TableOutlined,
@@ -37,21 +38,17 @@ import BrandLogo from '../brand/BrandLogo'
 import {
   AGENT_TOOL,
   CAPABILITY_GROUP_META,
-  DAILY_WRITER_MODES,
+  CONTENT_GROWTH_TOOL,
   GESTURE_CONTROL_TOOL,
   INTERACTIVE_MOVIE_TOOL,
-  KNOWLEDGE_BASE_TOOL,
-  SEED_MATRIX_MODES,
   VISIBLE_CAPABILITY_ENTRIES,
   type CapabilityGroupId,
 } from '../../lib/workflowModes'
 
 const workflowEntries = [
   AGENT_TOOL,
-  KNOWLEDGE_BASE_TOOL,
+  CONTENT_GROWTH_TOOL,
   GESTURE_CONTROL_TOOL,
-  ...Object.values(SEED_MATRIX_MODES),
-  ...Object.values(DAILY_WRITER_MODES),
   INTERACTIVE_MOVIE_TOOL,
   ...VISIBLE_CAPABILITY_ENTRIES,
 ]
@@ -121,6 +118,9 @@ export default function MainLayout() {
     if (location.pathname.startsWith('/admin')) {
       return ['admin']
     }
+    if (location.pathname.startsWith(CONTENT_GROWTH_TOOL.path)) {
+      return [CONTENT_GROWTH_TOOL.key]
+    }
     const workflowEntry = workflowEntries.find((entry) => location.pathname === entry.path)
     if (workflowEntry) {
       return [workflowEntry.key]
@@ -139,22 +139,9 @@ export default function MainLayout() {
         label: <Link to="/dashboard">首页</Link>,
       },
       {
-        key: 'seed-matrix-group',
-        icon: <TableOutlined />,
-        label: '选题矩阵',
-        children: Object.values(SEED_MATRIX_MODES).map((entry) => ({
-          key: entry.key,
-          label: <Link to={entry.path}>{entry.navLabel}</Link>,
-        })),
-      },
-      {
-        key: 'daily-writer-group',
-        icon: <FileTextOutlined />,
-        label: '长文生成',
-        children: Object.values(DAILY_WRITER_MODES).map((entry) => ({
-          key: entry.key,
-          label: <Link to={entry.path}>{entry.navLabel}</Link>,
-        })),
+        key: CONTENT_GROWTH_TOOL.key,
+        icon: <BarChartOutlined />,
+        label: <Link to={CONTENT_GROWTH_TOOL.path}>{CONTENT_GROWTH_TOOL.navLabel}</Link>,
       },
       {
         key: 'tools-group',
@@ -164,10 +151,6 @@ export default function MainLayout() {
           {
             key: AGENT_TOOL.key,
             label: <Link to={AGENT_TOOL.path}>{AGENT_TOOL.navLabel}</Link>,
-          },
-          {
-            key: KNOWLEDGE_BASE_TOOL.key,
-            label: <Link to={KNOWLEDGE_BASE_TOOL.path}>{KNOWLEDGE_BASE_TOOL.navLabel}</Link>,
           },
           {
             key: GESTURE_CONTROL_TOOL.key,
@@ -559,7 +542,7 @@ export default function MainLayout() {
             style={{
               margin: '0 auto',
               maxWidth: location.pathname.startsWith('/aiwiki')
-                || location.pathname.startsWith('/seed-matrices')
+                || location.pathname.startsWith('/content-growth')
                 || location.pathname.startsWith('/competitor-insights')
                 || location.pathname.startsWith('/topic-planning')
                 || location.pathname.startsWith('/script-creation')

@@ -213,6 +213,7 @@
 
 .aiwiki-heading {
   min-width: 0;
+  flex: 1;
 }
 
 .aiwiki-title {
@@ -221,6 +222,67 @@
 
 .aiwiki-top-actions {
   flex: 0 0 auto;
+}
+
+.aiwiki-growth-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: min(720px, 100%);
+}
+
+.aiwiki-growth-tab {
+  min-width: 0;
+  min-height: 52px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--app-text-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aiwiki-growth-tab span,
+.aiwiki-growth-tab small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiwiki-growth-tab span {
+  font-weight: 700;
+}
+
+.aiwiki-growth-tab small {
+  color: var(--app-text-tertiary);
+  font-size: 12px;
+}
+
+.aiwiki-growth-tab:hover,
+.aiwiki-growth-tab.is-active {
+  border-color: var(--app-accent);
+  background: rgba(184, 255, 103, 0.12);
+}
+
+.aiwiki-growth-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.aiwiki-growth-tab:disabled:hover {
+  border-color: var(--app-border-subtle);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.aiwiki-growth-mode-switch {
+  max-width: 100%;
 }
 
 .aiwiki-canvas {
@@ -264,6 +326,25 @@
   min-height: 0;
   overflow: auto;
   position: relative;
+}
+
+.aiwiki-canvas-stage-flow .aiwiki-stat-strip,
+.aiwiki-canvas-stage-flow .aiwiki-stage {
+  grid-column: 1 / -1;
+}
+
+.aiwiki-growth-stage-body {
+  min-height: 100%;
+  padding: 14px;
+}
+
+.aiwiki-growth-empty {
+  min-height: 420px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 14px;
+  padding: 24px;
 }
 
 .aiwiki-task-empty {
@@ -765,6 +846,10 @@ button.aiwiki-graph-node {
   .aiwiki-topbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .aiwiki-growth-tabs {
+    grid-template-columns: 1fr;
   }
 
   .aiwiki-stat-strip {

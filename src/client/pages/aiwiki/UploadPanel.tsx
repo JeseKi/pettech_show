@@ -43,7 +43,7 @@ export default function UploadPanel({
           </p>
           <Typography.Text strong>选择文件，支持 DOCX、Markdown、TXT</Typography.Text>
           <Typography.Paragraph type="secondary" style={{ margin: '8px auto 0', maxWidth: 420 }}>
-            可一次上传多个文件，系统会统一整理成同一份 AI Wiki 资产。
+            可一次上传多个文件，系统会统一整理成同一份内容资产。
           </Typography.Paragraph>
         </Upload.Dragger>
         <Button

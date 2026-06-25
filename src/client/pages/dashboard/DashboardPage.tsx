@@ -1,15 +1,13 @@
 import { Button, Card, Col, Flex, Row, Typography } from 'antd'
-import { FileSearchOutlined, FileTextOutlined, MessageOutlined, RightOutlined, TableOutlined, VideoCameraOutlined } from '@ant-design/icons'
+import { BarChartOutlined, FileSearchOutlined, FileTextOutlined, RightOutlined, TableOutlined, VideoCameraOutlined } from '@ant-design/icons'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AGENT_TOOL,
-  AIWIKI_MODES,
   CAPABILITY_GROUP_META,
-  DAILY_WRITER_MODES,
+  CONTENT_GROWTH_TOOL,
   GESTURE_CONTROL_TOOL,
   INTERACTIVE_MOVIE_TOOL,
-  SEED_MATRIX_MODES,
   VISIBLE_CAPABILITY_ENTRIES,
   type CapabilityGroupId,
 } from '../../lib/workflowModes'
@@ -22,29 +20,14 @@ const capabilityGroupIcons: Record<CapabilityGroupId, ReactNode> = {
 
 const entryGroups = [
   {
-    title: '智能体',
-    icon: <MessageOutlined />,
-    entries: [AGENT_TOOL],
-  },
-  {
-    title: 'AI Wiki',
-    icon: <FileSearchOutlined />,
-    entries: Object.values(AIWIKI_MODES),
-  },
-  {
-    title: '选题矩阵',
-    icon: <TableOutlined />,
-    entries: Object.values(SEED_MATRIX_MODES),
-  },
-  {
-    title: '长文生成',
-    icon: <FileTextOutlined />,
-    entries: Object.values(DAILY_WRITER_MODES),
+    title: '内容增长',
+    icon: <BarChartOutlined />,
+    entries: [CONTENT_GROWTH_TOOL],
   },
   {
     title: '工具',
     icon: <VideoCameraOutlined />,
-    entries: [GESTURE_CONTROL_TOOL, INTERACTIVE_MOVIE_TOOL],
+    entries: [AGENT_TOOL, GESTURE_CONTROL_TOOL, INTERACTIVE_MOVIE_TOOL],
   },
   ...Object.entries(CAPABILITY_GROUP_META).map(([groupId, meta]) => ({
     title: meta.title,

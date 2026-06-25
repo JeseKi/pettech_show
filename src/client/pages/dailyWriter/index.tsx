@@ -54,7 +54,14 @@ import { DAILY_WRITER_MODES, dailyWriterModeLabel, type DailyWriterModeId } from
 type MatrixRow = Record<string, string>
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
-export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWriterModeId }) {
+export default function DailyWriterPage({
+  mode = 'single',
+  sourceAiwikiJobId,
+}: {
+  mode?: DailyWriterModeId
+  sourceAiwikiJobId?: string | null
+  embedded?: boolean
+}) {
   const { token } = theme.useToken()
   const { message } = App.useApp()
   const modeConfig = DAILY_WRITER_MODES[mode]
@@ -82,9 +89,18 @@ export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWrite
   }
 
   const loadMatrices = useCallback(async () => {
+    if (sourceAiwikiJobId === null) {
+      setMatrixJobs([])
+      setSelectedMatrixId(null)
+      return
+    }
     setLoadingMatrices(true)
     try {
-      const data = await listSeedMatrixJobs({ limit: 100, offset: 0 })
+      const data = await listSeedMatrixJobs({
+        limit: 100,
+        offset: 0,
+        source_aiwiki_job_id: sourceAiwikiJobId ?? undefined,
+      })
       const completed = data.items.filter((item) => item.status === 'completed')
       setMatrixJobs(completed)
       setSelectedMatrixId((current) => current ?? completed[0]?.id ?? null)
@@ -93,19 +109,21 @@ export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWrite
     } finally {
       setLoadingMatrices(false)
     }
-  }, [])
+  }, [sourceAiwikiJobId])
 
   const loadWriterJobs = useCallback(async () => {
     setLoadingHistory(true)
     try {
       const data = await listDailyWriterJobs({ limit: 50, offset: 0 })
-      setWriterJobs(data.items)
+      setWriterJobs(sourceAiwikiJobId
+        ? data.items.filter((item) => item.source_aiwiki_job_id === sourceAiwikiJobId)
+        : data.items)
     } catch (err) {
       setError(resolveErrorMessage(err))
     } finally {
       setLoadingHistory(false)
     }
-  }, [])
+  }, [sourceAiwikiJobId])
 
   const loadMatrixRows = useCallback(async (matrixId: string) => {
     setLoadingRows(true)
@@ -151,6 +169,14 @@ export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWrite
   }, [loadMatrices, loadWriterJobs])
 
   useEffect(() => {
+    setActiveJob(null)
+    setResult(null)
+    setMatrixResult(null)
+    setSelectedMatrixId(null)
+    setSelectedSeedId(null)
+  }, [sourceAiwikiJobId])
+
+  useEffect(() => {
     setArticleTotal(modeConfig.defaultTotal)
   }, [modeConfig.defaultTotal])
 
@@ -183,7 +209,7 @@ export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWrite
 
   const submit = async () => {
     if (!selectedMatrixId || !selectedSeedId) {
-      setError('请先选择一个已完成的选题矩阵和 seed')
+      setError('请先选择一个已完成的选题策略和 seed')
       return
     }
     setSubmitting(true)
@@ -199,7 +225,7 @@ export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWrite
         variant_count: variantCount,
       })
       setActiveJob(created)
-      message.success('长文生成任务已提交')
+      message.success('稿件生产任务已提交')
       void loadWriterJobs()
       void refreshJob(created.id, true)
     } catch (err) {
@@ -234,7 +260,7 @@ export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWrite
   const deleteWriterJob = async (jobId: string) => {
     try {
       await deleteDailyWriterJob(jobId)
-      message.success('长文任务已删除')
+      message.success('稿件任务已删除')
       setWriterJobs((items) => items.filter((item) => item.id !== jobId))
       if (activeJob?.id === jobId) {
         setActiveJob(null)
@@ -263,14 +289,14 @@ export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWrite
         <Col xs={24} xl={5}>
         <section style={{ ...sectionStyle, height: '100%' }}>
           <Flex align="center" justify="space-between" gap={12} style={{ marginBottom: 12 }}>
-            <Typography.Title level={5} style={{ margin: 0 }}>选题矩阵</Typography.Title>
+            <Typography.Title level={5} style={{ margin: 0 }}>选题策略</Typography.Title>
             <Button size="small" icon={<ReloadOutlined />} loading={loadingMatrices} onClick={() => void loadMatrices()} />
           </Flex>
           <List
             size="small"
             loading={loadingMatrices}
             dataSource={matrixJobs}
-            locale={{ emptyText: '暂无已完成选题矩阵' }}
+            locale={{ emptyText: '暂无已完成选题策略' }}
             style={{ maxHeight: 'calc(100vh - 190px)', overflow: 'auto' }}
             renderItem={(item) => {
               const active = item.id === selectedMatrixId
@@ -289,7 +315,7 @@ export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWrite
                     <Space wrap>
                       <Tag color="green">已完成</Tag>
                       <Tag>Seed {Number(item.summary.seed_count ?? 0)}</Tag>
-                      <Tag>文章 {Number(item.summary.expected_article_total ?? 0)}</Tag>
+                      <Tag>稿件 {Number(item.summary.expected_article_total ?? 0)}</Tag>
                     </Space>
                     <Typography.Text type="secondary">{formatDateTime(item.created_at)}</Typography.Text>
                   </Flex>
@@ -331,10 +357,10 @@ export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWrite
               <Col xs={24} md={8}><Statistic title="主稿" value={1} suffix="篇" /></Col>
               <Col xs={24} md={8}>
                 {modeConfig.fixedTotal ? (
-                  <Statistic title="生成文章总数" value={modeConfig.fixedTotal} suffix="篇" />
+                  <Statistic title="生产稿件总数" value={modeConfig.fixedTotal} suffix="篇" />
                 ) : (
                   <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                    <Typography.Text type="secondary">生成文章总数</Typography.Text>
+                    <Typography.Text type="secondary">生产稿件总数</Typography.Text>
                     <InputNumber
                       min={modeConfig.minTotal}
                       max={modeConfig.maxTotal}
@@ -375,7 +401,7 @@ export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWrite
               dataSource={filteredRows}
               scroll={{ x: 1300 }}
               pagination={{ pageSize: 8, showSizeChanger: false }}
-              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前矩阵没有可用 seed" /> }}
+              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前策略没有可用 seed" /> }}
             />
           </section>
 
@@ -390,7 +416,7 @@ export default function DailyWriterPage({ mode = 'single' }: { mode?: DailyWrite
                 }
               />
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="生成完成后，这里会展示长文正文和 metadata" />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="生产完成后，这里会展示稿件正文和 metadata" />
             )}
           </section>
         </Flex>
@@ -499,7 +525,7 @@ function TaskPanel({
     <aside style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 14, height: '100%' }}>
       <Flex vertical gap={14}>
         <Flex align="center" justify="space-between" gap={12}>
-          <Typography.Title level={5} style={{ margin: 0 }}>长文任务</Typography.Title>
+          <Typography.Title level={5} style={{ margin: 0 }}>稿件任务</Typography.Title>
           <Space>
             <Button size="small" icon={<ReloadOutlined />} loading={refreshing} disabled={!activeJob} onClick={onRefreshActive} />
             <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => void onRefreshHistory()} />
@@ -517,7 +543,7 @@ function TaskPanel({
           size="small"
           loading={loading}
           dataSource={writerJobs}
-          locale={{ emptyText: '暂无长文任务' }}
+          locale={{ emptyText: '暂无稿件任务' }}
           style={{ maxHeight: 280, overflow: 'auto' }}
           renderItem={(item) => (
             <List.Item
@@ -531,7 +557,7 @@ function TaskPanel({
                   <Tag>{dailyWriterModeLabel(item.params)}</Tag>
                   <Popconfirm
                     title="删除任务"
-                    description="会删除该长文任务记录和生成文件。"
+                    description="会删除该稿件任务记录和生成文件。"
                     okText="删除"
                     cancelText="取消"
                     okButtonProps={{ danger: true }}

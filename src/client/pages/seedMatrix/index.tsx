@@ -44,7 +44,15 @@ type MatrixRow = Record<string, string>
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
 
-export default function SeedMatrixPage({ mode = 'standard' }: { mode?: SeedMatrixModeId }) {
+export default function SeedMatrixPage({
+  mode = 'standard',
+  sourceAiwikiJobId,
+  embedded = false,
+}: {
+  mode?: SeedMatrixModeId
+  sourceAiwikiJobId?: string | null
+  embedded?: boolean
+}) {
   const { token } = theme.useToken()
   const { message } = App.useApp()
   const modeConfig = SEED_MATRIX_MODES[mode]
@@ -72,6 +80,7 @@ export default function SeedMatrixPage({ mode = 'standard' }: { mode?: SeedMatri
   }
 
   const loadAiwikiJobs = useCallback(async () => {
+    if (embedded) return
     setLoadingInputs(true)
     try {
       const data = await listAiwikiJobs({ limit: 100, offset: 0, status: 'completed' })
@@ -82,19 +91,27 @@ export default function SeedMatrixPage({ mode = 'standard' }: { mode?: SeedMatri
     } finally {
       setLoadingInputs(false)
     }
-  }, [])
+  }, [embedded])
 
   const loadMatrixJobs = useCallback(async () => {
+    if (embedded && !sourceAiwikiJobId) {
+      setMatrixJobs([])
+      return
+    }
     setLoadingHistory(true)
     try {
-      const data = await listSeedMatrixJobs({ limit: 50, offset: 0 })
+      const data = await listSeedMatrixJobs({
+        limit: 50,
+        offset: 0,
+        source_aiwiki_job_id: embedded ? sourceAiwikiJobId ?? undefined : undefined,
+      })
       setMatrixJobs(data.items)
     } catch (err) {
       setError(resolveErrorMessage(err))
     } finally {
       setLoadingHistory(false)
     }
-  }, [])
+  }, [embedded, sourceAiwikiJobId])
 
   const refreshJob = useCallback(async (jobId: string, silent = false) => {
     if (!silent) setRefreshing(true)
@@ -119,10 +136,21 @@ export default function SeedMatrixPage({ mode = 'standard' }: { mode?: SeedMatri
   }, [loadMatrixJobs, message])
 
   useEffect(() => {
-    void loadAiwikiJobs()
+    if (embedded) {
+      setSelectedAiwikiJobId(sourceAiwikiJobId ?? null)
+    } else {
+      void loadAiwikiJobs()
+    }
     void loadMatrixJobs()
     form.setFieldsValue(modeConfig.defaults)
-  }, [form, loadAiwikiJobs, loadMatrixJobs, modeConfig.defaults])
+  }, [embedded, form, loadAiwikiJobs, loadMatrixJobs, modeConfig.defaults, sourceAiwikiJobId])
+
+  useEffect(() => {
+    if (!embedded) return
+    setActiveJob(null)
+    setResult(null)
+    setActiveRow(null)
+  }, [embedded, sourceAiwikiJobId])
 
   useEffect(() => {
     if (!activeJob?.id || !ACTIVE_STATUSES.has(activeJob.status)) return
@@ -134,7 +162,7 @@ export default function SeedMatrixPage({ mode = 'standard' }: { mode?: SeedMatri
 
   const submit = async () => {
     if (!selectedAiwikiJobId) {
-      setError('请先选择一个已完成的 AI Wiki 任务')
+      setError('请先选择一个已完成的内容资产任务')
       return
     }
     setSubmitting(true)
@@ -150,7 +178,7 @@ export default function SeedMatrixPage({ mode = 'standard' }: { mode?: SeedMatri
         source_aiwiki_job_id: selectedAiwikiJobId,
       })
       setActiveJob(created)
-      message.success('选题矩阵任务已提交')
+      message.success('选题策略任务已提交')
       void loadMatrixJobs()
       void refreshJob(created.id, true)
     } catch (err) {
@@ -185,7 +213,7 @@ export default function SeedMatrixPage({ mode = 'standard' }: { mode?: SeedMatri
   const deleteMatrixJob = async (jobId: string) => {
     try {
       await deleteSeedMatrixJob(jobId)
-      message.success('矩阵任务已删除')
+      message.success('策略任务已删除')
       setMatrixJobs((items) => items.filter((item) => item.id !== jobId))
       if (activeJob?.id === jobId) {
         setActiveJob(null)
@@ -240,49 +268,53 @@ export default function SeedMatrixPage({ mode = 'standard' }: { mode?: SeedMatri
     },
   ]
 
+  const sourcePanel = (
+    <Col xs={24} xl={5}>
+      <section style={{ ...sectionStyle, height: '100%' }}>
+        <Flex align="center" justify="space-between" gap={12} style={{ marginBottom: 12 }}>
+          <Typography.Title level={5} style={{ margin: 0 }}>内容资产输入</Typography.Title>
+          <Button size="small" icon={<ReloadOutlined />} loading={loadingInputs} onClick={() => void loadAiwikiJobs()} />
+        </Flex>
+        <List
+          size="small"
+          loading={loadingInputs}
+          dataSource={aiwikiJobs}
+          locale={{ emptyText: '暂无已完成内容资产任务' }}
+          style={{ maxHeight: 'calc(100vh - 190px)', overflow: 'auto' }}
+          renderItem={(item) => {
+            const active = item.id === selectedAiwikiJobId
+            return (
+              <List.Item
+                onClick={() => setSelectedAiwikiJobId(item.id)}
+                style={{
+                  cursor: 'pointer',
+                  background: active ? token.colorFillSecondary : undefined,
+                  borderRadius: 6,
+                  paddingInline: 8,
+                }}
+              >
+                <Flex vertical gap={4} style={{ width: '100%' }}>
+                  <Typography.Text strong ellipsis>{item.files[0]?.filename ?? item.id}</Typography.Text>
+                  <Space wrap>
+                    <Tag color="green">已完成</Tag>
+                    <Tag>素材 {Number(item.summary.material_count ?? 0)}</Tag>
+                    <Tag>选题 {Number(item.summary.topic_count ?? 0)}</Tag>
+                  </Space>
+                  <Typography.Text type="secondary">{formatDateTime(item.created_at)}</Typography.Text>
+                </Flex>
+              </List.Item>
+            )
+          }}
+        />
+      </section>
+    </Col>
+  )
+
   return (
     <>
       <Row gutter={[16, 16]} align="stretch">
-        <Col xs={24} xl={5}>
-          <section style={{ ...sectionStyle, height: '100%' }}>
-            <Flex align="center" justify="space-between" gap={12} style={{ marginBottom: 12 }}>
-              <Typography.Title level={5} style={{ margin: 0 }}>AI Wiki 输入</Typography.Title>
-              <Button size="small" icon={<ReloadOutlined />} loading={loadingInputs} onClick={() => void loadAiwikiJobs()} />
-            </Flex>
-            <List
-              size="small"
-              loading={loadingInputs}
-              dataSource={aiwikiJobs}
-              locale={{ emptyText: '暂无已完成 AI Wiki 任务' }}
-              style={{ maxHeight: 'calc(100vh - 190px)', overflow: 'auto' }}
-              renderItem={(item) => {
-                const active = item.id === selectedAiwikiJobId
-                return (
-                  <List.Item
-                    onClick={() => setSelectedAiwikiJobId(item.id)}
-                    style={{
-                      cursor: 'pointer',
-                      background: active ? token.colorFillSecondary : undefined,
-                      borderRadius: 6,
-                      paddingInline: 8,
-                    }}
-                  >
-                    <Flex vertical gap={4} style={{ width: '100%' }}>
-                      <Typography.Text strong ellipsis>{item.files[0]?.filename ?? item.id}</Typography.Text>
-                      <Space wrap>
-                        <Tag color="green">已完成</Tag>
-                        <Tag>素材 {Number(item.summary.material_count ?? 0)}</Tag>
-                        <Tag>选题 {Number(item.summary.topic_count ?? 0)}</Tag>
-                      </Space>
-                      <Typography.Text type="secondary">{formatDateTime(item.created_at)}</Typography.Text>
-                    </Flex>
-                  </List.Item>
-                )
-              }}
-            />
-          </section>
-        </Col>
-        <Col xs={24} xl={13}>
+        {!embedded && sourcePanel}
+        <Col xs={24} xl={embedded ? 16 : 13}>
           <Flex vertical gap={16}>
             <section style={sectionStyle}>
               <Flex align="center" justify="space-between" wrap="wrap" gap={12}>
@@ -346,7 +378,7 @@ export default function SeedMatrixPage({ mode = 'standard' }: { mode?: SeedMatri
             {result ? (
               <section id="matrix-result" style={sectionStyle}>
                 <Flex align="center" justify="space-between" wrap="wrap" gap={12}>
-                  <Typography.Title level={4} style={{ margin: 0 }}>矩阵结果</Typography.Title>
+                  <Typography.Title level={4} style={{ margin: 0 }}>策略表结果</Typography.Title>
                   <Space wrap>
                     <Input.Search placeholder="搜索 seed、选题、痛点、方案" allowClear onSearch={setQuery} onChange={(event) => setQuery(event.target.value)} style={{ width: 260 }} />
                     <Segmented value={dayFilter} onChange={(value) => setDayFilter(String(value))} options={dayOptions} />
@@ -371,12 +403,12 @@ export default function SeedMatrixPage({ mode = 'standard' }: { mode?: SeedMatri
               </section>
             ) : (
               <section style={{ ...sectionStyle, minHeight: 260 }}>
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择 AI Wiki 任务并生成矩阵后，这里会展示表格结果" />
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择内容资产任务并生成策略表后，这里会展示表格结果" />
               </section>
             )}
           </Flex>
         </Col>
-        <Col xs={24} xl={6}>
+        <Col xs={24} xl={embedded ? 8 : 6}>
           <TaskPanel
             activeJob={activeJob}
             matrixJobs={matrixJobs}
@@ -427,7 +459,7 @@ function TaskPanel({
     <aside style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 14, height: '100%' }}>
       <Flex vertical gap={14}>
         <Flex align="center" justify="space-between" gap={12}>
-          <Typography.Title level={5} style={{ margin: 0 }}>矩阵任务</Typography.Title>
+          <Typography.Title level={5} style={{ margin: 0 }}>策略任务</Typography.Title>
           <Space>
             <Button size="small" icon={<ReloadOutlined />} loading={refreshing} disabled={!activeJob} onClick={onRefreshActive} />
             <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => void onRefreshHistory()} />
@@ -439,7 +471,7 @@ function TaskPanel({
           size="small"
           loading={loading}
           dataSource={matrixJobs}
-          locale={{ emptyText: '暂无矩阵任务' }}
+          locale={{ emptyText: '暂无策略任务' }}
           style={{ maxHeight: 280, overflow: 'auto' }}
           renderItem={(item) => (
             <List.Item
@@ -453,7 +485,7 @@ function TaskPanel({
                   <Tag>{seedMatrixModeLabel(item.params)}</Tag>
                   <Popconfirm
                     title="删除任务"
-                    description="会删除该矩阵任务记录和 CSV 文件。"
+                    description="会删除该策略任务记录和 CSV 文件。"
                     okText="删除"
                     cancelText="取消"
                     okButtonProps={{ danger: true }}

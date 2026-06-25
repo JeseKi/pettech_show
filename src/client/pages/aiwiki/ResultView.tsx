@@ -47,7 +47,7 @@ export default function ResultView({
         <section id="overview" style={sectionStyle}>
           <Flex align="center" justify="space-between" wrap="wrap" gap={12}>
             <Typography.Title level={3} style={{ margin: 0 }}>
-              {result.wiki_home?.title ?? 'AI Wiki'}
+              {result.wiki_home?.title ?? '内容资产库'}
             </Typography.Title>
             <Space wrap>
               <Tag>
