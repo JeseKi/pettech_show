@@ -36,6 +36,7 @@ from src.server.aiwiki.router import router as aiwiki_router
 from src.server.seed_matrix.router import router as seed_matrix_router
 from src.server.daily_writer.router import router as daily_writer_router
 from src.server.social_cards.router import router as social_cards_router
+from src.server.social_card_videos.router import router as social_card_videos_router
 from src.server.capability_jobs.router import router as capability_jobs_router
 from src.server.interactive_movie.router import router as interactive_movie_router
 from src.server.chat.router import router as chat_router
@@ -85,6 +86,9 @@ async def lifespan(_: FastAPI):
         from src.server.social_cards.service import sync_job_records as sync_social_card_records
 
         sync_social_card_records(db)
+        from src.server.social_card_videos.service import sync_job_records as sync_social_card_video_records
+
+        sync_social_card_video_records(db)
         from src.server.capability_jobs.service import sync_job_records as sync_capability_records
 
         sync_capability_records(db)
@@ -220,6 +224,7 @@ app.include_router(aiwiki_router)
 app.include_router(seed_matrix_router)
 app.include_router(daily_writer_router)
 app.include_router(social_cards_router)
+app.include_router(social_card_videos_router)
 app.include_router(capability_jobs_router)
 app.include_router(interactive_movie_router)
 app.include_router(chat_router)

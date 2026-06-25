@@ -33,6 +33,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
   TableOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
@@ -63,6 +64,7 @@ import {
 } from '../../lib/workflowModes'
 import { listSeedMatrixJobs } from '../../lib/seedMatrix'
 import { listDailyWriterJobs } from '../../lib/dailyWriter'
+import { listSocialCardJobs } from '../../lib/socialCards'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import KeywordModal from './KeywordModal'
 import ResultView from './ResultView'
@@ -70,12 +72,13 @@ import { ACTIVE_STATUSES, entryTypeLabel, formatDateTime, progressEventColor, st
 import SeedMatrixPage from '../seedMatrix'
 import DailyWriterPage from '../dailyWriter'
 import SocialCardsPage from '../socialCards'
+import SocialCardVideosPage from '../socialCardVideos'
 import WorkbenchHomeButton from '../../components/brand/WorkbenchHomeButton'
 import './AiwikiWorkbench.css'
 
 type FileCategory = 'document' | 'spreadsheet'
 type TaskFilter = 'all' | 'active' | 'completed' | 'failed'
-type WorkbenchStage = 'assets' | 'strategy' | 'production' | 'social'
+type WorkbenchStage = 'assets' | 'strategy' | 'production' | 'social' | 'video'
 type DisplayFile = AiwikiUploadedFile & {
   id: string
   job_id?: string
@@ -101,6 +104,7 @@ type DisplayTask = {
 type WorkflowReadiness = {
   completedSeedMatrices: number
   completedDailyWriters: number
+  completedSocialCards: number
 }
 type StagePrerequisite = {
   type: 'info' | 'warning'
@@ -116,7 +120,7 @@ const STRATEGY_MODE_IDS: SeedMatrixModeId[] = ['standard', 'batch', 'high-freque
 const WRITER_MODE_IDS: DailyWriterModeId[] = ['single', 'batch', 'five-pack']
 
 function isWorkbenchStage(value: string | null): value is WorkbenchStage {
-  return value === 'assets' || value === 'strategy' || value === 'production' || value === 'social'
+  return value === 'assets' || value === 'strategy' || value === 'production' || value === 'social' || value === 'video'
 }
 
 function isStrategyMode(value: string | null): value is SeedMatrixModeId {
@@ -165,6 +169,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const [workflowReadiness, setWorkflowReadiness] = useState<WorkflowReadiness>({
     completedSeedMatrices: 0,
     completedDailyWriters: 0,
+    completedSocialCards: 0,
   })
 
   const meta = statusMeta(job?.status)
@@ -187,13 +192,15 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const loadWorkflowReadiness = useCallback(async () => {
     if (!isContentGrowthWorkbench) return
     try {
-      const [seedMatrices, dailyWriters] = await Promise.all([
+      const [seedMatrices, dailyWriters, socialCards] = await Promise.all([
         listSeedMatrixJobs({ limit: 100, offset: 0 }),
         listDailyWriterJobs({ limit: 100, offset: 0 }),
+        listSocialCardJobs({ limit: 100, offset: 0 }),
       ])
       setWorkflowReadiness({
         completedSeedMatrices: seedMatrices.items.filter((item) => item.status === 'completed').length,
         completedDailyWriters: dailyWriters.items.filter((item) => item.status === 'completed' || item.status === 'partial_failed').length,
+        completedSocialCards: socialCards.items.filter((item) => item.status === 'completed').length,
       })
     } catch (err) {
       message.error(resolveErrorMessage(err))
@@ -295,12 +302,14 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     strategy: '选题生成',
     production: '稿件生产',
     social: '生成图文',
+    video: '轮播视频',
   }[activeStage]
   const stageSubtitle = {
     assets: workspaceSubtitle,
     strategy: '选择知识库生成选题策略',
     production: '选择选题策略和 seed 生产稿件',
     social: '选择已完成稿件生成图文卡',
+    video: '选择已完成图文卡生成轮播视频',
   }[activeStage]
 
   const updateWorkbenchParams = (updates: Partial<Record<'stage' | 'strategyMode' | 'writerMode', string>>) => {
@@ -387,6 +396,22 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
         targetStage: 'production',
       }
     }
+    if (activeStage === 'video') {
+      if (workflowReadiness.completedSocialCards > 0) {
+        return {
+          type: 'info',
+          message: `已找到 ${workflowReadiness.completedSocialCards} 个已完成图文任务，可以继续生成轮播视频。`,
+          actionText: '查看图文',
+          targetStage: 'social',
+        }
+      }
+      return {
+        type: 'warning',
+        message: '生成轮播视频前，至少需要 1 个已完成图文任务。',
+        actionText: '去生成图文',
+        targetStage: 'social',
+      }
+    }
     return null
   }, [
     activeStage,
@@ -394,6 +419,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     stats.completedCount,
     workflowReadiness.completedDailyWriters,
     workflowReadiness.completedSeedMatrices,
+    workflowReadiness.completedSocialCards,
   ])
 
   const entriesBySlug = useMemo(() => (
@@ -694,6 +720,17 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
                   <span>图文</span>
                 </button>
               </Tooltip>
+              <Tooltip title="轮播视频" placement="right">
+                <button
+                  type="button"
+                  className={activeStage === 'video' ? 'aiwiki-stage-nav-button is-active' : 'aiwiki-stage-nav-button'}
+                  onClick={() => updateWorkbenchParams({ stage: 'video' })}
+                  aria-label="轮播视频"
+                >
+                  <VideoCameraOutlined />
+                  <span>视频</span>
+                </button>
+              </Tooltip>
             </nav>
             <div className="aiwiki-stage-source">
               <Typography.Text className="aiwiki-kicker">当前知识库</Typography.Text>
@@ -843,6 +880,11 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
             {activeStage === 'social' && (
               <div className="aiwiki-growth-stage-body">
                 <SocialCardsPage />
+              </div>
+            )}
+            {activeStage === 'video' && (
+              <div className="aiwiki-growth-stage-body">
+                <SocialCardVideosPage />
               </div>
             )}
           </div>

@@ -51,6 +51,8 @@ import '../seedMatrix/GrowthWorkflow.css'
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
 const SOCIAL_CARD_IMAGE_PREFIX = 'social-card-image:'
 
+type WorkflowRunJob = Pick<SocialCardJob, 'status' | 'queue_position' | 'message' | 'progress' | 'log_tail'>
+
 export default function SocialCardsPage() {
   const { message } = App.useApp()
   const [writerJobs, setWriterJobs] = useState<DailyWriterJobSummary[]>([])
@@ -745,7 +747,7 @@ function AuthenticatedSocialCardImage({
   )
 }
 
-function RunDetails({ job }: { job: SocialCardJob }) {
+function RunDetails({ job }: { job: WorkflowRunJob }) {
   const events = Array.isArray(job.progress?.events) ? job.progress.events : []
   return (
     <details className="growth-run-details">
@@ -813,7 +815,7 @@ function legacySocialCardPost(result: SocialCardResult): SocialCardPost {
   }
 }
 
-function latestProgressSummary(job: SocialCardJob): string {
+function latestProgressSummary(job: WorkflowRunJob): string {
   const events = Array.isArray(job.progress?.events) ? job.progress.events : []
   return events.at(-1)?.summary || job.progress?.current_step || ''
 }

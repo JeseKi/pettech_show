@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Social card job deletion helpers."""
+"""Social card video job deletion helpers."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from src.server.auth.models import User
 
-from ...dao import SocialCardJobDAO
+from ...dao import SocialCardVideoJobDAO
 from ..persistence import get_accessible_job
 
 
@@ -22,28 +22,26 @@ def delete_job(db: Session, job_id: str, current_user: User) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="任务正在执行，完成或失败后才能删除",
         )
-    from src.server.social_card_videos.service import delete_child_jobs_for_social_card
-
-    delete_child_jobs_for_social_card(db, job.id)
     workdir = Path(job.workdir)
-    SocialCardJobDAO(db).delete(job)
+    SocialCardVideoJobDAO(db).delete(job)
     shutil.rmtree(workdir, ignore_errors=True)
 
 
-def delete_child_jobs_for_daily_writer(db: Session, source_daily_writer_job_id: str) -> None:
-    dao = SocialCardJobDAO(db)
+def delete_child_jobs_for_social_card(db: Session, source_social_card_job_id: str) -> None:
+    dao = SocialCardVideoJobDAO(db)
     children = dao.list(
         limit=1000,
         offset=0,
-        source_daily_writer_job_id=source_daily_writer_job_id,
+        source_social_card_job_id=source_social_card_job_id,
     )
     active = [job for job in children if job.status in {"queued", "running"}]
     if active:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="该稿件任务仍有关联的小红书图文卡任务正在执行",
+            detail="该图文任务仍有关联的轮播视频任务正在执行",
         )
     for child in children:
         child_workdir = Path(child.workdir)
         dao.delete(child)
         shutil.rmtree(child_workdir, ignore_errors=True)
+

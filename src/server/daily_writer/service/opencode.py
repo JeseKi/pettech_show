@@ -176,6 +176,10 @@ def build_artwork_prompt(workdir: Path, *, article_dir: str) -> str:
 - 不要覆盖当前目录外的任何文件。
 - 不要上传图片到 KiVault 或任何云服务。
 - 不要使用 imagegen、grsai-image-generator 或任何云端图片生成服务。
+- 不要在临时渲染脚本里从 `.agents/skills/guizang-social-card-skill/node_modules/playwright/index.js` 做相对路径 import。
+- 如果需要用浏览器截图 HTML，优先使用系统 Chromium：读取 `CHROME_BIN` 或 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`，否则尝试 `/usr/bin/chromium`、`/usr/bin/chromium-browser`、`/usr/bin/google-chrome`；不要依赖 `/root/.cache/ms-playwright/` 中的浏览器缓存。
+- 如果使用 Playwright 包，必须用默认导入兼容 CommonJS：`import playwright from "playwright"; const {{ chromium }} = playwright;`，并在 `chromium.launch()` 中传入上述 `executablePath`。
+- 如果浏览器不可用，可以改用本地 Python/Pillow 渲染，但必须保留 Guizang 的 `index.html`、`manifest.json`、`plan.md` 或 `prompts.md` 作为设计源文件。
 - 图片最终必须保存在 `{article_dir}/artwork/cover/images/`、`{article_dir}/artwork/illustrations/images/` 或 `{article_dir}/artwork/upload_ready/` 下。
 - 如果图片生成失败，必须在 progress.json 和日志中写清楚失败原因。
 """.strip()

@@ -65,6 +65,20 @@ The target directory must contain:
    The prepared JPG files under `artwork/upload_ready/` are local delivery artifacts. Do not upload them to any service.
 9. Write final integrated files under `main/<date>/<output_id>/artwork/output/`.
 
+## Server Rendering Rules
+
+- Do not generate temporary scripts that import Playwright through a relative `node_modules/playwright/index.js` path.
+- If browser screenshots are needed, use the system browser path from `CHROME_BIN` or `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`, falling back to `/usr/bin/chromium`, `/usr/bin/chromium-browser`, or `/usr/bin/google-chrome`.
+- Do not rely on Playwright's cached browser under `/root/.cache/ms-playwright/`; production images may set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`.
+- If importing Playwright from ESM, use CommonJS-compatible default import:
+
+  ```js
+  import playwright from "playwright";
+  const { chromium } = playwright;
+  ```
+
+- If no browser is available, use local Python/Pillow rendering while still preserving Guizang `index.html`, `manifest.json`, and `plan.md` or `prompts.md` as design source files.
+
 ## Local Path Contract
 
 The final output directory is `main/<date>/<output_id>/artwork/output/` and must contain:
