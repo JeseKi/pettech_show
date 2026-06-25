@@ -199,6 +199,7 @@ def test_chat_completion_proxies_openai_compatible_response(
     assert payload["usage"]["total_tokens"] == 18
     assert captured["payload"]["temperature"] == 0.4
     assert captured["payload"]["max_tokens"] == 500
+    assert captured["payload"]["tools"][0]["function"]["name"] == chat_service.PERSONAL_AIWIKI_TOOL_NAME
     assert captured["payload"]["messages"] == [
         {"role": "system", "content": "系统提示"},
         {"role": "user", "content": "帮我做互动影游"},
@@ -217,13 +218,15 @@ def test_chat_stream_proxies_openai_compatible_events(
     monkeypatch.setattr(global_config, "chat_model", "stream-model")
     monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
 
-    async def fake_stream_chat_events(_config, payload: dict[str, Any]):
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
         captured["payload"] = payload
-        yield "delta", {"content": "流"}
-        yield "delta", {"content": "式回复"}
-        yield "done", {}
+        return {
+            "id": "chatcmpl-stream-tool-aware",
+            "model": payload["model"],
+            "choices": [{"message": {"role": "assistant", "content": "流式回复"}}],
+        }
 
-    monkeypatch.setattr(chat_service, "_stream_chat_events", fake_stream_chat_events)
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
 
     resp = test_client.post(
         "/api/chat/completions/stream",
@@ -233,11 +236,11 @@ def test_chat_stream_proxies_openai_compatible_events(
 
     assert resp.status_code == HTTPStatus.OK, resp.text
     assert resp.headers["content-type"].startswith("text/event-stream")
-    assert 'event: delta\ndata: {"content": "流"}' in resp.text
-    assert 'event: delta\ndata: {"content": "式回复"}' in resp.text
+    assert 'event: delta\ndata: {"content": "流式回复"}' in resp.text
     assert "event: done" in resp.text
     assert captured["payload"]["model"] == "stream-model"
-    assert captured["payload"]["stream"] is True
+    assert "stream" not in captured["payload"]
+    assert captured["payload"]["tools"][0]["function"]["name"] == chat_service.PERSONAL_AIWIKI_TOOL_NAME
     assert captured["payload"]["messages"] == [
         {"role": "system", "content": "系统提示"},
         {"role": "user", "content": "帮我流式生成"},
@@ -257,13 +260,15 @@ def test_persistent_chat_stream_stores_server_messages_and_uses_server_history(
     monkeypatch.setattr(global_config, "chat_model", "persistent-model")
     monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
 
-    async def fake_stream_chat_events(_config, payload: dict[str, Any]):
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
         captured_payloads.append(payload)
-        yield "delta", {"content": "服务端"}
-        yield "delta", {"content": "回复"}
-        yield "done", {}
+        return {
+            "id": f"chatcmpl-persistent-{len(captured_payloads)}",
+            "model": payload["model"],
+            "choices": [{"message": {"role": "assistant", "content": "服务端回复"}}],
+        }
 
-    monkeypatch.setattr(chat_service, "_stream_chat_events", fake_stream_chat_events)
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
 
     first_resp = test_client.post(
         "/api/chat/sessions/stream",
@@ -273,8 +278,7 @@ def test_persistent_chat_stream_stores_server_messages_and_uses_server_history(
     assert first_resp.status_code == HTTPStatus.OK, first_resp.text
     assert first_resp.headers["content-type"].startswith("text/event-stream")
     assert "event: session" in first_resp.text
-    assert 'event: delta\ndata: {"content": "服务端"}' in first_resp.text
-    assert 'event: delta\ndata: {"content": "回复"}' in first_resp.text
+    assert 'event: delta\ndata: {"content": "服务端回复"}' in first_resp.text
     assert "event: done" in first_resp.text
 
     sessions_resp = test_client.get("/api/chat/sessions", headers=headers)
@@ -295,6 +299,8 @@ def test_persistent_chat_stream_stores_server_messages_and_uses_server_history(
         {"role": "system", "content": "系统提示"},
         {"role": "user", "content": "第一条消息"},
     ]
+    assert captured_payloads[0]["tools"][0]["function"]["name"] == chat_service.PERSONAL_AIWIKI_TOOL_NAME
+    assert "stream" not in captured_payloads[0]
 
     second_resp = test_client.post(
         "/api/chat/sessions/stream",
@@ -358,6 +364,7 @@ def test_persistent_chat_injects_personal_aiwiki_index_as_user_context(
     assert 'event: delta\ndata: {"content": "已根据个人知识库索引回答"}' in resp.text
     payload = captured_payloads[0]
     assert payload["tools"][0]["function"]["name"] == chat_service.PERSONAL_AIWIKI_TOOL_NAME
+    assert "tool_choice" not in payload
     assert payload["messages"][-2] == {"role": "user", "content": "$知识库 个人知识库里有什么？"}
     assert payload["messages"][-1]["role"] == "user"
     assert "【个人 AI Wiki 最新索引】" in payload["messages"][-1]["content"]
@@ -429,12 +436,138 @@ def test_chat_completion_personal_aiwiki_tool_reads_entry_page(
     assert resp.status_code == HTTPStatus.OK, resp.text
     assert resp.json()["content"] == "词条全文已经读取。"
     assert "tools" in captured_payloads[0]
-    assert "tools" not in captured_payloads[1]
+    assert "tool_choice" not in captured_payloads[0]
+    assert "tools" in captured_payloads[1]
+    assert "tool_choice" not in captured_payloads[1]
     tool_message = next(message for message in captured_payloads[1]["messages"] if message["role"] == "tool")
     assert tool_message["tool_call_id"] == "call_entry_1"
     tool_payload = json.loads(tool_message["content"])
     assert tool_payload["slug"] == "concepts/personal-knowledge"
     assert "演示阶段通过索引触发" in tool_payload["markdown"]
+
+
+def test_chat_completion_personal_aiwiki_keeps_tools_across_multiple_tool_steps(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    monkeypatch.setattr(global_config, "project_root", tmp_path)
+    user = _create_user(test_db_session, "chat_personal_aiwiki_multi_tool_owner")
+    headers = _auth_headers(user)
+    _write_personal_aiwiki_fixture(user)
+    captured_payloads: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "personal-aiwiki-multi-tool-model")
+    monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
+        captured_payloads.append(payload)
+        if len(captured_payloads) <= 2:
+            return {
+                "id": f"chatcmpl-tool-plan-{len(captured_payloads)}",
+                "model": payload["model"],
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": f"call_entry_{len(captured_payloads)}",
+                                    "type": "function",
+                                    "function": {
+                                        "name": chat_service.PERSONAL_AIWIKI_TOOL_NAME,
+                                        "arguments": json.dumps({"page": "concepts/personal-knowledge"}, ensure_ascii=False),
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ],
+            }
+        return {
+            "id": "chatcmpl-tool-final",
+            "model": payload["model"],
+            "choices": [{"message": {"role": "assistant", "content": "两次工具结果都已读取。"}}],
+        }
+
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
+
+    resp = test_client.post(
+        "/api/chat/completions",
+        headers=headers,
+        json={"messages": [{"role": "user", "content": "$知识库 连续读取两次个人知识沉淀词条"}]},
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert resp.json()["content"] == "两次工具结果都已读取。"
+    assert len(captured_payloads) == 3
+    assert all("tools" in payload for payload in captured_payloads)
+    tool_messages = [
+        message
+        for message in captured_payloads[2]["messages"]
+        if message.get("role") == "tool"
+    ]
+    assert [message["tool_call_id"] for message in tool_messages] == ["call_entry_1", "call_entry_2"]
+
+
+def test_chat_completion_personal_aiwiki_auto_fetches_entries_when_model_denies_tools(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    monkeypatch.setattr(global_config, "project_root", tmp_path)
+    user = _create_user(test_db_session, "chat_personal_aiwiki_fallback_owner")
+    headers = _auth_headers(user)
+    _write_personal_aiwiki_fixture(user)
+    captured_payloads: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "personal-aiwiki-fallback-model")
+    monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
+        captured_payloads.append(payload)
+        if len(captured_payloads) == 1:
+            return {
+                "id": "chatcmpl-tool-denied",
+                "model": payload["model"],
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "我当前上下文里没有可调用的外部工具，不能打开词条链接。",
+                        }
+                    }
+                ],
+            }
+        return {
+            "id": "chatcmpl-fallback-final",
+            "model": payload["model"],
+            "choices": [{"message": {"role": "assistant", "content": "已经基于词条全文回答。"}}],
+        }
+
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
+
+    resp = test_client.post(
+        "/api/chat/completions",
+        headers=headers,
+        json={"messages": [{"role": "user", "content": "$知识库 个人知识沉淀里有哪些结论？"}]},
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert resp.json()["content"] == "已经基于词条全文回答。"
+    assert len(captured_payloads) == 2
+    assert "tools" in captured_payloads[0]
+    assert "tool_choice" not in captured_payloads[0]
+    assert "tools" not in captured_payloads[1]
+    fallback_context = captured_payloads[1]["messages"][-1]["content"]
+    assert "【个人 AI Wiki 词条全文】" in fallback_context
+    assert "concepts/personal-knowledge" in fallback_context
+    assert "演示阶段通过索引触发" in fallback_context
 
 
 def test_persistent_chat_injects_only_added_mentioned_skill(
@@ -484,12 +617,15 @@ def test_persistent_chat_injects_only_added_mentioned_skill(
     monkeypatch.setattr(global_config, "chat_model", "skill-model")
     monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
 
-    async def fake_stream_chat_events(_config, payload: dict[str, Any]):
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
         captured_payloads.append(payload)
-        yield "delta", {"content": "已应用技能"}
-        yield "done", {}
+        return {
+            "id": "chatcmpl-skill",
+            "model": payload["model"],
+            "choices": [{"message": {"role": "assistant", "content": "已应用技能"}}],
+        }
 
-    monkeypatch.setattr(chat_service, "_stream_chat_events", fake_stream_chat_events)
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
 
     resp = test_client.post(
         "/api/chat/sessions/stream",
@@ -524,12 +660,15 @@ def test_persistent_chat_pins_agent_prompt_revision(
     monkeypatch.setattr(global_config, "chat_api_key", "test-key")
     monkeypatch.setattr(global_config, "chat_model", "agent-model")
 
-    async def fake_stream_chat_events(_config, payload: dict[str, Any]):
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
         captured_payloads.append(payload)
-        yield "delta", {"content": "已按 Agent 回复"}
-        yield "done", {}
+        return {
+            "id": f"chatcmpl-agent-{len(captured_payloads)}",
+            "model": payload["model"],
+            "choices": [{"message": {"role": "assistant", "content": "已按 Agent 回复"}}],
+        }
 
-    monkeypatch.setattr(chat_service, "_stream_chat_events", fake_stream_chat_events)
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
 
     first_resp = test_client.post(
         "/api/chat/sessions/stream",
@@ -626,7 +765,7 @@ def test_chat_stream_returns_sse_error_for_unread_upstream_status(
     monkeypatch.setattr(global_config, "chat_api_key", "test-key")
     monkeypatch.setattr(global_config, "chat_model", "stream-model")
 
-    async def fake_stream_chat_events(_config, _payload: dict[str, Any]):
+    async def fake_post_chat_completion(_config, _payload: dict[str, Any]) -> dict[str, Any]:
         request = httpx.Request("POST", "https://llm.example.com/v1/chat/completions")
         response = httpx.Response(
             HTTPStatus.NOT_FOUND,
@@ -638,9 +777,8 @@ def test_chat_stream_returns_sse_error_for_unread_upstream_status(
             request=request,
             response=response,
         )
-        yield "done", {}
 
-    monkeypatch.setattr(chat_service, "_stream_chat_events", fake_stream_chat_events)
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
 
     resp = test_client.post(
         "/api/chat/completions/stream",

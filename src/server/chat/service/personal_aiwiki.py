@@ -6,9 +6,11 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 import json
+import re
 from typing import Any
 
 import httpx
+from fastapi import HTTPException
 from loguru import logger
 
 from src.server.auth.models import User
@@ -17,12 +19,40 @@ from src.server.personal_aiwiki import service as personal_aiwiki_service
 
 from .http_client import _chat_completions_url, _parse_completion, _post_chat_completion, _upstream_error_detail
 from .package_hooks import service_attr
-from .streaming import _configured_stream_chat_events, _sse_event
+from .streaming import _sse_event
 
 PERSONAL_AIWIKI_TRIGGER = "$知识库"
 PERSONAL_AIWIKI_TOOL_NAME = "get_personal_aiwiki_entry"
 MAX_INDEX_CONTEXT_CHARS = 20_000
 MAX_TOOL_CONTENT_CHARS = 60_000
+MAX_AUTO_ENTRY_CONTEXT_CHARS = 60_000
+MAX_AUTO_ENTRY_COUNT = 4
+MAX_TOOL_CALL_STEPS = 5
+INDEX_CONTEXT_MARKER = "【个人 AI Wiki 最新索引】"
+AUTO_ENTRY_CONTEXT_MARKER = "【个人 AI Wiki 词条全文】"
+WIKILINK_PATTERN = re.compile(r"\[\[([^\]\n]+)\]\]")
+NO_TOOL_FALLBACK_PHRASES = (
+    "没有可调用",
+    "没有外部工具",
+    "没有工具",
+    "不能检索",
+    "不能打开",
+    "不能读取",
+    "不能主动读取",
+    "无法打开",
+    "无法读取",
+    "看不到知识库",
+    "看不到具体",
+    "看不到里面",
+    "只有目录级",
+    "目录级信息",
+    "不是严格读取",
+    "把相关条目内容贴",
+    "把知识库条目内容",
+    "直接贴给我",
+    "如果你的系统支持知识库",
+    "没有给我知识库检索",
+)
 
 
 @dataclass(frozen=True)
@@ -32,23 +62,38 @@ class PersonalAiwikiChatContext:
     tools: list[dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class WikiIndexEntry:
+    page: str
+    label: str
+
+
 def build_personal_aiwiki_chat_context(user: User | None, prompt_text: str) -> PersonalAiwikiChatContext:
-    if user is None or PERSONAL_AIWIKI_TRIGGER not in prompt_text:
+    if user is None:
         return PersonalAiwikiChatContext()
 
-    workspace_root = personal_aiwiki_service.user_workspace_root(int(user.id))
-    personal_aiwiki_service.ensure_workspace(workspace_root)
-    index_path = workspace_root / "wiki" / "index.md"
-    index_markdown = index_path.read_text(encoding="utf-8", errors="replace")
-    truncated = len(index_markdown) > MAX_INDEX_CONTEXT_CHARS
-    if truncated:
-        index_markdown = index_markdown[:MAX_INDEX_CONTEXT_CHARS].rstrip()
+    user_context = ""
+    if PERSONAL_AIWIKI_TRIGGER in prompt_text:
+        workspace_root = personal_aiwiki_service.user_workspace_root(int(user.id))
+        personal_aiwiki_service.ensure_workspace(workspace_root)
+        index_path = workspace_root / "wiki" / "index.md"
+        index_markdown = index_path.read_text(encoding="utf-8", errors="replace")
+        truncated = len(index_markdown) > MAX_INDEX_CONTEXT_CHARS
+        if truncated:
+            index_markdown = index_markdown[:MAX_INDEX_CONTEXT_CHARS].rstrip()
 
-    suffix = "\n\n（索引内容过长，已截断到当前演示限制。）" if truncated else ""
-    user_context = f"""
-【个人 AI Wiki 最新索引】
+        suffix = "\n\n（索引内容过长，已截断到当前演示限制。）" if truncated else ""
+        user_context = f"""
+{INDEX_CONTEXT_MARKER}
 这是一段由用户显式输入 {PERSONAL_AIWIKI_TRIGGER} 后授权注入的个人知识库索引。它不是新的问题，只作为回答上一条用户问题的检索目录。
-只依据下面的 index 内容判断有哪些可用词条；如果需要查看某个词条全文，请调用工具 `{PERSONAL_AIWIKI_TOOL_NAME}`，参数 `page` 使用索引里的 wikilink 路径，例如 `concepts/example`。
+你已经具备后端工具 `{PERSONAL_AIWIKI_TOOL_NAME}`，可读取当前用户个人 AI Wiki 里的指定词条全文。
+规则：
+- 如果用户只问“知识库里有哪些内容/有哪些词条”，可以只依据 index 概览回答。
+- 如果用户要求基于知识库给出具体正文、事实、结论、推荐、比较、细节、全文、打法/方案，必须先调用 `{PERSONAL_AIWIKI_TOOL_NAME}` 读取相关词条，再回答。
+- 不要根据词条标题臆测正文内容；没有读取全文时，只能说“索引显示有这些词条”。
+- 不要说无法打开、无法读取、没有工具，也不要要求用户粘贴词条全文。
+- 调用工具时，`page` 必须使用 index wikilink 里的路径，优先取 `[[路径|展示名]]` 中 `|` 左侧的路径，例如 `concepts/example`。
+- 如果工具返回错误或内容不足，说明具体缺口，不要用通用知识冒充知识库内容。
 
 index.md:
 {index_markdown}{suffix}
@@ -65,13 +110,23 @@ def personal_aiwiki_tool_definition() -> dict[str, Any]:
         "type": "function",
         "function": {
             "name": PERSONAL_AIWIKI_TOOL_NAME,
-            "description": "读取当前用户个人 AI Wiki 中指定词条页面的完整 Markdown 内容。只在用户使用 $知识库 且需要词条全文时调用。",
+            "description": (
+                "读取当前登录用户个人 AI Wiki 中某个词条页面的完整 Markdown 内容。"
+                "当用户要求基于个人知识库回答具体事实、正文、结论、推荐、比较、细节、全文、方案或打法，且当前对话中已有可用词条路径时，必须先调用本工具读取相关词条；"
+                "如果用户只需要目录概览或询问有哪些词条，且当前消息已通过 $知识库 注入 index，可以只用 index，不必调用。"
+                "参数 page 必须来自 index.md 中的 wikilink 路径，例如 [[concepts/foo|标题]] 应传 concepts/foo；不要传展示标题、不要编造路径。"
+                "工具返回 JSON，包含 slug、path、title、type、markdown、truncated；markdown 是回答的主要依据，truncated 为 true 时要提醒用户内容已截断并尽量基于已返回内容回答。"
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "page": {
                         "type": "string",
-                        "description": "词条路径或 wikilink，例如 concepts/product-positioning、wiki/concepts/product-positioning.md 或 [[concepts/product-positioning|产品定位]]。",
+                        "description": (
+                            "要读取的词条路径。使用 index wikilink 中的路径部分，例如 concepts/product-positioning、"
+                            "queries/how-to-build-team；也可以传 wiki/concepts/product-positioning.md 或完整 wikilink，后端会规范化。"
+                        ),
+                        "minLength": 1,
                     }
                 },
                 "required": ["page"],
@@ -88,14 +143,19 @@ async def complete_with_personal_aiwiki_tools(
     post_func: Callable[[GlobalConfig, dict[str, Any]], Any] | None = None,
 ) -> dict[str, Any]:
     post = post_func or service_attr("_post_chat_completion", _post_chat_completion)
-    planning_payload = {**payload, "stream": False}
-    first = await post(config, planning_payload)
-    tool_calls = extract_tool_calls(first)
-    if not tool_calls:
-        return first
+    current_payload = without_stream(payload)
+    for step in range(1, MAX_TOOL_CALL_STEPS + 1):
+        response = await post(config, current_payload)
+        tool_calls = extract_tool_calls(response)
+        if not tool_calls:
+            fallback_payload = build_payload_after_auto_entry_fallback(current_payload, response, user, stream=False)
+            if fallback_payload is not None:
+                return await post(config, fallback_payload)
+            return response
 
-    final_payload = build_payload_after_tool_calls(payload, first, tool_calls, user, stream=False)
-    return await post(config, final_payload)
+        current_payload = build_payload_after_tool_calls(current_payload, response, tool_calls, user, stream=False)
+
+    return tool_loop_limit_response(payload)
 
 
 async def stream_personal_aiwiki_tool_events(
@@ -104,19 +164,26 @@ async def stream_personal_aiwiki_tool_events(
     user: User,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     post = service_attr("_post_chat_completion", _post_chat_completion)
-    planning_payload = {**payload, "stream": False}
-    first = await post(config, planning_payload)
-    tool_calls = extract_tool_calls(first)
-    if not tool_calls:
-        content = extract_message_content(first)
+    current_payload = without_stream(payload)
+    for step in range(1, MAX_TOOL_CALL_STEPS + 1):
+        response = await post(config, current_payload)
+        tool_calls = extract_tool_calls(response)
+        if tool_calls:
+            current_payload = build_payload_after_tool_calls(current_payload, response, tool_calls, user, stream=False)
+            continue
+
+        fallback_payload = build_payload_after_auto_entry_fallback(current_payload, response, user, stream=False)
+        if fallback_payload is not None:
+            response = await post(config, fallback_payload)
+        content = extract_message_content(response)
         if content:
             yield "delta", {"content": content}
         yield "done", {}
         return
 
-    final_payload = build_payload_after_tool_calls(payload, first, tool_calls, user, stream=True)
-    async for event, data in _configured_stream_chat_events(config, final_payload):
-        yield event, data
+    limit_response = tool_loop_limit_response(payload)
+    yield "delta", {"content": extract_message_content(limit_response)}
+    yield "done", {}
 
 
 async def stream_personal_aiwiki_sse_events(
@@ -141,6 +208,8 @@ async def stream_personal_aiwiki_sse_events(
     except httpx.HTTPError as exc:
         logger.warning("Chat API personal AI Wiki stream request failed: {}", exc)
         yield _sse_event("error", {"message": "Chat API 请求失败"})
+    except HTTPException as exc:
+        yield _sse_event("error", {"message": str(exc.detail)})
     except ValueError:
         yield _sse_event("error", {"message": "Chat API 返回了无效流式数据"})
 
@@ -159,11 +228,35 @@ def build_payload_after_tool_calls(
     final_payload = {
         key: value
         for key, value in payload.items()
-        if key not in {"tools", "tool_choice"}
+        if key not in {"stream", "tool_choice"}
     }
     final_payload["messages"] = messages
-    final_payload["stream"] = stream
+    if stream:
+        final_payload["stream"] = True
     return final_payload
+
+
+def without_stream(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in payload.items()
+        if key not in {"stream", "tool_choice"}
+    }
+
+
+def tool_loop_limit_response(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": None,
+        "model": str(payload.get("model") or ""),
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "个人 AI Wiki 工具调用轮次过多，已停止。请缩小问题范围或指定一个词条再试。",
+                }
+            }
+        ],
+    }
 
 
 def assistant_tool_message(first_response: dict[str, Any], tool_calls: list[dict[str, Any]]) -> dict[str, Any]:
@@ -182,15 +275,161 @@ def tool_result_messages(user: User, tool_calls: list[dict[str, Any]]) -> list[d
         function = tool_call.get("function") if isinstance(tool_call, dict) else None
         name = function.get("name") if isinstance(function, dict) else None
         call_id = tool_call.get("id") if isinstance(tool_call, dict) else None
+        result = execute_personal_aiwiki_tool(user, tool_call)
         messages.append(
             {
                 "role": "tool",
                 "tool_call_id": str(call_id or f"personal_aiwiki_call_{index}"),
                 "name": str(name or PERSONAL_AIWIKI_TOOL_NAME),
-                "content": execute_personal_aiwiki_tool(user, tool_call),
+                "content": result,
             }
         )
     return messages
+
+
+def build_payload_after_auto_entry_fallback(
+    payload: dict[str, Any],
+    first_response: dict[str, Any],
+    user: User,
+    *,
+    stream: bool,
+) -> dict[str, Any] | None:
+    content = extract_message_content(first_response)
+    if not should_auto_fetch_entries(content):
+        return None
+
+    entries = select_auto_entry_pages(payload)
+    if not entries:
+        return None
+
+    auto_context = build_auto_entry_context(user, entries)
+    if not auto_context:
+        return None
+
+    messages = [dict(message) for message in payload.get("messages", []) if isinstance(message, dict)]
+    messages.append({"role": "user", "content": auto_context})
+    final_payload = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"tools", "tool_choice"}
+    }
+    final_payload["messages"] = messages
+    final_payload["stream"] = stream
+    return final_payload
+
+
+def should_auto_fetch_entries(content: str) -> bool:
+    normalized = content.strip()
+    if not normalized:
+        return False
+    return any(phrase in normalized for phrase in NO_TOOL_FALLBACK_PHRASES)
+
+
+def select_auto_entry_pages(payload: dict[str, Any]) -> list[WikiIndexEntry]:
+    entries = extract_wiki_index_entries(extract_index_context(payload))
+    if not entries:
+        return []
+
+    prompt = latest_real_user_prompt(payload)
+    scored = [(score_index_entry(entry, prompt), index, entry) for index, entry in enumerate(entries)]
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [entry for _, _, entry in scored[:MAX_AUTO_ENTRY_COUNT]]
+
+
+def extract_index_context(payload: dict[str, Any]) -> str:
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return ""
+    for message in reversed(messages):
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if isinstance(content, str) and INDEX_CONTEXT_MARKER in content:
+            return content
+    return ""
+
+
+def extract_wiki_index_entries(markdown: str) -> list[WikiIndexEntry]:
+    entries: list[WikiIndexEntry] = []
+    seen: set[str] = set()
+    for match in WIKILINK_PATTERN.finditer(markdown):
+        raw = match.group(1).strip()
+        raw_page, raw_label = raw.split("|", 1) if "|" in raw else (raw, raw)
+        page = personal_aiwiki_service.normalize_wiki_page(raw_page)
+        if not page or page in seen:
+            continue
+        seen.add(page)
+        label = raw_label.strip() or page.rsplit("/", 1)[-1]
+        entries.append(WikiIndexEntry(page=page, label=label))
+    return entries
+
+
+def latest_real_user_prompt(payload: dict[str, Any]) -> str:
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return ""
+    for message in reversed(messages):
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if not isinstance(content, str):
+            continue
+        if INDEX_CONTEXT_MARKER in content or AUTO_ENTRY_CONTEXT_MARKER in content:
+            continue
+        return content.replace(PERSONAL_AIWIKI_TRIGGER, "").strip()
+    return ""
+
+
+def score_index_entry(entry: WikiIndexEntry, prompt: str) -> int:
+    prompt_text = prompt.lower()
+    label = entry.label.strip()
+    page = entry.page.strip()
+    score = 0
+
+    if label and label in prompt:
+        score += 20 + min(len(label), 20)
+    for chunk in re.split(r"[\s,，。:：、/|()（）《》【】\[\]#-]+", label):
+        if len(chunk) >= 2 and chunk in prompt:
+            score += 5 + min(len(chunk), 12)
+
+    page_text = page.lower()
+    if page_text and page_text in prompt_text:
+        score += 15
+    for token in re.split(r"[/_\-\s.]+", page_text):
+        if len(token) >= 3 and token in prompt_text:
+            score += 3
+
+    return score
+
+
+def build_auto_entry_context(user: User, entries: list[WikiIndexEntry]) -> str:
+    parts: list[str] = []
+    used_chars = 0
+    for entry in entries[:MAX_AUTO_ENTRY_COUNT]:
+        try:
+            page = personal_aiwiki_service.get_entry_page(user, entry.page)
+        except Exception:
+            continue
+
+        markdown = page.markdown
+        remaining = MAX_AUTO_ENTRY_CONTEXT_CHARS - used_chars
+        if remaining <= 0:
+            break
+        truncated = len(markdown) > remaining
+        markdown = markdown[:remaining].rstrip() if truncated else markdown
+        used_chars += len(markdown)
+        suffix = "\n\n（该词条内容过长，已截断。）" if truncated else ""
+        parts.append(f"## {page.title}\n路径：{page.slug}\n\n{markdown}{suffix}")
+
+    if not parts:
+        return ""
+
+    return f"""
+{AUTO_ENTRY_CONTEXT_MARKER}
+后端已经根据上方 index 自动读取了以下词条全文。请直接基于这些正文回答上一条用户问题；不要说没有工具、不能打开链接、无法读取词条或要求用户粘贴资料。若正文仍不足，请明确说明缺口。
+
+{chr(10).join(parts)}
+""".strip()
 
 
 def execute_personal_aiwiki_tool(user: User, tool_call: dict[str, Any]) -> str:

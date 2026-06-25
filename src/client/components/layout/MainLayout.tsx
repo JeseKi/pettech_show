@@ -28,7 +28,6 @@ import {
   FileTextOutlined,
   TableOutlined,
   VideoCameraOutlined,
-  BookOutlined,
 } from '@ant-design/icons'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
@@ -157,7 +156,6 @@ export default function MainLayout() {
           },
           {
             key: PERSONAL_AIWIKI_TOOL.key,
-            icon: <BookOutlined />,
             label: <Link to={PERSONAL_AIWIKI_TOOL.path}>{PERSONAL_AIWIKI_TOOL.navLabel}</Link>,
           },
           {

@@ -43,7 +43,6 @@ def _build_upstream_payload(
         upstream_payload["stream"] = True
     if tools:
         upstream_payload["tools"] = tools
-        upstream_payload["tool_choice"] = "auto"
     return model, upstream_payload
 
 

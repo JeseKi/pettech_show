@@ -7,6 +7,7 @@ import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   Bot,
+  BookOpen,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -1027,6 +1028,17 @@ export default function ChatHomePage() {
     return true
   }
 
+  const appendKnowledgeMention = () => {
+    setDraft((current) => {
+      if (current.includes(KNOWLEDGE_MENTION)) {
+        return current
+      }
+      const prefix = current.trimEnd()
+      return prefix ? `${prefix} ${KNOWLEDGE_MENTION} ` : `${KNOWLEDGE_MENTION} `
+    })
+    setError(null)
+  }
+
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!hasSelectableMention) {
       return
@@ -1738,6 +1750,14 @@ export default function ChatHomePage() {
               {renderComposer()}
 
               <div className="chat-home-prompts">
+                <button
+                  className="chat-prompt-chip"
+                  type="button"
+                  onClick={appendKnowledgeMention}
+                >
+                  <BookOpen size={15} />
+                  <span>知识库</span>
+                </button>
                 {quickPrompts.map((item) => {
                   const Icon = item.icon
                   return (
