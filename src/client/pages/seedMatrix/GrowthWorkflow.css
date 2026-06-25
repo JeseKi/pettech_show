@@ -347,6 +347,9 @@
 
 .growth-switch-field .ant-switch {
   flex: 0 0 auto;
+  align-self: flex-start;
+  width: 44px;
+  min-width: 44px;
 }
 
 .growth-primary-action {
