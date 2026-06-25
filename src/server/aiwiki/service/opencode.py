@@ -10,7 +10,7 @@ from src.server.config import global_config
 
 from .constants import SKILL_NAMES
 from .logs import append_log
-from .opencode_tmux import run_opencode_in_tmux
+from src.server.opencode import run_opencode_in_tmux
 
 
 def _repo_root() -> Path:

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.server.aiwiki.service.opencode_tmux import run_opencode_in_tmux
+from src.server.opencode import run_opencode_in_tmux
 
 
 def run_opencode(workdir: Path, *, post_count: int, cards_per_post: int) -> None:

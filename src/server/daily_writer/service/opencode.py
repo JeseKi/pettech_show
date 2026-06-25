@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.server.aiwiki.service.opencode_tmux import run_opencode_in_tmux
+from src.server.opencode import run_opencode_in_tmux
 
 
 def run_opencode(workdir: Path, params: dict[str, Any], row: dict[str, str]) -> None:
