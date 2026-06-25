@@ -44,6 +44,66 @@ const metricTagStyle: CSSProperties = {
   lineHeight: 1.45,
 }
 
+const chartTextColor = 'rgba(245, 247, 241, 0.72)'
+const chartStrongTextColor = 'rgba(245, 247, 241, 0.88)'
+const chartGridColor = 'rgba(255, 255, 255, 0.1)'
+const chartAxisColor = 'rgba(255, 255, 255, 0.18)'
+
+const chartAxis = {
+  x: {
+    label: true,
+    labelFill: chartTextColor,
+    labelFillOpacity: 1,
+    labelFontSize: 12,
+    line: true,
+    lineStroke: chartAxisColor,
+    lineOpacity: 1,
+    tick: true,
+    tickStroke: chartAxisColor,
+  },
+  y: {
+    grid: true,
+    gridStroke: chartGridColor,
+    gridLineWidth: 1,
+    label: true,
+    labelFill: chartTextColor,
+    labelFillOpacity: 1,
+    labelFontSize: 12,
+    line: true,
+    lineStroke: chartAxisColor,
+    lineOpacity: 1,
+    tick: true,
+    tickStroke: chartAxisColor,
+  },
+}
+
+const chartLegend = {
+  color: {
+    position: 'bottom',
+    itemLabelFill: chartStrongTextColor,
+    itemLabelFillOpacity: 1,
+    itemLabelFontSize: 12,
+    itemMarkerSize: 8,
+    maxRows: 2,
+  },
+}
+
+const chartTooltipStyle = {
+  '.g2-tooltip': {
+    background: 'rgba(13, 18, 15, 0.96)',
+    color: chartStrongTextColor,
+    'box-shadow': '0 12px 34px rgba(0, 0, 0, 0.34)',
+    'border-radius': '8px',
+    border: `1px solid ${chartAxisColor}`,
+  },
+  '.g2-tooltip-title': {
+    color: chartStrongTextColor,
+  },
+  '.g2-tooltip-list-item': {
+    color: chartTextColor,
+  },
+}
+
 function queryFromRange(range: RangeValue): MonitoringQuery {
   return {
     startAt: range[0].startOf('day').toISOString(),
@@ -383,9 +443,11 @@ function TrendPanel({ title, data, loading = false }: { title: string; data: Tre
           colorField="metric"
           height={280}
           point
-          legend={{ color: { position: 'bottom' } }}
+          axis={chartAxis}
+          legend={chartLegend}
           tooltip={{
             title: (datum: TrendPoint) => datum.date,
+            css: chartTooltipStyle,
             items: [
               (datum: TrendPoint) => ({
                 name: datum.metric,
@@ -435,9 +497,10 @@ function BreakdownPanel({
           colorField="label"
           height={280}
           innerRadius={0.58}
-          legend={{ color: { position: 'bottom' } }}
+          legend={chartLegend}
           tooltip={{
             title: (datum: BreakdownItem) => datum.label,
+            css: chartTooltipStyle,
             items: [
               (datum: BreakdownItem) => ({
                 name: datum.label,
@@ -465,9 +528,16 @@ function MiniBreakdown({ module }: { module: MonitoringModule }) {
       xField="label"
       yField="value"
       height={160}
-      axis={{ x: { labelTransform: 'rotate(0)' } }}
+      axis={{
+        ...chartAxis,
+        x: {
+          ...chartAxis.x,
+          labelTransform: 'rotate(0)',
+        },
+      }}
       tooltip={{
         title: (datum: BreakdownItem) => datum.label,
+        css: chartTooltipStyle,
         items: [
           (datum: BreakdownItem) => ({
             name: datum.label,
