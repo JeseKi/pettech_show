@@ -73,12 +73,13 @@ import SeedMatrixPage from '../seedMatrix'
 import DailyWriterPage from '../dailyWriter'
 import SocialCardsPage from '../socialCards'
 import SocialCardVideosPage from '../socialCardVideos'
+import DistributionStagePage from '../distribution'
 import WorkbenchHomeButton from '../../components/brand/WorkbenchHomeButton'
 import './AiwikiWorkbench.css'
 
 type FileCategory = 'document' | 'spreadsheet'
 type TaskFilter = 'all' | 'active' | 'completed' | 'failed'
-type WorkbenchStage = 'assets' | 'strategy' | 'production' | 'social' | 'video'
+type WorkbenchStage = 'assets' | 'strategy' | 'production' | 'social' | 'video' | 'distribution'
 type DisplayFile = AiwikiUploadedFile & {
   id: string
   job_id?: string
@@ -120,7 +121,12 @@ const STRATEGY_MODE_IDS: SeedMatrixModeId[] = ['standard', 'batch', 'high-freque
 const WRITER_MODE_IDS: DailyWriterModeId[] = ['single', 'batch', 'five-pack']
 
 function isWorkbenchStage(value: string | null): value is WorkbenchStage {
-  return value === 'assets' || value === 'strategy' || value === 'production' || value === 'social' || value === 'video'
+  return value === 'assets'
+    || value === 'strategy'
+    || value === 'production'
+    || value === 'social'
+    || value === 'video'
+    || value === 'distribution'
 }
 
 function isStrategyMode(value: string | null): value is SeedMatrixModeId {
@@ -303,6 +309,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     production: '稿件生产',
     social: '生成图文',
     video: '轮播视频',
+    distribution: '内容分发',
   }[activeStage]
   const stageSubtitle = {
     assets: workspaceSubtitle,
@@ -310,6 +317,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     production: '选择选题策略和 seed 生产稿件',
     social: '选择已完成稿件生成图文卡',
     video: '选择已完成图文卡生成轮播视频',
+    distribution: '集中上传稿件和图文到分发平台',
   }[activeStage]
 
   const updateWorkbenchParams = (updates: Partial<Record<'stage' | 'strategyMode' | 'writerMode', string>>) => {
@@ -410,6 +418,23 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
         message: '生成轮播视频前，至少需要 1 个已完成图文任务。',
         actionText: '去生成图文',
         targetStage: 'social',
+      }
+    }
+    if (activeStage === 'distribution') {
+      const sourceCount = workflowReadiness.completedDailyWriters + workflowReadiness.completedSocialCards
+      if (sourceCount > 0) {
+        return {
+          type: 'info',
+          message: `已找到 ${workflowReadiness.completedDailyWriters} 个稿件、${workflowReadiness.completedSocialCards} 个图文任务，可集中上传到分发平台。`,
+          actionText: workflowReadiness.completedSocialCards > 0 ? '查看图文' : '查看稿件',
+          targetStage: workflowReadiness.completedSocialCards > 0 ? 'social' : 'production',
+        }
+      }
+      return {
+        type: 'warning',
+        message: '分发前至少需要 1 个已完成稿件或图文任务。',
+        actionText: '去生产稿件',
+        targetStage: 'production',
       }
     }
     return null
@@ -731,10 +756,25 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
                   <span>视频</span>
                 </button>
               </Tooltip>
+              <Tooltip title="内容分发" placement="right">
+                <button
+                  type="button"
+                  className={activeStage === 'distribution' ? 'aiwiki-stage-nav-button is-active' : 'aiwiki-stage-nav-button'}
+                  onClick={() => updateWorkbenchParams({ stage: 'distribution' })}
+                  aria-label="内容分发"
+                >
+                  <CloudUploadOutlined />
+                  <span>分发</span>
+                </button>
+              </Tooltip>
             </nav>
             <div className="aiwiki-stage-source">
-              <Typography.Text className="aiwiki-kicker">当前知识库</Typography.Text>
-              <Typography.Text className="aiwiki-stage-source-title">{activeTask?.title ?? '未选择'}</Typography.Text>
+              <Typography.Text className="aiwiki-kicker">
+                {activeStage === 'distribution' ? '分发中心' : '当前知识库'}
+              </Typography.Text>
+              <Typography.Text className="aiwiki-stage-source-title">
+                {activeStage === 'distribution' ? '稿件 / 图文' : activeTask?.title ?? '未选择'}
+              </Typography.Text>
             </div>
           </div>
         )}
@@ -885,6 +925,11 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
             {activeStage === 'video' && (
               <div className="aiwiki-growth-stage-body">
                 <SocialCardVideosPage />
+              </div>
+            )}
+            {activeStage === 'distribution' && (
+              <div className="aiwiki-growth-stage-body">
+                <DistributionStagePage />
               </div>
             )}
           </div>

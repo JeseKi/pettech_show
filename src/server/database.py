@@ -102,6 +102,8 @@ def import_all_models() -> None:
         from src.server.chat import models as _13  # noqa: F401
         from src.server.agent_skills import models as _14  # noqa: F401
         from src.server.agent_market import models as _15  # noqa: F401
+        from src.server.social_card_videos import models as _16  # noqa: F401
+        from src.server.distribution import models as _17  # noqa: F401
     except Exception as e:
         logger.warning(f"导入模型时出现警告：{e}")
 

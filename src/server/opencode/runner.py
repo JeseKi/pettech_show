@@ -177,6 +177,9 @@ def _handle_finished_status(
     persist_session_id(workdir, title=title, started_after_ms=started_after_ms)
     if exit_code != 0:
         raise RuntimeError(f"OpenCode 执行失败，退出码 {exit_code}")
+    if _progress_marked_complete_after(workdir, 0):
+        append_log(workdir, "progress.json 已在 OpenCode 退出时标记任务完成，后端直接解析结果。")
+        return "completed", prompt_path
     return "exited", prompt_path
 
 

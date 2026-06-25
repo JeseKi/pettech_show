@@ -143,6 +143,32 @@ class GlobalConfig(BaseSettings):
         title="示例外部 API Base URL",
     )
 
+    info_distribution_base_url: str = Field(
+        default="",
+        title="Info Distribution Base URL",
+    )
+
+    info_distribution_api_key: str = Field(
+        default="",
+        title="Info Distribution API Key",
+    )
+
+    info_distribution_verify_ssl: bool = Field(
+        default=True,
+        title="Info Distribution 是否校验 SSL",
+    )
+
+    info_distribution_timeout_seconds: float = Field(
+        default=60,
+        ge=1,
+        title="Info Distribution API 超时时间",
+    )
+
+    info_distribution_public_asset_base_url: str = Field(
+        default="",
+        title="Info Distribution 可访问的当前系统图片 Base URL",
+    )
+
     interactive_movie_s3_endpoint_url: str = Field(
         default="",
         title="互动电影 S3 Endpoint",
