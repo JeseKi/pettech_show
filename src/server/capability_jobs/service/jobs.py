@@ -232,6 +232,11 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
     except Exception as exc:
         logger.exception("能力任务 {} 执行失败", job_id)
         try:
+            failed_job = CapabilityJobDAO(session).get(job_id)
+            if failed_job:
+                workdir = Path(failed_job.workdir)
+                mark_progress_failure(workdir, str(exc))
+                append_log(workdir, f"任务失败：{exc}")
             update_job(
                 session,
                 job_id,
@@ -242,8 +247,6 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
             job = CapabilityJobDAO(session).get(job_id)
             if job:
                 write_manifest(Path(job.workdir), job)
-                append_log(Path(job.workdir), f"任务失败：{exc}")
-                mark_progress_failure(Path(job.workdir), str(exc))
         except Exception:
             logger.exception("更新能力任务失败状态失败")
     finally:

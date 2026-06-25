@@ -50,7 +50,7 @@ def read_manifest(workdir: Path) -> dict[str, Any]:
 
 def write_manifest(workdir: Path, manifest: dict[str, Any]) -> None:
     path = workdir / "manifest.json"
-    tmp_path = workdir / "manifest.json.tmp"
+    tmp_path = workdir / f"manifest.json.{secrets.token_hex(8)}.tmp"
     tmp_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2),
         encoding="utf-8",

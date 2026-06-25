@@ -76,7 +76,7 @@ def write_manifest(workdir: Path, job: SeedMatrixJob | None) -> None:
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
     }
-    tmp_path = workdir / "manifest.json.tmp"
+    tmp_path = workdir / f"manifest.json.{secrets.token_hex(8)}.tmp"
     tmp_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
