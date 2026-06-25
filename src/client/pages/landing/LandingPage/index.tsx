@@ -5,6 +5,7 @@ import { useAuth } from '../../../hooks/useAuth'
 import { CourseModal } from './CourseModal'
 import { CourseStack } from './CourseStack'
 import { LandingNav } from './LandingNav'
+import { courses } from './courseData'
 import {
   ContactSection,
   CourseIntroSection,
@@ -20,11 +21,13 @@ const SCROLL_HINT_IDLE_MS = 10000
 const SCROLL_HINT_SCROLL_STEP_MIN_PX = 360
 const SCROLL_HINT_TARGET_OFFSET_PX = 88
 const SCROLL_HINT_REARM_MS = 10000
+type CourseModalMode = 'single' | 'browse'
 
 export default function LandingPage() {
   const navigate = useNavigate()
   const { isAuthenticated } = useAuth()
   const [activeCourse, setActiveCourse] = useState<Course | null>(null)
+  const [courseModalMode, setCourseModalMode] = useState<CourseModalMode>('single')
   const [revealedBlockIds, setRevealedBlockIds] = useState<Set<ProgressiveBlockId>>(() => new Set())
   const [showScrollHint, setShowScrollHint] = useState(false)
   const progressiveBlockRefs = useRef(new Map<ProgressiveBlockId, HTMLElement>())
@@ -34,6 +37,20 @@ export default function LandingPage() {
   const goToWorkspace = useCallback(() => {
     navigate(isAuthenticated ? '/dashboard' : '/login')
   }, [isAuthenticated, navigate])
+
+  const openSingleCourse = useCallback((course: Course) => {
+    setCourseModalMode('single')
+    setActiveCourse(course)
+  }, [])
+
+  const openCourseBrowser = useCallback(() => {
+    setCourseModalMode('browse')
+    setActiveCourse(courses[0] ?? null)
+  }, [])
+
+  const closeCourseModal = useCallback(() => {
+    setActiveCourse(null)
+  }, [])
 
   const scrollToNextViewport = useCallback(() => {
     const currentScrollY = getLandingScrollTop()
@@ -212,8 +229,9 @@ export default function LandingPage() {
       <LandingNav
         isAuthenticated={isAuthenticated}
         onAuthAction={goToWorkspace}
+        onCoursesOpen={openCourseBrowser}
       />
-      <CourseStack autoPlayEnabled={activeCourse === null} onCourseOpen={setActiveCourse} />
+      <CourseStack autoPlayEnabled={activeCourse === null} onCourseOpen={openSingleCourse} />
       <CourseIntroSection
         progressiveClassName={progressiveClassName}
         registerProgressiveBlock={registerProgressiveBlock}
@@ -253,7 +271,12 @@ export default function LandingPage() {
       >
         <ChevronDown size={24} />
       </button>
-      <CourseModal activeCourse={activeCourse} onClose={() => setActiveCourse(null)} />
+      <CourseModal
+        activeCourse={activeCourse}
+        courseItems={courseModalMode === 'browse' ? courses : undefined}
+        onClose={closeCourseModal}
+        onCourseChange={setActiveCourse}
+      />
     </main>
   )
 }

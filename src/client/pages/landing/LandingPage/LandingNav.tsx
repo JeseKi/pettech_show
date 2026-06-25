@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronDown, LayoutDashboard, LogIn, Menu, X } from 'lucide-react'
+import { BookOpenText, ChevronDown, LayoutDashboard, LogIn, Menu, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import BrandLogo from '../../../components/brand/BrandLogo'
 import { BRAND_NAME } from '../../../lib/brand'
@@ -8,12 +8,13 @@ import { landingNavGroups } from './pageData'
 type LandingNavProps = {
   isAuthenticated: boolean
   onAuthAction: () => void
+  onCoursesOpen: () => void
 }
 
 const NAV_MENU_OPEN_DELAY_MS = 120
 const NAV_MENU_CLOSE_DELAY_MS = 500
 
-export function LandingNav({ isAuthenticated, onAuthAction }: LandingNavProps) {
+export function LandingNav({ isAuthenticated, onAuthAction, onCoursesOpen }: LandingNavProps) {
   const [activeNavLabel, setActiveNavLabel] = useState<string | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeMobileGroupLabel, setActiveMobileGroupLabel] = useState(() => landingNavGroups[0]?.label ?? '')
@@ -65,6 +66,11 @@ export function LandingNav({ isAuthenticated, onAuthAction }: LandingNavProps) {
     setMobileMenuOpen(false)
   }, [closeNavMenu])
 
+  const openCourses = useCallback(() => {
+    closeAllMenus()
+    onCoursesOpen()
+  }, [closeAllMenus, onCoursesOpen])
+
   useEffect(() => () => {
     clearOpenTimer()
     clearCloseTimer()
@@ -101,6 +107,12 @@ export function LandingNav({ isAuthenticated, onAuthAction }: LandingNavProps) {
         <span>{BRAND_NAME}</span>
       </a>
       <nav className="landing-nav__links" aria-label="主导航">
+        <div className="landing-nav__item">
+          <button className="landing-nav__trigger landing-nav__course-trigger" type="button" onClick={openCourses}>
+            <BookOpenText size={16} />
+            <span>课程</span>
+          </button>
+        </div>
         {landingNavGroups.map((group) => {
           const GroupIcon = group.icon
           const menuClassName = group.items.length > 4
@@ -187,6 +199,15 @@ export function LandingNav({ isAuthenticated, onAuthAction }: LandingNavProps) {
         className={mobileMenuOpen ? 'landing-mobile-menu is-open' : 'landing-mobile-menu'}
         aria-hidden={!mobileMenuOpen}
       >
+        <button className="landing-mobile-menu__course-link" type="button" onClick={openCourses}>
+          <span className="landing-mobile-menu__group-icon">
+            <BookOpenText size={17} />
+          </span>
+          <span>
+            <strong>课程</strong>
+            <span>Day 0 到毕业项目的完整课程详情。</span>
+          </span>
+        </button>
         {landingNavGroups.map((group) => {
           const GroupIcon = group.icon
           const groupOpen = activeMobileGroupLabel === group.label
