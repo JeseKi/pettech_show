@@ -55,8 +55,6 @@ import {
   type AiwikiUploadedFile,
 } from '../../lib/aiwiki'
 import {
-  DAILY_WRITER_MODES,
-  SEED_MATRIX_MODES,
   type AiwikiModeId,
   type DailyWriterModeId,
   type SeedMatrixModeId,
@@ -248,6 +246,21 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
 
   const activeTaskReadyForGrowth = Boolean(activeTask && !activeTask.isDraft && activeTask.status === 'completed')
   const activeGrowthSourceId = activeTaskReadyForGrowth ? activeTask?.id ?? null : null
+  const workbenchClassName = [
+    'aiwiki-workbench',
+    sidebarCollapsed ? 'is-sidebar-collapsed' : '',
+    activeStage !== 'assets' ? 'is-growth-workbench' : '',
+  ].filter(Boolean).join(' ')
+  const stageTitle = activeStage === 'assets'
+    ? activeTask?.title ?? '内容资产库'
+    : activeStage === 'strategy'
+      ? '选题生成'
+      : '稿件生产'
+  const stageSubtitle = activeStage === 'assets'
+    ? workspaceSubtitle
+    : activeTaskReadyForGrowth
+      ? `当前输入：${activeTask?.title ?? '已完成知识库'}`
+      : '需要先完成一个知识库任务'
 
   const updateWorkbenchParams = (updates: Partial<Record<'stage' | 'strategyMode' | 'writerMode', string>>) => {
     const next = new URLSearchParams(searchParams)
@@ -432,7 +445,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   }
 
   return (
-    <div className={sidebarCollapsed ? 'aiwiki-workbench is-sidebar-collapsed' : 'aiwiki-workbench'}>
+    <div className={workbenchClassName}>
       <aside className="aiwiki-sidebar">
         <div className="aiwiki-sidebar-chrome">
           <WorkbenchHomeButton className="aiwiki-workbench-home" />
@@ -440,100 +453,152 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
         <button type="button" className="aiwiki-collapse" onClick={() => setSidebarCollapsed((value) => !value)}>
           {sidebarCollapsed ? <DoubleRightOutlined /> : <DoubleLeftOutlined />}
         </button>
-        <div className="aiwiki-brand">
-          <span className="aiwiki-logo"><FileTextOutlined /></span>
-          <div className="aiwiki-brand-text">
-            <Typography.Text className="aiwiki-kicker">Content Assets</Typography.Text>
-            <Typography.Title level={5} className="aiwiki-sidebar-title">内容资产任务</Typography.Title>
-          </div>
-        </div>
-        <Button block type="primary" icon={<PlusOutlined />} disabled={submitting} onClick={startNewTask} className="aiwiki-upload-button">
-          创建新任务
-        </Button>
-        <div className="aiwiki-filter-stack">
-          <Input.Search value={search} allowClear placeholder="搜索任务或文件" onChange={(event) => setSearch(event.target.value)} />
-          <Segmented
-            block
-            value={taskFilter}
-            onChange={(value) => setTaskFilter(value as TaskFilter)}
-            options={[
-              { label: '全部', value: 'all' },
-              { label: '进行中', value: 'active' },
-              { label: '完成', value: 'completed' },
-              { label: '失败', value: 'failed' },
-            ]}
-          />
-        </div>
-        <div className="aiwiki-task-list">
-          <List
-            size="small"
-            loading={historyLoading}
-            dataSource={displayTasks}
-            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无任务" /> }}
-            renderItem={(task) => (
-              <List.Item>
-                <div
-                  className={task.id === activeTaskId ? 'aiwiki-task-item is-active' : 'aiwiki-task-item'}
-                  onClick={() => void selectTask(task)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      void selectTask(task)
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
+        {activeStage === 'assets' ? (
+          <>
+            <div className="aiwiki-brand">
+              <span className="aiwiki-logo"><FileTextOutlined /></span>
+              <div className="aiwiki-brand-text">
+                <Typography.Text className="aiwiki-kicker">Content Assets</Typography.Text>
+                <Typography.Title level={5} className="aiwiki-sidebar-title">内容资产任务</Typography.Title>
+              </div>
+            </div>
+            <Button block type="primary" icon={<PlusOutlined />} disabled={submitting} onClick={startNewTask} className="aiwiki-upload-button">
+              创建新任务
+            </Button>
+            <div className="aiwiki-filter-stack">
+              <Input.Search value={search} allowClear placeholder="搜索任务或文件" onChange={(event) => setSearch(event.target.value)} />
+              <Segmented
+                block
+                value={taskFilter}
+                onChange={(value) => setTaskFilter(value as TaskFilter)}
+                options={[
+                  { label: '全部', value: 'all' },
+                  { label: '进行中', value: 'active' },
+                  { label: '完成', value: 'completed' },
+                  { label: '失败', value: 'failed' },
+                ]}
+              />
+            </div>
+            <div className="aiwiki-task-list">
+              <List
+                size="small"
+                loading={historyLoading}
+                dataSource={displayTasks}
+                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无任务" /> }}
+                renderItem={(task) => (
+                  <List.Item>
+                    <div
+                      className={task.id === activeTaskId ? 'aiwiki-task-item is-active' : 'aiwiki-task-item'}
+                      onClick={() => void selectTask(task)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          void selectTask(task)
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <span className="aiwiki-file-icon"><FileTextOutlined /></span>
+                      <span className="aiwiki-file-copy">
+                        <span className="aiwiki-file-name">{task.title}</span>
+                        <span className="aiwiki-file-meta">
+                          {task.files.length} 个文件 · {taskStatusLabel(task.status)}
+                        </span>
+                      </span>
+                      {task.summary ? (
+                        <span className="aiwiki-task-list-actions" onKeyDown={(event) => event.stopPropagation()}>
+                          <Tooltip title="编辑">
+                            <button
+                              aria-label={`编辑任务 ${task.summary.title}`}
+                              className="aiwiki-task-action-button"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                openEditModal(task.summary!)
+                              }}
+                              type="button"
+                            >
+                              <EditOutlined />
+                            </button>
+                          </Tooltip>
+                          <Tooltip title="删除">
+                            <button
+                              aria-label={`删除任务 ${task.summary.title}`}
+                              className="aiwiki-task-action-button is-danger"
+                              disabled={task.summary.status === 'queued' || task.summary.status === 'running'}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                confirmDeleteJob(task.summary!)
+                              }}
+                              type="button"
+                            >
+                              <DeleteOutlined />
+                            </button>
+                          </Tooltip>
+                        </span>
+                      ) : null}
+                    </div>
+                  </List.Item>
+                )}
+              />
+            </div>
+          </>
+        ) : (
+          <div className="aiwiki-stage-rail">
+            <div className="aiwiki-stage-rail-brand">
+              <span className="aiwiki-logo"><FileTextOutlined /></span>
+              <span className="aiwiki-stage-rail-title">内容增长</span>
+            </div>
+            <nav className="aiwiki-stage-nav" aria-label="内容增长阶段">
+              <Tooltip title="知识库生成" placement="right">
+                <button
+                  type="button"
+                  className="aiwiki-stage-nav-button"
+                  onClick={() => updateWorkbenchParams({ stage: 'assets' })}
+                  aria-label="知识库生成"
                 >
-                  <span className="aiwiki-file-icon"><FileTextOutlined /></span>
-                  <span className="aiwiki-file-copy">
-                    <span className="aiwiki-file-name">{task.title}</span>
-                    <span className="aiwiki-file-meta">
-                      {task.files.length} 个文件 · {taskStatusLabel(task.status)}
-                    </span>
-                  </span>
-                  {task.summary ? (
-                    <span className="aiwiki-task-list-actions" onKeyDown={(event) => event.stopPropagation()}>
-                      <Tooltip title="编辑">
-                        <button
-                          aria-label={`编辑任务 ${task.summary.title}`}
-                          className="aiwiki-task-action-button"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            openEditModal(task.summary!)
-                          }}
-                          type="button"
-                        >
-                          <EditOutlined />
-                        </button>
-                      </Tooltip>
-                      <Tooltip title="删除">
-                        <button
-                          aria-label={`删除任务 ${task.summary.title}`}
-                          className="aiwiki-task-action-button is-danger"
-                          disabled={task.summary.status === 'queued' || task.summary.status === 'running'}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            confirmDeleteJob(task.summary!)
-                          }}
-                          type="button"
-                        >
-                          <DeleteOutlined />
-                        </button>
-                      </Tooltip>
-                    </span>
-                  ) : null}
-                </div>
-              </List.Item>
-            )}
-          />
-        </div>
+                  <FileTextOutlined />
+                  <span>知识库</span>
+                </button>
+              </Tooltip>
+              <Tooltip title={activeTaskReadyForGrowth ? '选题生成' : '完成知识库后可用'} placement="right">
+                <button
+                  type="button"
+                  disabled={!activeTaskReadyForGrowth}
+                  className={activeStage === 'strategy' ? 'aiwiki-stage-nav-button is-active' : 'aiwiki-stage-nav-button'}
+                  onClick={() => updateWorkbenchParams({ stage: 'strategy' })}
+                  aria-label="选题生成"
+                >
+                  <TableOutlined />
+                  <span>选题</span>
+                </button>
+              </Tooltip>
+              <Tooltip title={activeTaskReadyForGrowth ? '稿件生产' : '完成知识库后可用'} placement="right">
+                <button
+                  type="button"
+                  disabled={!activeTaskReadyForGrowth}
+                  className={activeStage === 'production' ? 'aiwiki-stage-nav-button is-active' : 'aiwiki-stage-nav-button'}
+                  onClick={() => updateWorkbenchParams({ stage: 'production' })}
+                  aria-label="稿件生产"
+                >
+                  <FileMarkdownOutlined />
+                  <span>稿件</span>
+                </button>
+              </Tooltip>
+            </nav>
+            <div className="aiwiki-stage-source">
+              <Typography.Text className="aiwiki-kicker">当前知识库</Typography.Text>
+              <Typography.Text className="aiwiki-stage-source-title">{activeTask?.title ?? '未选择'}</Typography.Text>
+            </div>
+          </div>
+        )}
       </aside>
 
       <main className="aiwiki-main">
         <header className="aiwiki-topbar">
           <Flex vertical gap={10} className="aiwiki-heading">
-            <Typography.Text className="aiwiki-kicker">{workspaceSubtitle}</Typography.Text>
-            <Typography.Title level={3} className="aiwiki-title">{activeTask?.title ?? '内容资产库'}</Typography.Title>
+            <Typography.Text className="aiwiki-kicker">{stageSubtitle}</Typography.Text>
+            <Typography.Title level={3} className="aiwiki-title">{stageTitle}</Typography.Title>
             <div className="aiwiki-growth-tabs" role="tablist" aria-label="内容增长阶段">
               <button
                 type="button"
@@ -562,47 +627,23 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
                 <small>{activeTaskReadyForGrowth ? '承接策略 seed' : '等待资产完成'}</small>
               </button>
             </div>
-            {activeStage === 'strategy' && (
-              <Space wrap size={8} className="aiwiki-growth-mode-switch">
-                {STRATEGY_MODE_IDS.map((modeId) => (
-                  <Button
-                    key={modeId}
-                    size="small"
-                    type={strategyMode === modeId ? 'primary' : 'default'}
-                    onClick={() => updateWorkbenchParams({ stage: 'strategy', strategyMode: modeId })}
-                  >
-                    {SEED_MATRIX_MODES[modeId].navLabel}
-                  </Button>
-                ))}
-              </Space>
-            )}
-            {activeStage === 'production' && (
-              <Space wrap size={8} className="aiwiki-growth-mode-switch">
-                {WRITER_MODE_IDS.map((modeId) => (
-                  <Button
-                    key={modeId}
-                    size="small"
-                    type={writerMode === modeId ? 'primary' : 'default'}
-                    onClick={() => updateWorkbenchParams({ stage: 'production', writerMode: modeId })}
-                  >
-                    {DAILY_WRITER_MODES[modeId].navLabel}
-                  </Button>
-                ))}
-              </Space>
-            )}
           </Flex>
-          <Space wrap className="aiwiki-top-actions">
-            <Button icon={<ReloadOutlined />} loading={historyLoading} onClick={() => void loadHistory()}>刷新</Button>
-          </Space>
+          {activeStage === 'assets' && (
+            <Space wrap className="aiwiki-top-actions">
+              <Button icon={<ReloadOutlined />} loading={historyLoading} onClick={() => void loadHistory()}>刷新</Button>
+            </Space>
+          )}
         </header>
 
         <section className={activeStage === 'assets' ? 'aiwiki-canvas' : 'aiwiki-canvas aiwiki-canvas-stage-flow'}>
-          <div className="aiwiki-stat-strip">
-            <Statistic title="历史任务" value={stats.serverTasks} />
-            <Statistic title="进行中" value={stats.activeCount} />
-            <Statistic title="已完成" value={stats.completedCount} />
-            <Statistic title="总文件" value={stats.fileCount} />
-          </div>
+          {activeStage === 'assets' && (
+            <div className="aiwiki-stat-strip">
+              <Statistic title="历史任务" value={stats.serverTasks} />
+              <Statistic title="进行中" value={stats.activeCount} />
+              <Statistic title="已完成" value={stats.completedCount} />
+              <Statistic title="总文件" value={stats.fileCount} />
+            </div>
+          )}
           <div className="aiwiki-stage">
             {activeStage === 'assets' && (
               result ? (
@@ -642,6 +683,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
                     embedded
                     mode={strategyMode}
                     sourceAiwikiJobId={activeGrowthSourceId}
+                    onOpenProductionStage={() => updateWorkbenchParams({ stage: 'production' })}
                   />
                 </div>
               ) : <GrowthStageEmpty stage="strategy" onBackToAssets={() => updateWorkbenchParams({ stage: 'assets' })} />

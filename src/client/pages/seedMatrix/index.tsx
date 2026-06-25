@@ -3,7 +3,6 @@ import {
   Alert,
   App,
   Button,
-  Col,
   Drawer,
   Empty,
   Flex,
@@ -12,16 +11,14 @@ import {
   List,
   Popconfirm,
   Progress,
-  Row,
   Segmented,
   Space,
-  Statistic,
   Table,
   Tag,
   Typography,
-  theme,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import type { FormInstance } from 'antd'
 import { DeleteOutlined, DownloadOutlined, PlusOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import { listAiwikiJobs, type AiwikiJobSummary } from '../../lib/aiwiki'
 import {
@@ -39,30 +36,35 @@ import {
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import { formatDateTime, progressEventColor, statusMeta } from '../aiwiki/helpers'
 import { SEED_MATRIX_MODES, seedMatrixModeLabel, type SeedMatrixModeId } from '../../lib/workflowModes'
+import './GrowthWorkflow.css'
 
 type MatrixRow = Record<string, string>
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
+const STRATEGY_MODE_IDS = Object.keys(SEED_MATRIX_MODES) as SeedMatrixModeId[]
 
 export default function SeedMatrixPage({
   mode = 'standard',
   sourceAiwikiJobId,
   embedded = false,
+  onOpenProductionStage,
 }: {
   mode?: SeedMatrixModeId
   sourceAiwikiJobId?: string | null
   embedded?: boolean
+  onOpenProductionStage?: () => void
 }) {
-  const { token } = theme.useToken()
   const { message } = App.useApp()
-  const modeConfig = SEED_MATRIX_MODES[mode]
   const [form] = Form.useForm<Omit<SeedMatrixCreatePayload, 'source_aiwiki_job_id'>>()
+  const [draftMode, setDraftMode] = useState<SeedMatrixModeId>(mode)
+  const draftModeConfig = SEED_MATRIX_MODES[draftMode]
   const [aiwikiJobs, setAiwikiJobs] = useState<AiwikiJobSummary[]>([])
   const [matrixJobs, setMatrixJobs] = useState<SeedMatrixJobSummary[]>([])
-  const [selectedAiwikiJobId, setSelectedAiwikiJobId] = useState<string | null>(null)
+  const [selectedAiwikiJobId, setSelectedAiwikiJobId] = useState<string | null>(sourceAiwikiJobId ?? null)
   const [activeJob, setActiveJob] = useState<SeedMatrixJob | null>(null)
   const [result, setResult] = useState<SeedMatrixResult | null>(null)
   const [activeRow, setActiveRow] = useState<MatrixRow | null>(null)
+  const [creating, setCreating] = useState(true)
   const [loadingInputs, setLoadingInputs] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -71,13 +73,6 @@ export default function SeedMatrixPage({
   const [query, setQuery] = useState('')
   const [dayFilter, setDayFilter] = useState<string>('全部')
   const [accountFilter, setAccountFilter] = useState<string>('全部')
-
-  const sectionStyle = {
-    background: token.colorBgContainer,
-    border: `1px solid ${token.colorBorderSecondary}`,
-    borderRadius: 8,
-    padding: 16,
-  }
 
   const loadAiwikiJobs = useCallback(async () => {
     if (embedded) return
@@ -136,21 +131,25 @@ export default function SeedMatrixPage({
   }, [loadMatrixJobs, message])
 
   useEffect(() => {
+    setDraftMode(mode)
+  }, [mode])
+
+  useEffect(() => {
+    form.setFieldsValue(draftModeConfig.defaults)
+  }, [draftModeConfig.defaults, form])
+
+  useEffect(() => {
     if (embedded) {
       setSelectedAiwikiJobId(sourceAiwikiJobId ?? null)
+      setCreating(true)
+      setActiveJob(null)
+      setResult(null)
+      setActiveRow(null)
     } else {
       void loadAiwikiJobs()
     }
     void loadMatrixJobs()
-    form.setFieldsValue(modeConfig.defaults)
-  }, [embedded, form, loadAiwikiJobs, loadMatrixJobs, modeConfig.defaults, sourceAiwikiJobId])
-
-  useEffect(() => {
-    if (!embedded) return
-    setActiveJob(null)
-    setResult(null)
-    setActiveRow(null)
-  }, [embedded, sourceAiwikiJobId])
+  }, [embedded, loadAiwikiJobs, loadMatrixJobs, sourceAiwikiJobId])
 
   useEffect(() => {
     if (!activeJob?.id || !ACTIVE_STATUSES.has(activeJob.status)) return
@@ -160,73 +159,10 @@ export default function SeedMatrixPage({
     return () => window.clearInterval(timer)
   }, [activeJob?.id, activeJob?.status, refreshJob])
 
-  const submit = async () => {
-    if (!selectedAiwikiJobId) {
-      setError('请先选择一个已完成的内容资产任务')
-      return
-    }
-    setSubmitting(true)
-    setError(null)
-    setResult(null)
-    try {
-      const values = modeConfig.showHooks ? await form.validateFields() : modeConfig.defaults
-      const created = await createSeedMatrixJob({
-        ...modeConfig.defaults,
-        hooks: modeConfig.showHooks
-          ? (values.hooks ?? []).map((item) => item.trim()).filter(Boolean)
-          : modeConfig.defaults.hooks,
-        source_aiwiki_job_id: selectedAiwikiJobId,
-      })
-      setActiveJob(created)
-      message.success('选题策略任务已提交')
-      void loadMatrixJobs()
-      void refreshJob(created.id, true)
-    } catch (err) {
-      const text = resolveErrorMessage(err)
-      setError(text)
-      message.error(text)
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const selectMatrixJob = async (jobId: string) => {
-    setRefreshing(true)
-    setResult(null)
-    setActiveRow(null)
-    try {
-      const job = await getSeedMatrixJob(jobId)
-      setActiveJob(job)
-      setSelectedAiwikiJobId(job.source_aiwiki_job_id)
-      if (job.status === 'completed') {
-        setResult(await getSeedMatrixResult(jobId))
-      }
-    } catch (err) {
-      const text = resolveErrorMessage(err)
-      setError(text)
-      message.error(text)
-    } finally {
-      setRefreshing(false)
-    }
-  }
-
-  const deleteMatrixJob = async (jobId: string) => {
-    try {
-      await deleteSeedMatrixJob(jobId)
-      message.success('策略任务已删除')
-      setMatrixJobs((items) => items.filter((item) => item.id !== jobId))
-      if (activeJob?.id === jobId) {
-        setActiveJob(null)
-        setResult(null)
-        setActiveRow(null)
-      }
-      void loadMatrixJobs()
-    } catch (err) {
-      const text = resolveErrorMessage(err)
-      setError(text)
-      message.error(text)
-    }
-  }
+  const selectedAiwikiJob = useMemo(
+    () => aiwikiJobs.find((item) => item.id === selectedAiwikiJobId) ?? null,
+    [aiwikiJobs, selectedAiwikiJobId],
+  )
 
   const filteredRows = useMemo(() => {
     const rows = result?.rows ?? []
@@ -268,159 +204,149 @@ export default function SeedMatrixPage({
     },
   ]
 
-  const sourcePanel = (
-    <Col xs={24} xl={5}>
-      <section style={{ ...sectionStyle, height: '100%' }}>
-        <Flex align="center" justify="space-between" gap={12} style={{ marginBottom: 12 }}>
-          <Typography.Title level={5} style={{ margin: 0 }}>内容资产输入</Typography.Title>
-          <Button size="small" icon={<ReloadOutlined />} loading={loadingInputs} onClick={() => void loadAiwikiJobs()} />
-        </Flex>
-        <List
-          size="small"
-          loading={loadingInputs}
-          dataSource={aiwikiJobs}
-          locale={{ emptyText: '暂无已完成内容资产任务' }}
-          style={{ maxHeight: 'calc(100vh - 190px)', overflow: 'auto' }}
-          renderItem={(item) => {
-            const active = item.id === selectedAiwikiJobId
-            return (
-              <List.Item
-                onClick={() => setSelectedAiwikiJobId(item.id)}
-                style={{
-                  cursor: 'pointer',
-                  background: active ? token.colorFillSecondary : undefined,
-                  borderRadius: 6,
-                  paddingInline: 8,
-                }}
-              >
-                <Flex vertical gap={4} style={{ width: '100%' }}>
-                  <Typography.Text strong ellipsis>{item.files[0]?.filename ?? item.id}</Typography.Text>
-                  <Space wrap>
-                    <Tag color="green">已完成</Tag>
-                    <Tag>素材 {Number(item.summary.material_count ?? 0)}</Tag>
-                    <Tag>选题 {Number(item.summary.topic_count ?? 0)}</Tag>
-                  </Space>
-                  <Typography.Text type="secondary">{formatDateTime(item.created_at)}</Typography.Text>
-                </Flex>
-              </List.Item>
-            )
-          }}
-        />
-      </section>
-    </Col>
-  )
+  const startCreate = () => {
+    setCreating(true)
+    setActiveJob(null)
+    setResult(null)
+    setActiveRow(null)
+    setError(null)
+    form.setFieldsValue(SEED_MATRIX_MODES[draftMode].defaults)
+  }
+
+  const submit = async () => {
+    if (!selectedAiwikiJobId) {
+      setError('请先选择一个已完成的知识库作为输入')
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    setResult(null)
+    try {
+      const values = draftModeConfig.showHooks ? await form.validateFields() : draftModeConfig.defaults
+      const created = await createSeedMatrixJob({
+        ...draftModeConfig.defaults,
+        hooks: draftModeConfig.showHooks
+          ? (values.hooks ?? []).map((item) => item.trim()).filter(Boolean)
+          : draftModeConfig.defaults.hooks,
+        source_aiwiki_job_id: selectedAiwikiJobId,
+      })
+      setCreating(false)
+      setActiveJob(created)
+      message.success('选题任务已提交')
+      void loadMatrixJobs()
+      void refreshJob(created.id, true)
+    } catch (err) {
+      const text = resolveErrorMessage(err)
+      setError(text)
+      message.error(text)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const selectMatrixJob = async (jobId: string) => {
+    setCreating(false)
+    setRefreshing(true)
+    setResult(null)
+    setActiveRow(null)
+    setError(null)
+    try {
+      const job = await getSeedMatrixJob(jobId)
+      setActiveJob(job)
+      setSelectedAiwikiJobId(job.source_aiwiki_job_id)
+      if (job.status === 'completed') {
+        setResult(await getSeedMatrixResult(jobId))
+      }
+    } catch (err) {
+      const text = resolveErrorMessage(err)
+      setError(text)
+      message.error(text)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const deleteMatrixJob = async (jobId: string) => {
+    try {
+      await deleteSeedMatrixJob(jobId)
+      message.success('选题任务已删除')
+      setMatrixJobs((items) => items.filter((item) => item.id !== jobId))
+      if (activeJob?.id === jobId) {
+        setActiveJob(null)
+        setResult(null)
+        setActiveRow(null)
+        setCreating(true)
+      }
+      void loadMatrixJobs()
+    } catch (err) {
+      const text = resolveErrorMessage(err)
+      setError(text)
+      message.error(text)
+    }
+  }
 
   return (
-    <>
-      <Row gutter={[16, 16]} align="stretch">
-        {!embedded && sourcePanel}
-        <Col xs={24} xl={embedded ? 16 : 13}>
-          <Flex vertical gap={16}>
-            <section style={sectionStyle}>
-              <Flex align="center" justify="space-between" wrap="wrap" gap={12}>
-                <div>
-                  <Typography.Title level={3} style={{ margin: 0 }}>{modeConfig.title}</Typography.Title>
-                  <Typography.Text type="secondary">{modeConfig.description}</Typography.Text>
-                </div>
-                <Button
-                  type="primary"
-                  icon={<PlayCircleOutlined />}
-                  loading={submitting}
-                  disabled={!selectedAiwikiJobId}
-                  onClick={() => void submit()}
-                >
-                  {modeConfig.buttonText}
-                </Button>
-              </Flex>
-              <Row gutter={[12, 12]} style={{ marginTop: 14 }}>
-                <Col xs={12} md={8}><Statistic title="Seed 总量" value={modeConfig.defaults.expected_seed_count} /></Col>
-                <Col xs={12} md={8}><Statistic title="每日 Slot" value={modeConfig.defaults.slots_per_day} /></Col>
-                <Col xs={12} md={8}><Statistic title="入口模式" value={modeConfig.navLabel} /></Col>
-              </Row>
-              {modeConfig.showHooks && (
-                <Form form={form} layout="vertical" initialValues={modeConfig.defaults} style={{ marginTop: 16 }}>
-                  <Row gutter={12}>
-                    <Col xs={24}>
-                      <Form.List name="hooks">
-                        {(fields, { add, remove }) => (
-                          <Flex vertical gap={8}>
-                            <Flex align="center" justify="space-between" gap={8}>
-                              <Typography.Text>Hooks</Typography.Text>
-                              <Button size="small" icon={<PlusOutlined />} onClick={() => add('')}>新增</Button>
-                            </Flex>
-                            {fields.map((field, index) => (
-                              <Flex key={field.key} align="flex-start" gap={8}>
-                                <Form.Item {...field} style={{ flex: 1, marginBottom: 0 }}>
-                                  <Input.TextArea
-                                    autoSize={{ minRows: 3, maxRows: 6 }}
-                                    placeholder={`Hook ${index + 1}，可多行输入`}
-                                  />
-                                </Form.Item>
-                                <Button
-                                  danger
-                                  type="text"
-                                  icon={<DeleteOutlined />}
-                                  disabled={fields.length <= 1}
-                                  onClick={() => remove(field.name)}
-                                />
-                              </Flex>
-                            ))}
-                          </Flex>
-                        )}
-                      </Form.List>
-                    </Col>
-                  </Row>
-                </Form>
-              )}
-              {error && <Alert type="error" showIcon message={error} style={{ marginTop: 12 }} />}
-            </section>
+    <div className="growth-workflow">
+      <TaskRail
+        activeJobId={creating ? null : activeJob?.id ?? null}
+        jobs={matrixJobs}
+        loading={loadingHistory}
+        onCreate={startCreate}
+        onDelete={(jobId) => void deleteMatrixJob(jobId)}
+        onRefresh={() => void loadMatrixJobs()}
+        onSelect={(jobId) => void selectMatrixJob(jobId)}
+      />
 
-            {result ? (
-              <section id="matrix-result" style={sectionStyle}>
-                <Flex align="center" justify="space-between" wrap="wrap" gap={12}>
-                  <Typography.Title level={4} style={{ margin: 0 }}>策略表结果</Typography.Title>
-                  <Space wrap>
-                    <Input.Search placeholder="搜索 seed、选题、痛点、方案" allowClear onSearch={setQuery} onChange={(event) => setQuery(event.target.value)} style={{ width: 260 }} />
-                    <Segmented value={dayFilter} onChange={(value) => setDayFilter(String(value))} options={dayOptions} />
-                    <Segmented value={accountFilter} onChange={(value) => setAccountFilter(String(value))} options={accountOptions} />
-                    <Button icon={<DownloadOutlined />} onClick={() => activeJob && void downloadSeedMatrixCsv(activeJob.id)}>下载 CSV</Button>
-                  </Space>
-                </Flex>
-                <Row gutter={[12, 12]} style={{ marginTop: 14, marginBottom: 14 }}>
-                  <Col xs={12} md={6}><Statistic title="Seed" value={Number(result.summary.seed_count ?? 0)} /></Col>
-                  <Col xs={12} md={6}><Statistic title="覆盖天数" value={Number(result.summary.day_count ?? 0)} /></Col>
-                  <Col xs={12} md={6}><Statistic title="预计文章" value={Number(result.summary.expected_article_total ?? 0)} /></Col>
-                  <Col xs={12} md={6}><Statistic title="账号类型" value={Number(result.summary.account_type_count ?? 0)} /></Col>
-                </Row>
-                <Table
-                  size="small"
-                  rowKey={(row) => row.seed_id}
-                  columns={columns}
-                  dataSource={filteredRows}
-                  scroll={{ x: 1500 }}
-                  pagination={{ pageSize: 10, showSizeChanger: true }}
-                />
-              </section>
-            ) : (
-              <section style={{ ...sectionStyle, minHeight: 260 }}>
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择内容资产任务并生成策略表后，这里会展示表格结果" />
-              </section>
-            )}
-          </Flex>
-        </Col>
-        <Col xs={24} xl={embedded ? 8 : 6}>
-          <TaskPanel
-            activeJob={activeJob}
-            matrixJobs={matrixJobs}
-            loading={loadingHistory}
-            refreshing={refreshing}
-            onRefreshHistory={loadMatrixJobs}
-            onRefreshActive={() => activeJob && void refreshJob(activeJob.id)}
-            onSelectJob={(jobId) => void selectMatrixJob(jobId)}
-            onDeleteJob={(jobId) => void deleteMatrixJob(jobId)}
+      <main className="growth-main-stage">
+        {creating ? (
+          <CreateMatrixTask
+            embedded={embedded}
+            form={form}
+            aiwikiJobs={aiwikiJobs}
+            loadingInputs={loadingInputs}
+            mode={draftMode}
+            selectedAiwikiJob={selectedAiwikiJob}
+            selectedAiwikiJobId={selectedAiwikiJobId}
+            submitting={submitting}
+            error={error}
+            onModeChange={(nextMode) => setDraftMode(nextMode)}
+            onRefreshInputs={() => void loadAiwikiJobs()}
+            onSelectAiwikiJob={setSelectedAiwikiJobId}
+            onSubmit={() => void submit()}
           />
-        </Col>
-      </Row>
+        ) : activeJob && ACTIVE_STATUSES.has(activeJob.status) ? (
+          <GenerationStatus
+            title="正在生成选题"
+            job={activeJob}
+            refreshing={refreshing}
+            onRefresh={() => void refreshJob(activeJob.id)}
+          />
+        ) : activeJob ? (
+          <MatrixTaskDetail
+            job={activeJob}
+            result={result}
+            filteredRows={filteredRows}
+            columns={columns}
+            dayFilter={dayFilter}
+            dayOptions={dayOptions}
+            accountFilter={accountFilter}
+            accountOptions={accountOptions}
+            query={query}
+            error={error}
+            onAccountFilterChange={setAccountFilter}
+            onDayFilterChange={setDayFilter}
+            onDownload={() => void downloadSeedMatrixCsv(activeJob.id)}
+            onOpenProductionStage={onOpenProductionStage}
+            onQueryChange={setQuery}
+            onRefresh={() => void refreshJob(activeJob.id)}
+          />
+        ) : (
+          <div className="growth-empty-state">
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="新建一个选题任务，或从左侧选择历史任务" />
+            <Button type="primary" icon={<PlusOutlined />} onClick={startCreate}>新建选题任务</Button>
+          </div>
+        )}
+      </main>
 
       <Drawer
         title={activeRow?.topic ?? 'Seed 详情'}
@@ -430,111 +356,412 @@ export default function SeedMatrixPage({
       >
         {activeRow && <SeedDetail row={activeRow} />}
       </Drawer>
-    </>
+    </div>
   )
 }
 
-function TaskPanel({
-  activeJob,
-  matrixJobs,
+function TaskRail({
+  activeJobId,
+  jobs,
   loading,
-  refreshing,
-  onRefreshHistory,
-  onRefreshActive,
-  onSelectJob,
-  onDeleteJob,
+  onCreate,
+  onDelete,
+  onRefresh,
+  onSelect,
 }: {
-  activeJob: SeedMatrixJob | null
-  matrixJobs: SeedMatrixJobSummary[]
+  activeJobId: string | null
+  jobs: SeedMatrixJobSummary[]
   loading: boolean
-  refreshing: boolean
-  onRefreshHistory: () => void
-  onRefreshActive: () => void
-  onSelectJob: (jobId: string) => void
-  onDeleteJob: (jobId: string) => void
+  onCreate: () => void
+  onDelete: (jobId: string) => void
+  onRefresh: () => void
+  onSelect: (jobId: string) => void
 }) {
-  const { token } = theme.useToken()
-  const meta = statusMeta(activeJob?.status)
   return (
-    <aside style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 14, height: '100%' }}>
-      <Flex vertical gap={14}>
-        <Flex align="center" justify="space-between" gap={12}>
-          <Typography.Title level={5} style={{ margin: 0 }}>策略任务</Typography.Title>
-          <Space>
-            <Button size="small" icon={<ReloadOutlined />} loading={refreshing} disabled={!activeJob} onClick={onRefreshActive} />
-            <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => void onRefreshHistory()} />
-          </Space>
-        </Flex>
-        <Progress percent={meta.percent} status={meta.status} />
-        {activeJob?.message && <Alert type={activeJob.status === 'failed' ? 'error' : 'info'} showIcon message={activeJob.message} />}
-        <List
-          size="small"
-          loading={loading}
-          dataSource={matrixJobs}
-          locale={{ emptyText: '暂无策略任务' }}
-          style={{ maxHeight: 280, overflow: 'auto' }}
-          renderItem={(item) => (
-            <List.Item
-              onClick={() => onSelectJob(item.id)}
-              style={{ cursor: 'pointer', background: item.id === activeJob?.id ? token.colorFillSecondary : undefined, borderRadius: 6, paddingInline: 8 }}
-            >
-              <Flex vertical gap={4} style={{ width: '100%' }}>
-                <Space wrap>
-                  <Tag color={item.status === 'completed' ? 'green' : item.status === 'failed' ? 'red' : 'blue'}>{statusMeta(item.status).label}</Tag>
-                  <Tag>Seed {Number(item.summary.seed_count ?? 0)}</Tag>
-                  <Tag>{seedMatrixModeLabel(item.params)}</Tag>
-                  <Popconfirm
-                    title="删除任务"
-                    description="会删除该策略任务记录和 CSV 文件。"
-                    okText="删除"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={(event) => {
-                      event?.stopPropagation()
-                      onDeleteJob(item.id)
-                    }}
-                    onCancel={(event) => event?.stopPropagation()}
-                  >
-                    <Button
-                      size="small"
-                      type="text"
-                      danger
-                      icon={<DeleteOutlined />}
-                      disabled={item.status === 'queued' || item.status === 'running'}
-                      onClick={(event) => event.stopPropagation()}
-                    />
-                  </Popconfirm>
-                </Space>
-                <Typography.Text strong ellipsis>{item.id}</Typography.Text>
-                <Typography.Text type="secondary">{formatDateTime(item.created_at)}</Typography.Text>
-              </Flex>
-            </List.Item>
-          )}
-        />
-        <Typography.Text type="secondary">progress.json 进度事件</Typography.Text>
-        <List
-          size="small"
-          dataSource={Array.isArray(activeJob?.progress?.events) ? activeJob.progress.events : []}
-          locale={{ emptyText: '暂无进度事件' }}
-          style={{ maxHeight: 220, overflow: 'auto' }}
-          renderItem={(item) => (
-            <List.Item>
-              <Flex vertical gap={4} style={{ width: '100%' }}>
-                <Space wrap>
-                  <Tag color={progressEventColor(item.event)}>{item.event}</Tag>
-                  <Typography.Text strong={item.summary === '任务完成'}>{item.step}</Typography.Text>
-                </Space>
-                <Typography.Text type="secondary">{item.summary}</Typography.Text>
-              </Flex>
-            </List.Item>
-          )}
-        />
-        <Typography.Text type="secondary">OpenCode 原始日志</Typography.Text>
-        <pre style={{ margin: 0, minHeight: 140, maxHeight: 260, overflow: 'auto', whiteSpace: 'pre-wrap', color: token.colorTextSecondary }}>
-          {activeJob?.log_tail.length ? activeJob.log_tail.join('\n') : '暂无日志'}
-        </pre>
+    <aside className="growth-task-rail">
+      <Flex align="center" justify="space-between" gap={10} className="growth-task-rail-head">
+        <div>
+          <Typography.Text className="growth-eyebrow">Topic Tasks</Typography.Text>
+          <Typography.Title level={5} className="growth-rail-title">选题任务</Typography.Title>
+        </div>
+        <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={onRefresh} />
       </Flex>
+      <Button block type="primary" icon={<PlusOutlined />} onClick={onCreate}>新建选题任务</Button>
+      <List
+        className="growth-task-list"
+        loading={loading}
+        dataSource={jobs}
+        locale={{ emptyText: '暂无选题任务' }}
+        renderItem={(job) => (
+          <List.Item>
+            <button
+              type="button"
+              className={job.id === activeJobId ? 'growth-task-card is-active' : 'growth-task-card'}
+              onClick={() => onSelect(job.id)}
+            >
+              <span className="growth-task-card-title">{seedMatrixModeLabel(job.params)}</span>
+              <span className="growth-task-card-meta">
+                输入 {shortId(job.source_aiwiki_job_id)} · {formatDateTime(job.created_at)}
+              </span>
+              <span className="growth-task-card-tags">
+                <Tag color={statusColor(job.status)}>{statusMeta(job.status).label}</Tag>
+                <Tag>Seed {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)}</Tag>
+                <Tag>Slot {Number(job.params.slots_per_day ?? 0)}</Tag>
+              </span>
+              <Popconfirm
+                title="删除任务"
+                description="会删除该选题任务记录和 CSV 文件。"
+                okText="删除"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+                onConfirm={(event) => {
+                  event?.stopPropagation()
+                  onDelete(job.id)
+                }}
+                onCancel={(event) => event?.stopPropagation()}
+              >
+                <span
+                  className="growth-task-card-delete"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="删除选题任务"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
+                  <DeleteOutlined />
+                </span>
+              </Popconfirm>
+            </button>
+          </List.Item>
+        )}
+      />
     </aside>
+  )
+}
+
+function CreateMatrixTask({
+  embedded,
+  form,
+  aiwikiJobs,
+  loadingInputs,
+  mode,
+  selectedAiwikiJob,
+  selectedAiwikiJobId,
+  submitting,
+  error,
+  onModeChange,
+  onRefreshInputs,
+  onSelectAiwikiJob,
+  onSubmit,
+}: {
+  embedded: boolean
+  form: FormInstance<Omit<SeedMatrixCreatePayload, 'source_aiwiki_job_id'>>
+  aiwikiJobs: AiwikiJobSummary[]
+  loadingInputs: boolean
+  mode: SeedMatrixModeId
+  selectedAiwikiJob: AiwikiJobSummary | null
+  selectedAiwikiJobId: string | null
+  submitting: boolean
+  error: string | null
+  onModeChange: (mode: SeedMatrixModeId) => void
+  onRefreshInputs: () => void
+  onSelectAiwikiJob: (jobId: string) => void
+  onSubmit: () => void
+}) {
+  const modeConfig = SEED_MATRIX_MODES[mode]
+  return (
+    <section className="growth-create-panel">
+      <div className="growth-panel-heading">
+        <Typography.Text className="growth-eyebrow">新建任务</Typography.Text>
+        <Typography.Title level={3}>生成选题策略</Typography.Title>
+        <Typography.Paragraph>
+          先选择一个已完成的知识库作为输入，再选择生成方式。任务提交后配置会锁定，结果会沉淀为左侧的选题任务。
+        </Typography.Paragraph>
+      </div>
+
+      <div className="growth-create-grid">
+        <section className="growth-config-section">
+          <Flex align="center" justify="space-between" gap={12}>
+            <Typography.Title level={5}>输入知识库</Typography.Title>
+            {!embedded && <Button size="small" icon={<ReloadOutlined />} loading={loadingInputs} onClick={onRefreshInputs} />}
+          </Flex>
+          {embedded ? (
+            <div className="growth-locked-input">
+              <Tag color="cyan">已选知识库</Tag>
+              <Typography.Text>{selectedAiwikiJobId ? shortId(selectedAiwikiJobId) : '未选择'}</Typography.Text>
+            </div>
+          ) : (
+            <List
+              className="growth-input-source-list"
+              loading={loadingInputs}
+              dataSource={aiwikiJobs}
+              locale={{ emptyText: '暂无已完成知识库' }}
+              renderItem={(job) => (
+                <List.Item>
+                  <button
+                    type="button"
+                    className={job.id === selectedAiwikiJobId ? 'growth-input-source is-active' : 'growth-input-source'}
+                    onClick={() => onSelectAiwikiJob(job.id)}
+                  >
+                    <span>{job.title || job.files[0]?.filename || shortId(job.id)}</span>
+                    <small>{job.files.length} 文件 · 素材 {Number(job.summary.material_count ?? 0)}</small>
+                  </button>
+                </List.Item>
+              )}
+            />
+          )}
+          {selectedAiwikiJob && (
+            <div className="growth-config-summary">
+              <ConfigItem label="知识库" value={selectedAiwikiJob.title || selectedAiwikiJob.files[0]?.filename || selectedAiwikiJob.id} />
+              <ConfigItem label="文件" value={`${selectedAiwikiJob.files.length} 个`} />
+              <ConfigItem label="素材" value={String(Number(selectedAiwikiJob.summary.material_count ?? 0))} />
+            </div>
+          )}
+        </section>
+
+        <section className="growth-config-section">
+          <Typography.Title level={5}>生成配置</Typography.Title>
+          <Segmented
+            block
+            value={mode}
+            onChange={(value) => onModeChange(value as SeedMatrixModeId)}
+            options={STRATEGY_MODE_IDS.map((modeId) => ({
+              label: SEED_MATRIX_MODES[modeId].navLabel,
+              value: modeId,
+            }))}
+          />
+          <div className="growth-config-summary">
+            <ConfigItem label="Seed 数量" value={String(modeConfig.defaults.expected_seed_count)} />
+            <ConfigItem label="每日 Slot" value={String(modeConfig.defaults.slots_per_day)} />
+            <ConfigItem label="模式" value={modeConfig.navLabel} />
+          </div>
+          {modeConfig.showHooks && (
+            <Form form={form} layout="vertical" initialValues={modeConfig.defaults}>
+              <Form.List name="hooks">
+                {(fields, { add, remove }) => (
+                  <Flex vertical gap={8}>
+                    <Flex align="center" justify="space-between" gap={8}>
+                      <Typography.Text>Hooks</Typography.Text>
+                      <Button size="small" icon={<PlusOutlined />} onClick={() => add('')}>新增</Button>
+                    </Flex>
+                    {fields.map((field, index) => (
+                      <Flex key={field.key} align="flex-start" gap={8}>
+                        <Form.Item {...field} style={{ flex: 1, marginBottom: 0 }}>
+                          <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} placeholder={`Hook ${index + 1}，可多行输入`} />
+                        </Form.Item>
+                        <Button
+                          danger
+                          type="text"
+                          icon={<DeleteOutlined />}
+                          disabled={fields.length <= 1}
+                          onClick={() => remove(field.name)}
+                        />
+                      </Flex>
+                    ))}
+                  </Flex>
+                )}
+              </Form.List>
+            </Form>
+          )}
+        </section>
+      </div>
+
+      {error && <Alert type="error" showIcon message={error} />}
+      <div className="growth-primary-action">
+        <Button
+          type="primary"
+          size="large"
+          icon={<PlayCircleOutlined />}
+          loading={submitting}
+          disabled={!selectedAiwikiJobId}
+          onClick={onSubmit}
+        >
+          {modeConfig.buttonText}
+        </Button>
+      </div>
+    </section>
+  )
+}
+
+function MatrixTaskDetail({
+  job,
+  result,
+  filteredRows,
+  columns,
+  dayFilter,
+  dayOptions,
+  accountFilter,
+  accountOptions,
+  query,
+  error,
+  onAccountFilterChange,
+  onDayFilterChange,
+  onDownload,
+  onOpenProductionStage,
+  onQueryChange,
+  onRefresh,
+}: {
+  job: SeedMatrixJob
+  result: SeedMatrixResult | null
+  filteredRows: MatrixRow[]
+  columns: ColumnsType<MatrixRow>
+  dayFilter: string
+  dayOptions: string[]
+  accountFilter: string
+  accountOptions: string[]
+  query: string
+  error: string | null
+  onAccountFilterChange: (value: string) => void
+  onDayFilterChange: (value: string) => void
+  onDownload: () => void
+  onOpenProductionStage?: () => void
+  onQueryChange: (value: string) => void
+  onRefresh: () => void
+}) {
+  const failed = job.status === 'failed'
+  return (
+    <section className="growth-result-panel">
+      <Flex align="flex-start" justify="space-between" wrap="wrap" gap={12}>
+        <div className="growth-panel-heading">
+          <Typography.Text className="growth-eyebrow">选题任务详情</Typography.Text>
+          <Typography.Title level={3}>{seedMatrixModeLabel(job.params)}</Typography.Title>
+          <Typography.Paragraph>配置已锁定。你可以查看结果表，或基于这张策略表进入稿件生产。</Typography.Paragraph>
+        </div>
+        <Space wrap>
+          <Button icon={<ReloadOutlined />} onClick={onRefresh}>刷新</Button>
+          {result && <Button icon={<DownloadOutlined />} onClick={onDownload}>下载 CSV</Button>}
+          {result && onOpenProductionStage && <Button type="primary" onClick={onOpenProductionStage}>用选题生成稿件</Button>}
+        </Space>
+      </Flex>
+
+      <div className="growth-readonly-summary">
+        <ConfigItem label="输入知识库" value={shortId(job.source_aiwiki_job_id)} />
+        <ConfigItem label="生成模式" value={seedMatrixModeLabel(job.params)} />
+        <ConfigItem label="Seed 数量" value={String(Number(job.params.expected_seed_count ?? result?.summary.seed_count ?? 0))} />
+        <ConfigItem label="每日 Slot" value={String(Number(job.params.slots_per_day ?? 0))} />
+        <ConfigItem label="状态" value={statusMeta(job.status).label} />
+        <ConfigItem label="创建时间" value={formatDateTime(job.created_at)} />
+      </div>
+
+      {error && <Alert type="error" showIcon message={error} />}
+      {job.message && <Alert type={failed ? 'error' : 'info'} showIcon message={job.message} />}
+
+      {result ? (
+        <div className="growth-table-section">
+          <Flex align="center" justify="space-between" wrap="wrap" gap={12} className="growth-table-toolbar">
+            <Typography.Title level={4}>策略表结果</Typography.Title>
+            <Space wrap>
+              <Input.Search
+                placeholder="搜索 seed、选题、痛点、方案"
+                allowClear
+                value={query}
+                onSearch={onQueryChange}
+                onChange={(event) => onQueryChange(event.target.value)}
+                style={{ width: 260 }}
+              />
+              <Segmented value={dayFilter} onChange={(value) => onDayFilterChange(String(value))} options={dayOptions} />
+              <Segmented value={accountFilter} onChange={(value) => onAccountFilterChange(String(value))} options={accountOptions} />
+            </Space>
+          </Flex>
+          <div className="growth-readonly-summary is-compact">
+            <ConfigItem label="Seed" value={String(Number(result.summary.seed_count ?? 0))} />
+            <ConfigItem label="覆盖天数" value={String(Number(result.summary.day_count ?? 0))} />
+            <ConfigItem label="预计文章" value={String(Number(result.summary.expected_article_total ?? 0))} />
+            <ConfigItem label="账号类型" value={String(Number(result.summary.account_type_count ?? 0))} />
+          </div>
+          <Table
+            size="small"
+            rowKey={(row) => row.seed_id}
+            columns={columns}
+            dataSource={filteredRows}
+            scroll={{ x: 1500 }}
+            pagination={{ pageSize: 10, showSizeChanger: true }}
+          />
+        </div>
+      ) : (
+        <div className="growth-empty-state">
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={failed ? '选题任务生成失败，可查看运行详情排查原因' : '任务完成后这里会展示策略表'}
+          />
+        </div>
+      )}
+
+      <RunDetails job={job} />
+    </section>
+  )
+}
+
+function GenerationStatus({
+  title,
+  job,
+  refreshing,
+  onRefresh,
+}: {
+  title: string
+  job: SeedMatrixJob
+  refreshing: boolean
+  onRefresh: () => void
+}) {
+  const meta = statusMeta(job.status)
+  const latestEvent = latestProgressSummary(job)
+  return (
+    <section className="growth-generation-panel">
+      <div className="growth-generation-card">
+        <Typography.Text className="growth-eyebrow">生成中</Typography.Text>
+        <Typography.Title level={3}>{title}</Typography.Title>
+        <Progress percent={meta.percent} status={meta.status} />
+        <Typography.Text className="growth-generation-current">
+          {latestEvent || job.message || '任务已进入队列，正在准备生成。'}
+        </Typography.Text>
+        <Space wrap>
+          <Tag color="blue">{statusMeta(job.status).label}</Tag>
+          {job.queue_position !== null && <Tag>排队 {job.queue_position}</Tag>}
+          <Tag>输入 {shortId(job.source_aiwiki_job_id)}</Tag>
+        </Space>
+        <Button icon={<ReloadOutlined />} loading={refreshing} onClick={onRefresh}>刷新状态</Button>
+      </div>
+      <RunDetails job={job} />
+    </section>
+  )
+}
+
+function RunDetails({ job }: { job: SeedMatrixJob }) {
+  const events = Array.isArray(job.progress?.events) ? job.progress.events : []
+  return (
+    <details className="growth-run-details">
+      <summary>查看运行详情</summary>
+      <Typography.Text type="secondary">进度事件</Typography.Text>
+      <List
+        size="small"
+        dataSource={events}
+        locale={{ emptyText: '暂无进度事件' }}
+        renderItem={(item) => (
+          <List.Item>
+            <Flex vertical gap={4} style={{ width: '100%' }}>
+              <Space wrap>
+                <Tag color={progressEventColor(item.event)}>{item.event}</Tag>
+                <Typography.Text strong={item.summary === '任务完成'}>{item.step}</Typography.Text>
+              </Space>
+              <Typography.Text type="secondary">{item.summary}</Typography.Text>
+            </Flex>
+          </List.Item>
+        )}
+      />
+      <Typography.Text type="secondary">OpenCode 原始日志</Typography.Text>
+      <pre className="growth-log-tail">
+        {job.log_tail.length ? job.log_tail.join('\n') : '暂无日志'}
+      </pre>
+    </details>
+  )
+}
+
+function ConfigItem({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="growth-config-item">
+      <small>{label}</small>
+      <strong>{value || '-'}</strong>
+    </span>
   )
 }
 
@@ -568,4 +795,19 @@ function SeedDetail({ row }: { row: MatrixRow }) {
       ))}
     </Flex>
   )
+}
+
+function latestProgressSummary(job: SeedMatrixJob): string {
+  const events = Array.isArray(job.progress?.events) ? job.progress.events : []
+  return events.at(-1)?.summary || job.progress?.current_step || ''
+}
+
+function shortId(value: string): string {
+  return value.length > 12 ? `${value.slice(0, 8)}...` : value
+}
+
+function statusColor(status: SeedMatrixJob['status']) {
+  if (status === 'completed') return 'green'
+  if (status === 'failed') return 'red'
+  return 'blue'
 }

@@ -7,6 +7,10 @@
   overflow: hidden;
 }
 
+.aiwiki-workbench.is-growth-workbench {
+  grid-template-columns: 86px minmax(0, 1fr);
+}
+
 .aiwiki-sidebar {
   min-height: 100vh;
   background: #101827;
@@ -38,6 +42,99 @@
   display: grid;
   place-items: center;
   cursor: pointer;
+}
+
+.aiwiki-workbench.is-growth-workbench .aiwiki-sidebar {
+  align-items: center;
+  padding-inline: 10px;
+}
+
+.aiwiki-workbench.is-growth-workbench .aiwiki-sidebar-chrome {
+  width: 100%;
+  justify-content: center;
+}
+
+.aiwiki-stage-rail {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.aiwiki-stage-rail-brand {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.aiwiki-stage-rail-title,
+.aiwiki-stage-source {
+  display: none;
+}
+
+.aiwiki-stage-nav {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.aiwiki-stage-nav-button {
+  display: flex;
+  width: 56px;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: #dce8fb;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.aiwiki-stage-nav-button .anticon {
+  font-size: 18px;
+}
+
+.aiwiki-stage-nav-button span:not(.anticon) {
+  max-width: 100%;
+  overflow: hidden;
+  color: inherit;
+  font-size: 11px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiwiki-stage-nav-button:hover,
+.aiwiki-stage-nav-button.is-active {
+  border-color: var(--app-accent);
+  background: rgba(184, 255, 103, 0.12);
+  color: var(--app-accent);
+}
+
+.aiwiki-stage-nav-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.aiwiki-stage-nav-button:disabled:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.045);
+  color: #dce8fb;
 }
 
 .aiwiki-brand {
@@ -327,6 +424,15 @@
 .aiwiki-canvas-stage-flow .aiwiki-stat-strip,
 .aiwiki-canvas-stage-flow .aiwiki-stage {
   grid-column: 1 / -1;
+}
+
+.aiwiki-canvas-stage-flow {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.aiwiki-canvas-stage-flow .aiwiki-stage {
+  grid-row: 1;
 }
 
 .aiwiki-growth-stage-body {
@@ -819,6 +925,7 @@ button.aiwiki-graph-node {
 
 @media (max-width: 780px) {
   .aiwiki-workbench,
+  .aiwiki-workbench.is-growth-workbench,
   .is-sidebar-collapsed {
     grid-template-columns: 1fr;
     overflow: auto;
@@ -827,6 +934,24 @@ button.aiwiki-graph-node {
   .aiwiki-sidebar {
     min-height: auto;
     max-height: none;
+  }
+
+  .aiwiki-workbench.is-growth-workbench .aiwiki-sidebar {
+    align-items: stretch;
+  }
+
+  .aiwiki-stage-rail,
+  .aiwiki-stage-rail-brand,
+  .aiwiki-stage-nav {
+    flex-direction: row;
+  }
+
+  .aiwiki-stage-rail {
+    justify-content: space-between;
+  }
+
+  .aiwiki-stage-nav {
+    width: auto;
   }
 
   .aiwiki-main {

@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   App,
   Button,
-  Col,
   Empty,
   Flex,
   Image,
@@ -12,22 +11,20 @@ import {
   List,
   Popconfirm,
   Progress,
-  Row,
+  Segmented,
   Space,
-  Statistic,
   Switch,
   Table,
   Tabs,
   Tag,
   Typography,
-  theme,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
   DeleteOutlined,
   DownloadOutlined,
-  FileTextOutlined,
   PlayCircleOutlined,
+  PlusOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
@@ -54,12 +51,14 @@ import {
 } from '../../lib/dailyWriter'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import { formatDateTime, progressEventColor, statusMeta } from '../aiwiki/helpers'
-import { DAILY_WRITER_MODES, dailyWriterModeLabel, type DailyWriterModeId } from '../../lib/workflowModes'
+import { DAILY_WRITER_MODES, dailyWriterModeLabel, seedMatrixModeLabel, type DailyWriterModeId } from '../../lib/workflowModes'
+import '../seedMatrix/GrowthWorkflow.css'
 
 type MatrixRow = Record<string, string>
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
 const ARTWORK_IMAGE_PREFIX = 'daily-writer-artwork:'
+const WRITER_MODE_IDS = Object.keys(DAILY_WRITER_MODES) as DailyWriterModeId[]
 export default function DailyWriterPage({
   mode = 'single',
   sourceAiwikiJobId,
@@ -68,9 +67,10 @@ export default function DailyWriterPage({
   sourceAiwikiJobId?: string | null
   embedded?: boolean
 }) {
-  const { token } = theme.useToken()
   const { message } = App.useApp()
-  const modeConfig = DAILY_WRITER_MODES[mode]
+  const pendingSeedIdRef = useRef<string | null>(null)
+  const [draftMode, setDraftMode] = useState<DailyWriterModeId>(mode)
+  const draftModeConfig = DAILY_WRITER_MODES[draftMode]
   const [matrixJobs, setMatrixJobs] = useState<SeedMatrixJobSummary[]>([])
   const [writerJobs, setWriterJobs] = useState<DailyWriterJobSummary[]>([])
   const [selectedMatrixId, setSelectedMatrixId] = useState<string | null>(null)
@@ -85,15 +85,9 @@ export default function DailyWriterPage({
   const [refreshing, setRefreshing] = useState(false)
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [articleTotal, setArticleTotal] = useState(modeConfig.defaultTotal)
+  const [articleTotal, setArticleTotal] = useState(draftModeConfig.defaultTotal)
   const [generateArtwork, setGenerateArtwork] = useState(false)
-
-  const sectionStyle = {
-    background: token.colorBgContainer,
-    border: `1px solid ${token.colorBorderSecondary}`,
-    borderRadius: 8,
-    padding: 16,
-  }
+  const [creating, setCreating] = useState(true)
 
   const loadMatrices = useCallback(async () => {
     if (sourceAiwikiJobId === null) {
@@ -138,8 +132,14 @@ export default function DailyWriterPage({
     setSelectedSeedId(null)
     try {
       const data = await getSeedMatrixResult(matrixId)
+      const pendingSeedId = pendingSeedIdRef.current
       setMatrixResult(data)
-      setSelectedSeedId(data.rows[0]?.seed_id ?? null)
+      setSelectedSeedId(
+        pendingSeedId && data.rows.some((row) => row.seed_id === pendingSeedId)
+          ? pendingSeedId
+          : data.rows[0]?.seed_id ?? null,
+      )
+      pendingSeedIdRef.current = null
       setError(null)
     } catch (err) {
       setError(resolveErrorMessage(err))
@@ -171,11 +171,16 @@ export default function DailyWriterPage({
   }, [loadWriterJobs, message])
 
   useEffect(() => {
+    setDraftMode(mode)
+  }, [mode])
+
+  useEffect(() => {
     void loadMatrices()
     void loadWriterJobs()
   }, [loadMatrices, loadWriterJobs])
 
   useEffect(() => {
+    setCreating(true)
     setActiveJob(null)
     setResult(null)
     setMatrixResult(null)
@@ -184,8 +189,8 @@ export default function DailyWriterPage({
   }, [sourceAiwikiJobId])
 
   useEffect(() => {
-    setArticleTotal(modeConfig.defaultTotal)
-  }, [modeConfig.defaultTotal])
+    setArticleTotal(draftModeConfig.defaultTotal)
+  }, [draftModeConfig.defaultTotal])
 
   useEffect(() => {
     if (!selectedMatrixId) return
@@ -214,6 +219,14 @@ export default function DailyWriterPage({
     })
   }, [matrixResult?.rows, query])
 
+  const selectedMatrix = useMemo(
+    () => matrixJobs.find((item) => item.id === selectedMatrixId) ?? null,
+    [matrixJobs, selectedMatrixId],
+  )
+
+  const productionTotal = draftModeConfig.fixedTotal ?? articleTotal
+  const variantCount = Math.max(0, productionTotal - 1)
+
   const submit = async () => {
     if (!selectedMatrixId || !selectedSeedId) {
       setError('请先选择一个已完成的选题策略和 seed')
@@ -223,8 +236,6 @@ export default function DailyWriterPage({
     setError(null)
     setResult(null)
     try {
-      const total = modeConfig.fixedTotal ?? articleTotal
-      const variantCount = Math.max(0, total - 1)
       const created = await createDailyWriterJob({
         source_seed_matrix_job_id: selectedMatrixId,
         seed_id: selectedSeedId,
@@ -232,6 +243,7 @@ export default function DailyWriterPage({
         variant_count: variantCount,
         generate_artwork: generateArtwork,
       })
+      setCreating(false)
       setActiveJob(created)
       message.success('稿件生产任务已提交')
       void loadWriterJobs()
@@ -246,11 +258,13 @@ export default function DailyWriterPage({
   }
 
   const selectWriterJob = async (jobId: string) => {
+    setCreating(false)
     setRefreshing(true)
     setResult(null)
     try {
       const job = await getDailyWriterJob(jobId)
       setActiveJob(job)
+      pendingSeedIdRef.current = job.seed_id
       setSelectedMatrixId(job.source_seed_matrix_job_id)
       setSelectedSeedId(job.seed_id)
       if (job.status === 'completed' || job.status === 'partial_failed') {
@@ -273,6 +287,7 @@ export default function DailyWriterPage({
       if (activeJob?.id === jobId) {
         setActiveJob(null)
         setResult(null)
+        setCreating(true)
       }
       void loadWriterJobs()
     } catch (err) {
@@ -291,167 +306,518 @@ export default function DailyWriterPage({
     { title: '账号', dataIndex: 'primary_account_type', width: 120 },
   ]
 
+  const startCreate = () => {
+    setCreating(true)
+    setActiveJob(null)
+    setResult(null)
+    setError(null)
+    setGenerateArtwork(false)
+  }
+
   return (
-    <>
-      <Row gutter={[16, 16]} align="stretch">
-        <Col xs={24} xl={5}>
-        <section style={{ ...sectionStyle, height: '100%' }}>
-          <Flex align="center" justify="space-between" gap={12} style={{ marginBottom: 12 }}>
-            <Typography.Title level={5} style={{ margin: 0 }}>选题策略</Typography.Title>
-            <Button size="small" icon={<ReloadOutlined />} loading={loadingMatrices} onClick={() => void loadMatrices()} />
+    <div className="growth-workflow">
+      <WriterTaskRail
+        activeJobId={creating ? null : activeJob?.id ?? null}
+        jobs={writerJobs}
+        loading={loadingHistory}
+        onCreate={startCreate}
+        onDelete={(jobId) => void deleteWriterJob(jobId)}
+        onRefresh={() => void loadWriterJobs()}
+        onSelect={(jobId) => void selectWriterJob(jobId)}
+      />
+
+      <main className="growth-main-stage">
+        {creating ? (
+          <CreateWriterTask
+            mode={draftMode}
+            matrixJobs={matrixJobs}
+            matrixResult={matrixResult}
+            selectedMatrix={selectedMatrix}
+            selectedMatrixId={selectedMatrixId}
+            selectedRow={selectedRow}
+            selectedSeedId={selectedSeedId}
+            columns={columns}
+            filteredRows={filteredRows}
+            articleTotal={articleTotal}
+            generateArtwork={generateArtwork}
+            loadingMatrices={loadingMatrices}
+            loadingRows={loadingRows}
+            submitting={submitting}
+            error={error}
+            productionTotal={productionTotal}
+            variantCount={variantCount}
+            onArticleTotalChange={(value) => setArticleTotal(value)}
+            onGenerateArtworkChange={setGenerateArtwork}
+            onModeChange={setDraftMode}
+            onQueryChange={setQuery}
+            onRefreshMatrices={() => void loadMatrices()}
+            onSelectMatrix={setSelectedMatrixId}
+            onSelectSeed={setSelectedSeedId}
+            onSubmit={() => void submit()}
+          />
+        ) : activeJob && ACTIVE_STATUSES.has(activeJob.status) ? (
+          <WriterGenerationStatus
+            job={activeJob}
+            refreshing={refreshing}
+            onRefresh={() => void refreshJob(activeJob.id)}
+          />
+        ) : activeJob ? (
+          <WriterTaskDetail
+            job={activeJob}
+            result={result}
+            error={error}
+            onCreateFromCurrent={() => {
+              pendingSeedIdRef.current = activeJob.seed_id
+              setSelectedMatrixId(activeJob.source_seed_matrix_job_id)
+              setSelectedSeedId(activeJob.seed_id)
+              setCreating(true)
+              setResult(null)
+              setActiveJob(null)
+            }}
+            onDownload={() => void downloadDailyWriterResult(activeJob.id)}
+            onRefresh={() => void refreshJob(activeJob.id)}
+          />
+        ) : (
+          <div className="growth-empty-state">
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="新建一个稿件任务，或从左侧选择历史任务" />
+            <Button type="primary" icon={<PlayCircleOutlined />} onClick={startCreate}>新建稿件任务</Button>
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+function WriterTaskRail({
+  activeJobId,
+  jobs,
+  loading,
+  onCreate,
+  onDelete,
+  onRefresh,
+  onSelect,
+}: {
+  activeJobId: string | null
+  jobs: DailyWriterJobSummary[]
+  loading: boolean
+  onCreate: () => void
+  onDelete: (jobId: string) => void
+  onRefresh: () => void
+  onSelect: (jobId: string) => void
+}) {
+  return (
+    <aside className="growth-task-rail">
+      <Flex align="center" justify="space-between" gap={10} className="growth-task-rail-head">
+        <div>
+          <Typography.Text className="growth-eyebrow">Article Tasks</Typography.Text>
+          <Typography.Title level={5} className="growth-rail-title">稿件任务</Typography.Title>
+        </div>
+        <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={onRefresh} />
+      </Flex>
+      <Button block type="primary" icon={<PlusOutlined />} onClick={onCreate}>新建稿件任务</Button>
+      <List
+        className="growth-task-list"
+        loading={loading}
+        dataSource={jobs}
+        locale={{ emptyText: '暂无稿件任务' }}
+        renderItem={(job) => (
+          <List.Item>
+            <button
+              type="button"
+              className={job.id === activeJobId ? 'growth-task-card is-active' : 'growth-task-card'}
+              onClick={() => onSelect(job.id)}
+            >
+              <span className="growth-task-card-title">{String(job.summary.title || job.row.topic || job.id)}</span>
+              <span className="growth-task-card-meta">
+                Seed {job.seed_id} · {formatDateTime(job.created_at)}
+              </span>
+              <span className="growth-task-card-tags">
+                <Tag color={statusColor(job.status)}>{statusMeta(job.status).label}</Tag>
+                <Tag>{dailyWriterModeLabel(job.params)}</Tag>
+                <Tag>{articleCountFromParams(job.params)} 篇</Tag>
+                {job.summary.artwork_status === 'completed' && <Tag color="purple">含封面插图</Tag>}
+                {job.summary.artwork_status === 'failed' && <Tag color="red">插图失败</Tag>}
+              </span>
+              <Popconfirm
+                title="删除任务"
+                description="会删除该稿件任务记录和生成文件。"
+                okText="删除"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+                onConfirm={(event) => {
+                  event?.stopPropagation()
+                  onDelete(job.id)
+                }}
+                onCancel={(event) => event?.stopPropagation()}
+              >
+                <span
+                  className="growth-task-card-delete"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="删除稿件任务"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
+                  <DeleteOutlined />
+                </span>
+              </Popconfirm>
+            </button>
+          </List.Item>
+        )}
+      />
+    </aside>
+  )
+}
+
+function CreateWriterTask({
+  mode,
+  matrixJobs,
+  matrixResult,
+  selectedMatrix,
+  selectedMatrixId,
+  selectedRow,
+  selectedSeedId,
+  columns,
+  filteredRows,
+  articleTotal,
+  generateArtwork,
+  loadingMatrices,
+  loadingRows,
+  submitting,
+  error,
+  productionTotal,
+  variantCount,
+  onArticleTotalChange,
+  onGenerateArtworkChange,
+  onModeChange,
+  onQueryChange,
+  onRefreshMatrices,
+  onSelectMatrix,
+  onSelectSeed,
+  onSubmit,
+}: {
+  mode: DailyWriterModeId
+  matrixJobs: SeedMatrixJobSummary[]
+  matrixResult: SeedMatrixResult | null
+  selectedMatrix: SeedMatrixJobSummary | null
+  selectedMatrixId: string | null
+  selectedRow: MatrixRow | null
+  selectedSeedId: string | null
+  columns: ColumnsType<MatrixRow>
+  filteredRows: MatrixRow[]
+  articleTotal: number
+  generateArtwork: boolean
+  loadingMatrices: boolean
+  loadingRows: boolean
+  submitting: boolean
+  error: string | null
+  productionTotal: number
+  variantCount: number
+  onArticleTotalChange: (value: number) => void
+  onGenerateArtworkChange: (value: boolean) => void
+  onModeChange: (mode: DailyWriterModeId) => void
+  onQueryChange: (value: string) => void
+  onRefreshMatrices: () => void
+  onSelectMatrix: (matrixId: string) => void
+  onSelectSeed: (seedId: string) => void
+  onSubmit: () => void
+}) {
+  const modeConfig = DAILY_WRITER_MODES[mode]
+  return (
+    <section className="growth-create-panel">
+      <div className="growth-panel-heading">
+        <Typography.Text className="growth-eyebrow">新建任务</Typography.Text>
+        <Typography.Title level={3}>生成稿件</Typography.Title>
+        <Typography.Paragraph>
+          稿件任务以选题任务中的 seed 作为输入。提交后配置会锁定，并沉淀到左侧稿件任务列表。
+        </Typography.Paragraph>
+      </div>
+
+      <div className="growth-create-grid growth-create-grid-large">
+        <section className="growth-config-section">
+          <Flex align="center" justify="space-between" gap={12}>
+            <Typography.Title level={5}>输入选题任务</Typography.Title>
+            <Button size="small" icon={<ReloadOutlined />} loading={loadingMatrices} onClick={onRefreshMatrices} />
           </Flex>
           <List
-            size="small"
+            className="growth-input-source-list"
             loading={loadingMatrices}
             dataSource={matrixJobs}
-            locale={{ emptyText: '暂无已完成选题策略' }}
-            style={{ maxHeight: 'calc(100vh - 190px)', overflow: 'auto' }}
-            renderItem={(item) => {
-              const active = item.id === selectedMatrixId
-              return (
-                <List.Item
-                  onClick={() => setSelectedMatrixId(item.id)}
-                  style={{
-                    cursor: 'pointer',
-                    background: active ? token.colorFillSecondary : undefined,
-                    borderRadius: 6,
-                    paddingInline: 8,
-                  }}
+            locale={{ emptyText: '暂无已完成选题任务' }}
+            renderItem={(job) => (
+              <List.Item>
+                <button
+                  type="button"
+                  className={job.id === selectedMatrixId ? 'growth-input-source is-active' : 'growth-input-source'}
+                  onClick={() => onSelectMatrix(job.id)}
                 >
-                  <Flex vertical gap={4} style={{ width: '100%' }}>
-                    <Typography.Text strong ellipsis>{item.id}</Typography.Text>
-                    <Space wrap>
-                      <Tag color="green">已完成</Tag>
-                      <Tag>Seed {Number(item.summary.seed_count ?? 0)}</Tag>
-                      <Tag>稿件 {Number(item.summary.expected_article_total ?? 0)}</Tag>
-                    </Space>
-                    <Typography.Text type="secondary">{formatDateTime(item.created_at)}</Typography.Text>
-                  </Flex>
-                </List.Item>
-              )
-            }}
+                  <span>{seedMatrixModeLabel(job.params)}</span>
+                  <small>Seed {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)} · {formatDateTime(job.created_at)}</small>
+                </button>
+              </List.Item>
+            )}
           />
+          {selectedMatrix && (
+            <div className="growth-config-summary">
+              <ConfigItem label="选题任务" value={shortId(selectedMatrix.id)} />
+              <ConfigItem label="策略类型" value={seedMatrixModeLabel(selectedMatrix.params)} />
+              <ConfigItem label="Seed 数量" value={String(Number(selectedMatrix.summary.seed_count ?? selectedMatrix.params.expected_seed_count ?? 0))} />
+            </div>
+          )}
         </section>
-        </Col>
 
-        <Col xs={24} xl={13}>
-        <Flex vertical gap={16}>
-          <section style={sectionStyle}>
-            <Flex align="center" justify="space-between" wrap="wrap" gap={12}>
-              <div>
-                <Typography.Title level={3} style={{ margin: 0 }}>{modeConfig.title}</Typography.Title>
-                <Typography.Text type="secondary">{modeConfig.description}</Typography.Text>
-              </div>
-              <Button
-                type="primary"
-                icon={<PlayCircleOutlined />}
-                loading={submitting}
-                disabled={!selectedMatrixId || !selectedSeedId}
-                onClick={() => void submit()}
-              >
-                {modeConfig.buttonText}
-              </Button>
-            </Flex>
-            {error && <Alert type="error" showIcon message={error} style={{ marginTop: 12 }} />}
-            {selectedRow && (
-              <Row gutter={[12, 12]} style={{ marginTop: 14 }}>
-                <Col xs={24} md={8}><Statistic title="当前 Seed" value={selectedRow.seed_id} /></Col>
-                <Col xs={24} md={8}><Statistic title="账号类型" value={selectedRow.primary_account_type || '-'} /></Col>
-                <Col xs={24} md={8}><Statistic title="预计篇数" value={selectedRow.expected_article_count || '-'} /></Col>
-              </Row>
-            )}
-            <Row gutter={[12, 12]} style={{ marginTop: 14 }}>
-              <Col xs={24} md={8}><Statistic title="入口模式" value={modeConfig.navLabel} /></Col>
-              <Col xs={24} md={8}><Statistic title="主稿" value={1} suffix="篇" /></Col>
-              <Col xs={24} md={8}>
-                {modeConfig.fixedTotal ? (
-                  <Statistic title="生产稿件总数" value={modeConfig.fixedTotal} suffix="篇" />
-                ) : (
-                  <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                    <Typography.Text type="secondary">生产稿件总数</Typography.Text>
-                    <InputNumber
-                      min={modeConfig.minTotal}
-                      max={modeConfig.maxTotal}
-                      value={articleTotal}
-                      onChange={(value) => setArticleTotal(Number(value || modeConfig.defaultTotal))}
-                      style={{ width: '100%' }}
-                    />
-                    <Typography.Text type="secondary">
-                      1 篇主稿 + {Math.max(0, articleTotal - 1)} 篇变体
-                    </Typography.Text>
-                  </Space>
-                )}
-              </Col>
-            </Row>
-            <Flex align="center" wrap="wrap" gap={16} style={{ marginTop: 16 }}>
-              <Space>
-                <Switch checked={generateArtwork} onChange={setGenerateArtwork} />
-                <Typography.Text>生成封面和插图</Typography.Text>
-              </Space>
-            </Flex>
-          </section>
+        <section className="growth-config-section">
+          <Typography.Title level={5}>选择 Seed</Typography.Title>
+          <Input.Search
+            placeholder="搜索 seed、选题、痛点、方案"
+            allowClear
+            onSearch={onQueryChange}
+            onChange={(event) => onQueryChange(event.target.value)}
+          />
+          <Table
+            size="small"
+            rowKey={(row) => row.seed_id}
+            columns={columns}
+            dataSource={filteredRows}
+            loading={loadingRows}
+            scroll={{ x: 1280, y: 300 }}
+            pagination={{ pageSize: 6, showSizeChanger: false }}
+            rowSelection={{
+              type: 'radio',
+              selectedRowKeys: selectedSeedId ? [selectedSeedId] : [],
+              onChange: (keys) => {
+                const nextKey = keys[0]
+                if (nextKey) onSelectSeed(String(nextKey))
+              },
+            }}
+            onRow={(row) => ({
+              onClick: () => onSelectSeed(row.seed_id),
+            })}
+          />
+          {matrixResult && (
+            <div className="growth-config-summary">
+              <ConfigItem label="当前 Seed" value={selectedSeedId ?? '-'} />
+              <ConfigItem label="选题" value={selectedRow?.topic ?? '-'} />
+              <ConfigItem label="预计篇数" value={selectedRow?.expected_article_count ?? '-'} />
+            </div>
+          )}
+        </section>
+      </div>
 
-          <section style={sectionStyle}>
-            <Flex align="center" justify="space-between" wrap="wrap" gap={12} style={{ marginBottom: 12 }}>
-              <Typography.Title level={4} style={{ margin: 0 }}>选择 Seed</Typography.Title>
-              <Input.Search
-                placeholder="搜索 seed、选题、痛点、方案"
-                allowClear
-                onSearch={setQuery}
-                onChange={(event) => setQuery(event.target.value)}
-                style={{ width: 280 }}
-              />
-            </Flex>
-            <Table
-              size="small"
-              loading={loadingRows}
-              rowKey={(row) => row.seed_id}
-              rowSelection={{
-                type: 'radio',
-                selectedRowKeys: selectedSeedId ? [selectedSeedId] : [],
-                onChange: (keys) => setSelectedSeedId(String(keys[0] ?? '')),
-              }}
-              columns={columns}
-              dataSource={filteredRows}
-              scroll={{ x: 1300 }}
-              pagination={{ pageSize: 8, showSizeChanger: false }}
-              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前策略没有可用 seed" /> }}
-            />
-          </section>
-
-          <section style={{ ...sectionStyle, minHeight: 360 }}>
-            {result ? (
-              <ArticlePreviewTabs
-                result={result}
-                tabBarExtraContent={
-                  <Button icon={<DownloadOutlined />} onClick={() => activeJob && void downloadDailyWriterResult(activeJob.id)}>
-                    下载
-                  </Button>
-                }
-              />
-            ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="生产完成后，这里会展示稿件正文和 metadata" />
-            )}
-          </section>
-        </Flex>
-        </Col>
-
-        <Col xs={24} xl={6}>
-        <TaskPanel
-          activeJob={activeJob}
-          writerJobs={writerJobs}
-          loading={loadingHistory}
-          refreshing={refreshing}
-          onRefreshHistory={loadWriterJobs}
-          onRefreshActive={() => activeJob && void refreshJob(activeJob.id)}
-          onSelectJob={(jobId) => void selectWriterJob(jobId)}
-          onDeleteJob={(jobId) => void deleteWriterJob(jobId)}
+      <section className="growth-config-section">
+        <Typography.Title level={5}>生产配置</Typography.Title>
+        <Segmented
+          block
+          value={mode}
+          onChange={(value) => onModeChange(value as DailyWriterModeId)}
+          options={WRITER_MODE_IDS.map((modeId) => ({
+            label: DAILY_WRITER_MODES[modeId].navLabel,
+            value: modeId,
+          }))}
         />
-        </Col>
-      </Row>
+        <div className="growth-writer-config-row">
+          {modeConfig.fixedTotal ? (
+            <ConfigItem label="稿件总数" value={`${modeConfig.fixedTotal} 篇`} />
+          ) : (
+            <label className="growth-number-field">
+              <span>稿件总数</span>
+              <InputNumber
+                min={modeConfig.minTotal}
+                max={modeConfig.maxTotal}
+                value={articleTotal}
+                onChange={(value) => onArticleTotalChange(Number(value ?? modeConfig.defaultTotal))}
+              />
+            </label>
+          )}
+          <label className="growth-switch-field">
+            <span>生成封面/插图</span>
+            <Switch checked={generateArtwork} onChange={onGenerateArtworkChange} />
+          </label>
+          <ConfigItem label="主稿" value="1 篇" />
+          <ConfigItem label="变体" value={`${variantCount} 篇`} />
+          <ConfigItem label="合计产出" value={`${productionTotal} 篇`} />
+        </div>
+      </section>
 
-    </>
+      {error && <Alert type="error" showIcon message={error} />}
+      <div className="growth-primary-action">
+        <Button
+          type="primary"
+          size="large"
+          icon={<PlayCircleOutlined />}
+          loading={submitting}
+          disabled={!selectedMatrixId || !selectedSeedId}
+          onClick={onSubmit}
+        >
+          {modeConfig.buttonText}
+        </Button>
+      </div>
+    </section>
   )
+}
+
+function WriterGenerationStatus({
+  job,
+  refreshing,
+  onRefresh,
+}: {
+  job: DailyWriterJob
+  refreshing: boolean
+  onRefresh: () => void
+}) {
+  const meta = statusMeta(job.status)
+  const latestEvent = latestWriterProgressSummary(job)
+  return (
+    <section className="growth-generation-panel">
+      <div className="growth-generation-card">
+        <Typography.Text className="growth-eyebrow">生成中</Typography.Text>
+        <Typography.Title level={3}>正在生成稿件</Typography.Title>
+        <Progress percent={meta.percent} status={meta.status} />
+        <Typography.Text className="growth-generation-current">
+          {latestEvent || job.message || '任务已进入队列，正在准备生成。'}
+        </Typography.Text>
+        <Space wrap>
+          <Tag color="blue">{statusMeta(job.status).label}</Tag>
+          {job.queue_position !== null && <Tag>排队 {job.queue_position}</Tag>}
+          <Tag>Seed {job.seed_id}</Tag>
+          <Tag>{dailyWriterModeLabel(job.params)}</Tag>
+        </Space>
+        <Button icon={<ReloadOutlined />} loading={refreshing} onClick={onRefresh}>刷新状态</Button>
+      </div>
+      <WriterRunDetails job={job} />
+    </section>
+  )
+}
+
+function WriterTaskDetail({
+  job,
+  result,
+  error,
+  onCreateFromCurrent,
+  onDownload,
+  onRefresh,
+}: {
+  job: DailyWriterJob
+  result: DailyWriterResult | null
+  error: string | null
+  onCreateFromCurrent: () => void
+  onDownload: () => void
+  onRefresh: () => void
+}) {
+  const failed = job.status === 'failed'
+  const artworkStatus = job.params.generate_artwork ? String(job.summary.artwork_status ?? '生成中') : '未开启'
+  return (
+    <section className="growth-result-panel">
+      <Flex align="flex-start" justify="space-between" wrap="wrap" gap={12}>
+        <div className="growth-panel-heading">
+          <Typography.Text className="growth-eyebrow">稿件任务详情</Typography.Text>
+          <Typography.Title level={3}>{String(job.summary.title || job.row.topic || `Seed ${job.seed_id}`)}</Typography.Title>
+          <Typography.Paragraph>配置已锁定。你可以查看生成结果，或基于同一个 seed 新建一轮稿件任务。</Typography.Paragraph>
+        </div>
+        <Space wrap>
+          <Button icon={<ReloadOutlined />} onClick={onRefresh}>刷新</Button>
+          {result && <Button icon={<DownloadOutlined />} onClick={onDownload}>下载 ZIP</Button>}
+          <Button type="primary" onClick={onCreateFromCurrent}>基于同一 seed 新建任务</Button>
+        </Space>
+      </Flex>
+
+      <div className="growth-readonly-summary">
+        <ConfigItem label="输入选题任务" value={shortId(job.source_seed_matrix_job_id)} />
+        <ConfigItem label="Seed" value={job.seed_id} />
+        <ConfigItem label="生产模式" value={dailyWriterModeLabel(job.params)} />
+        <ConfigItem label="稿件数量" value={`${articleCountFromParams(job.params)} 篇`} />
+        <ConfigItem label="插图" value={artworkStatus} />
+        <ConfigItem label="创建时间" value={formatDateTime(job.created_at)} />
+      </div>
+
+      {error && <Alert type="error" showIcon message={error} />}
+      {job.message && (
+        <Alert
+          type={failed ? 'error' : job.status === 'partial_failed' ? 'warning' : 'info'}
+          showIcon
+          message={job.message}
+        />
+      )}
+
+      {result ? (
+        <div className="growth-table-section">
+          <ArticlePreviewTabs
+            result={result}
+            tabBarExtraContent={<Button icon={<DownloadOutlined />} onClick={onDownload}>下载 ZIP</Button>}
+          />
+        </div>
+      ) : (
+        <div className="growth-empty-state">
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={failed ? '稿件任务生成失败，可查看运行详情排查原因' : '任务完成后这里会展示稿件结果'}
+          />
+        </div>
+      )}
+
+      <WriterRunDetails job={job} />
+    </section>
+  )
+}
+
+function WriterRunDetails({ job }: { job: DailyWriterJob }) {
+  const events = Array.isArray(job.progress?.events) ? job.progress.events : []
+  return (
+    <details className="growth-run-details">
+      <summary>查看运行详情</summary>
+      <Typography.Text type="secondary">进度事件</Typography.Text>
+      <List
+        size="small"
+        dataSource={events}
+        locale={{ emptyText: '暂无进度事件' }}
+        renderItem={(item) => (
+          <List.Item>
+            <Flex vertical gap={4} style={{ width: '100%' }}>
+              <Space wrap>
+                <Tag color={progressEventColor(item.event)}>{item.event}</Tag>
+                <Typography.Text strong={item.summary === '任务完成'}>{item.step}</Typography.Text>
+              </Space>
+              <Typography.Text type="secondary">{item.summary}</Typography.Text>
+            </Flex>
+          </List.Item>
+        )}
+      />
+      <Typography.Text type="secondary">OpenCode 原始日志</Typography.Text>
+      <pre className="growth-log-tail">
+        {job.log_tail.length ? job.log_tail.join('\n') : '暂无日志'}
+      </pre>
+    </details>
+  )
+}
+
+function ConfigItem({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="growth-config-item">
+      <small>{label}</small>
+      <strong>{value || '-'}</strong>
+    </span>
+  )
+}
+
+function latestWriterProgressSummary(job: DailyWriterJob): string {
+  const events = Array.isArray(job.progress?.events) ? job.progress.events : []
+  return events.at(-1)?.summary || job.progress?.current_step || ''
+}
+
+function articleCountFromParams(params: Record<string, unknown>): number {
+  if (!params.generate_variants) return 1
+  return Math.max(1, Number(params.variant_count ?? 0) + 1)
+}
+
+function shortId(value: string): string {
+  return value.length > 12 ? `${value.slice(0, 8)}...` : value
+}
+
+function statusColor(status: DailyWriterJob['status']) {
+  if (status === 'completed') return 'green'
+  if (status === 'partial_failed') return 'gold'
+  if (status === 'failed') return 'red'
+  return 'blue'
 }
 
 function ArticlePreviewTabs({
@@ -644,7 +1010,6 @@ function ArtworkImageList({
   jobId: string
   assets: DailyWriterArtworkAsset[]
 }) {
-  const { token } = theme.useToken()
   if (!assets.length) {
     return (
       <section>
@@ -656,19 +1021,9 @@ function ArtworkImageList({
   return (
     <section>
       <Typography.Title level={5} style={{ marginTop: 0 }}>{title}</Typography.Title>
-      <div style={{ columnCount: assets.length > 1 ? 2 : 1, columnGap: 12 }}>
+      <div className="growth-artwork-grid">
         {assets.map((asset) => (
-          <div
-            key={asset.key}
-            style={{
-              breakInside: 'avoid',
-              marginBottom: 12,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              borderRadius: 8,
-              overflow: 'hidden',
-              background: token.colorBgElevated,
-            }}
-          >
+          <div key={asset.key} className="growth-artwork-card">
             <AuthenticatedArtworkImage jobId={jobId} asset={asset} maxHeight={520} />
           </div>
         ))}
@@ -721,117 +1076,5 @@ function AuthenticatedArtworkImage({
       alt={asset.filename}
       style={{ width: '100%', maxHeight, objectFit: 'contain', display: 'block' }}
     />
-  )
-}
-
-function TaskPanel({
-  activeJob,
-  writerJobs,
-  loading,
-  refreshing,
-  onRefreshHistory,
-  onRefreshActive,
-  onSelectJob,
-  onDeleteJob,
-}: {
-  activeJob: DailyWriterJob | null
-  writerJobs: DailyWriterJobSummary[]
-  loading: boolean
-  refreshing: boolean
-  onRefreshHistory: () => void
-  onRefreshActive: () => void
-  onSelectJob: (jobId: string) => void
-  onDeleteJob: (jobId: string) => void
-}) {
-  const { token } = theme.useToken()
-  const meta = statusMeta(activeJob?.status)
-  return (
-    <aside style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 14, height: '100%' }}>
-      <Flex vertical gap={14}>
-        <Flex align="center" justify="space-between" gap={12}>
-          <Typography.Title level={5} style={{ margin: 0 }}>稿件任务</Typography.Title>
-          <Space>
-            <Button size="small" icon={<ReloadOutlined />} loading={refreshing} disabled={!activeJob} onClick={onRefreshActive} />
-            <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => void onRefreshHistory()} />
-          </Space>
-        </Flex>
-        <Progress percent={meta.percent} status={meta.status} />
-        {activeJob?.message && (
-          <Alert
-            type={activeJob.status === 'failed' ? 'error' : activeJob.status === 'partial_failed' ? 'warning' : 'info'}
-            showIcon
-            message={activeJob.message}
-          />
-        )}
-        <List
-          size="small"
-          loading={loading}
-          dataSource={writerJobs}
-          locale={{ emptyText: '暂无稿件任务' }}
-          style={{ maxHeight: 280, overflow: 'auto' }}
-          renderItem={(item) => (
-            <List.Item
-              onClick={() => onSelectJob(item.id)}
-              style={{ cursor: 'pointer', background: item.id === activeJob?.id ? token.colorFillSecondary : undefined, borderRadius: 6, paddingInline: 8 }}
-            >
-              <Flex vertical gap={4} style={{ width: '100%' }}>
-                <Space wrap>
-                  <Tag color={item.status === 'completed' ? 'green' : item.status === 'failed' ? 'red' : item.status === 'partial_failed' ? 'gold' : 'blue'}>{statusMeta(item.status).label}</Tag>
-                  <Tag icon={<FileTextOutlined />}>{item.seed_id}</Tag>
-                  <Tag>{dailyWriterModeLabel(item.params)}</Tag>
-                  {item.summary.artwork_status === 'completed' && <Tag color="purple">含封面插图</Tag>}
-                  {item.summary.artwork_status === 'failed' && <Tag color="red">封面插图失败</Tag>}
-                  <Popconfirm
-                    title="删除任务"
-                    description="会删除该稿件任务记录和生成文件。"
-                    okText="删除"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={(event) => {
-                      event?.stopPropagation()
-                      onDeleteJob(item.id)
-                    }}
-                    onCancel={(event) => event?.stopPropagation()}
-                  >
-                    <Button
-                      size="small"
-                      type="text"
-                      danger
-                      icon={<DeleteOutlined />}
-                      disabled={item.status === 'queued' || item.status === 'running'}
-                      onClick={(event) => event.stopPropagation()}
-                    />
-                  </Popconfirm>
-                </Space>
-                <Typography.Text strong ellipsis>{String(item.summary.title || item.row.topic || item.id)}</Typography.Text>
-                <Typography.Text type="secondary">{formatDateTime(item.created_at)}</Typography.Text>
-              </Flex>
-            </List.Item>
-          )}
-        />
-        <Typography.Text type="secondary">progress.json 进度事件</Typography.Text>
-        <List
-          size="small"
-          dataSource={Array.isArray(activeJob?.progress?.events) ? activeJob.progress.events : []}
-          locale={{ emptyText: '暂无进度事件' }}
-          style={{ maxHeight: 220, overflow: 'auto' }}
-          renderItem={(item) => (
-            <List.Item>
-              <Flex vertical gap={4} style={{ width: '100%' }}>
-                <Space wrap>
-                  <Tag color={progressEventColor(item.event)}>{item.event}</Tag>
-                  <Typography.Text strong={item.summary === '任务完成'}>{item.step}</Typography.Text>
-                </Space>
-                <Typography.Text type="secondary">{item.summary}</Typography.Text>
-              </Flex>
-            </List.Item>
-          )}
-        />
-        <Typography.Text type="secondary">OpenCode 原始日志</Typography.Text>
-        <pre style={{ margin: 0, minHeight: 140, maxHeight: 260, overflow: 'auto', whiteSpace: 'pre-wrap', color: token.colorTextSecondary }}>
-          {activeJob?.log_tail.length ? activeJob.log_tail.join('\n') : '暂无日志'}
-        </pre>
-      </Flex>
-    </aside>
   )
 }
