@@ -119,6 +119,32 @@ a {
   transform: translateY(-1px);
 }
 
+.workbench-home-button {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--app-text-primary);
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.workbench-home-button:hover,
+.workbench-home-button:focus-visible {
+  border-color: rgba(184, 255, 103, 0.38);
+  background: rgba(184, 255, 103, 0.14);
+  color: var(--app-accent-strong);
+  transform: translateY(-1px);
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

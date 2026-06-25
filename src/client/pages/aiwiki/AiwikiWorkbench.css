@@ -18,17 +18,26 @@
   position: relative;
 }
 
+.aiwiki-sidebar-chrome {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+}
+
 .aiwiki-collapse {
+  position: absolute;
+  top: 18px;
+  right: -15px;
+  z-index: 22;
   width: 32px;
   height: 32px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   color: #dbeafe;
-  background: transparent;
-  border-radius: 8px;
+  background: rgba(14, 16, 20, 0.96);
+  border-radius: 50%;
   display: grid;
   place-items: center;
   cursor: pointer;
-  align-self: flex-end;
 }
 
 .aiwiki-brand {
@@ -176,19 +185,6 @@
 .aiwiki-file-meta {
   color: #aebfd6;
   font-size: 12px;
-}
-
-.aiwiki-dashboard-link {
-  color: #c9d7ed;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  text-decoration: none;
-  min-height: 36px;
-}
-
-.aiwiki-dashboard-link:hover {
-  color: var(--app-text-primary);
 }
 
 .aiwiki-main {
@@ -790,7 +786,6 @@ button.aiwiki-graph-node {
 .is-sidebar-collapsed .aiwiki-filter-stack,
 .is-sidebar-collapsed .aiwiki-file-list,
 .is-sidebar-collapsed .aiwiki-task-list,
-.is-sidebar-collapsed .aiwiki-dashboard-link span,
 .is-sidebar-collapsed .aiwiki-sidebar .ant-btn span:not(.anticon) {
   display: none;
 }
@@ -798,10 +793,6 @@ button.aiwiki-graph-node {
 .is-sidebar-collapsed .aiwiki-sidebar .ant-btn {
   width: 48px;
   padding-inline: 0;
-}
-
-.is-sidebar-collapsed .aiwiki-dashboard-link {
-  justify-content: center;
 }
 
 @media (max-width: 1180px) {

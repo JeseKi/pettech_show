@@ -54,8 +54,9 @@ import {
   type UserAgent,
 } from '../../lib/agentMarket'
 import { resolveErrorMessage } from '../../lib/errorMessage'
-import { BRAND_LOGO_SRC, BRAND_NAME } from '../../lib/brand'
+import { BRAND_LOGO_SRC } from '../../lib/brand'
 import BrandNavPill from '../../components/brand/BrandNavPill'
+import WorkbenchHomeButton from '../../components/brand/WorkbenchHomeButton'
 import './ChatHomePage.css'
 
 type QuickPrompt = {
@@ -1399,10 +1400,7 @@ export default function ChatHomePage() {
     >
       <main className="chat-home-page">
         <header className="chat-home-nav">
-          <Link className="chat-home-brand" to="/" aria-label={`${BRAND_NAME} 首页`}>
-            <img src={BRAND_LOGO_SRC} alt={`${BRAND_NAME} Logo`} />
-            <span>{BRAND_NAME}</span>
-          </Link>
+          <WorkbenchHomeButton className="chat-workbench-home" />
 
           <BrandNavPill activeKey="agents" className="chat-home-nav-items" />
 

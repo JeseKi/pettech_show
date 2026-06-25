@@ -28,12 +28,11 @@ import {
   FileMarkdownOutlined,
   FilePdfOutlined,
   FileTextOutlined,
-  HomeOutlined,
   PlusOutlined,
   ReloadOutlined,
   TableOutlined,
 } from '@ant-design/icons'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as XLSX from 'xlsx'
@@ -68,6 +67,7 @@ import ResultView from './ResultView'
 import { ACTIVE_STATUSES, entryTypeLabel, formatDateTime, progressEventColor, statusMeta } from './helpers'
 import SeedMatrixPage from '../seedMatrix'
 import DailyWriterPage from '../dailyWriter'
+import WorkbenchHomeButton from '../../components/brand/WorkbenchHomeButton'
 import './AiwikiWorkbench.css'
 
 type FileCategory = 'document' | 'spreadsheet'
@@ -434,6 +434,9 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   return (
     <div className={sidebarCollapsed ? 'aiwiki-workbench is-sidebar-collapsed' : 'aiwiki-workbench'}>
       <aside className="aiwiki-sidebar">
+        <div className="aiwiki-sidebar-chrome">
+          <WorkbenchHomeButton className="aiwiki-workbench-home" />
+        </div>
         <button type="button" className="aiwiki-collapse" onClick={() => setSidebarCollapsed((value) => !value)}>
           {sidebarCollapsed ? <DoubleRightOutlined /> : <DoubleLeftOutlined />}
         </button>
@@ -524,10 +527,6 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
             )}
           />
         </div>
-        <Link to="/dashboard" className="aiwiki-dashboard-link">
-          <HomeOutlined />
-          <span>返回首页</span>
-        </Link>
       </aside>
 
       <main className="aiwiki-main">

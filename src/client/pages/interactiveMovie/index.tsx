@@ -62,6 +62,7 @@ import type {
 } from '../../lib/interactiveMovie'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import BrandNavPill from '../../components/brand/BrandNavPill'
+import WorkbenchHomeButton from '../../components/brand/WorkbenchHomeButton'
 import './InteractiveMoviePage.css'
 
 type SceneRole = 'start' | 'middle' | 'ending'
@@ -1511,6 +1512,9 @@ export default function InteractiveMoviePage() {
   return (
     <div className={workspaceCollapsed ? 'interactive-movie-page workspace-collapsed' : 'interactive-movie-page'}>
       <aside className="movie-workspace-sidebar">
+        <div className="movie-sidebar-chrome">
+          <WorkbenchHomeButton className="movie-workbench-home" />
+        </div>
         <button
           type="button"
           className="movie-sidebar-collapse"
@@ -1575,6 +1579,7 @@ export default function InteractiveMoviePage() {
 
       <main className="movie-editor-shell">
         <header className="movie-topbar">
+          <WorkbenchHomeButton className="movie-mobile-workbench-home" />
           <Flex align="center" gap={12} className="movie-project-heading">
             <div>
               <Typography.Text className="movie-kicker">云端项目 / GalGame 式编辑器 MVP</Typography.Text>
