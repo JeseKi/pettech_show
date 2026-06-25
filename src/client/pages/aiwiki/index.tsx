@@ -314,7 +314,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const stageSubtitle = {
     assets: workspaceSubtitle,
     strategy: '选择知识库生成选题策略',
-    production: '选择选题策略和 seed 生产稿件',
+    production: '选择选题策略和种子生产稿件',
     social: '选择已完成稿件生成图文卡',
     video: '选择已完成图文卡生成轮播视频',
     distribution: '集中上传稿件和图文到分发平台',
@@ -376,7 +376,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
       if (workflowReadiness.completedSeedMatrices > 0) {
         return {
           type: 'info',
-          message: `已找到 ${workflowReadiness.completedSeedMatrices} 个已完成选题矩阵，可以选择 seed 生产稿件。`,
+          message: `已找到 ${workflowReadiness.completedSeedMatrices} 个已完成选题矩阵，可以选择种子生产稿件。`,
           actionText: '查看选题矩阵',
           targetStage: 'strategy',
         }

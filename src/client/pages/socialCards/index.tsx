@@ -590,7 +590,7 @@ function SocialCardTaskDetail({
         </div>
         <Space wrap>
           <Button icon={<ReloadOutlined />} onClick={onRefresh}>刷新</Button>
-          {result && <Button icon={<DownloadOutlined />} onClick={onDownload}>下载 ZIP</Button>}
+          {result && <Button icon={<DownloadOutlined />} onClick={onDownload}>下载压缩包</Button>}
           <Button type="primary" onClick={onCreateFromCurrent}>基于同一稿件新建任务</Button>
         </Space>
       </Flex>

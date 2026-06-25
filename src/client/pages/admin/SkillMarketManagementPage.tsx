@@ -97,7 +97,7 @@ export default function SkillMarketManagementPage() {
       setTags(nextTags)
       setLastError(null)
     } catch (error) {
-      showRequestError('加载 Skill 市场失败', error)
+      showRequestError('加载技能市场失败', error)
     } finally {
       setLoading(false)
     }
@@ -231,7 +231,7 @@ export default function SkillMarketManagementPage() {
 
   const confirmDeleteSkill = (skill: AgentSkill) => {
     Modal.confirm({
-      title: `删除 Skill「${skill.name}」？`,
+      title: `删除技能「${skill.name}」？`,
       content: '会同时删除 data/skill_market 下的文件，并从所有用户智能体中移除。',
       okText: '删除',
       okButtonProps: { danger: true },
@@ -242,7 +242,7 @@ export default function SkillMarketManagementPage() {
           setLastError(null)
           await loadAll()
         } catch (error) {
-          showRequestError('删除 Skill 失败', error)
+          showRequestError('删除技能失败', error)
           throw error
         }
       },
@@ -252,7 +252,7 @@ export default function SkillMarketManagementPage() {
   const confirmDeleteCategory = (category: AgentSkillCategory) => {
     Modal.confirm({
       title: `删除分类「${category.name}」？`,
-      content: '如果已有 Skill 使用这个分类，删除会被拒绝。',
+      content: '如果已有技能使用这个分类，删除会被拒绝。',
       okText: '删除',
       okButtonProps: { danger: true },
       cancelText: '取消',
@@ -272,7 +272,7 @@ export default function SkillMarketManagementPage() {
   const confirmDeleteTag = (tag: AgentSkillTag) => {
     Modal.confirm({
       title: `删除标签「${tag.name}」？`,
-      content: '会从已关联的 Skill 上移除这个标签。',
+      content: '会从已关联的技能上移除这个标签。',
       okText: '删除',
       okButtonProps: { danger: true },
       cancelText: '取消',
@@ -408,9 +408,9 @@ export default function SkillMarketManagementPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Space align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
         <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>Skill 市场</Typography.Title>
+          <Typography.Title level={4} style={{ margin: 0 }}>技能市场</Typography.Title>
           <Typography.Text type="secondary">
-            分类、标签和可见度由管理员维护；保存 Skill 时会同步写入 data/skill_market/&lt;id&gt;/agents/openai.yaml。
+            分类、标签和可见度由管理员维护；保存技能时会同步写入 data/skill_market/&lt;id&gt;/agents/openai.yaml。
           </Typography.Text>
         </div>
         <Button icon={<ReloadOutlined />} onClick={() => void loadAll()}>刷新</Button>
@@ -430,12 +430,12 @@ export default function SkillMarketManagementPage() {
         items={[
           {
             key: 'skills',
-            label: 'Skill',
+            label: '技能',
             children: (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <Space style={{ justifyContent: 'flex-end', width: '100%' }}>
                   <Button type="primary" icon={<PlusOutlined />} onClick={openCreateSkill}>
-                    添加 Skill
+                    添加技能
                   </Button>
                 </Space>
                 <Table
@@ -492,13 +492,13 @@ export default function SkillMarketManagementPage() {
       />
 
       <Modal
-        title={editingSkill ? `编辑 Skill：${editingSkill.name}` : '添加 Skill'}
+        title={editingSkill ? `编辑技能：${editingSkill.name}` : '添加技能'}
         open={skillModalOpen}
         okText="保存"
         confirmLoading={saving}
         onCancel={() => setSkillModalOpen(false)}
         onOk={() => {
-          void saveSkill().catch((error) => showRequestError('保存 Skill 失败', error))
+          void saveSkill().catch((error) => showRequestError('保存技能失败', error))
         }}
         width={860}
         destroyOnClose
@@ -508,7 +508,7 @@ export default function SkillMarketManagementPage() {
             label="ID"
             name="id"
             rules={[
-              { required: true, message: '请输入 Skill ID' },
+              { required: true, message: '请输入技能 ID' },
               { pattern: /^[A-Za-z0-9][A-Za-z0-9_-]{1,60}$/, message: '只能包含字母、数字、下划线或连字符，长度 2-61' },
             ]}
           >
@@ -518,7 +518,7 @@ export default function SkillMarketManagementPage() {
             <Input placeholder="例如 宠物客户评价回复" />
           </Form.Item>
           <Form.Item label="描述" name="description" rules={[{ required: true, message: '请输入描述' }]}>
-            <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} placeholder="说明这个 Skill 适合谁、解决什么问题" />
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} placeholder="说明这个技能适合谁、解决什么问题" />
           </Form.Item>
           <Form.Item label="系统分类" name="category_id" rules={[{ required: true, message: '请选择系统分类' }]}>
             <Select options={activeCategoryOptions} placeholder="选择管理员维护的系统分类" />
@@ -539,7 +539,7 @@ export default function SkillMarketManagementPage() {
             />
           </Form.Item>
           <Form.Item label="SKILL.md 正文" name="skill_markdown" rules={[{ required: true, message: '请输入 SKILL.md 正文' }]}>
-            <Input.TextArea autoSize={{ minRows: 12, maxRows: 22 }} placeholder="# Skill 标题&#10;&#10;写入具体工作规范..." />
+            <Input.TextArea autoSize={{ minRows: 12, maxRows: 22 }} placeholder="# 技能标题&#10;&#10;写入具体工作规范..." />
           </Form.Item>
         </Form>
       </Modal>

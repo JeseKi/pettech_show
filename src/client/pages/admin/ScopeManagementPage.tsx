@@ -101,7 +101,7 @@ export default function ScopeManagementPage() {
         try {
           const updated = await updateScope(editingScope.scope, { category: values.category }, twoFactorCode)
           setScopes((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
-          message.success(`已更新 ${updated.scope} 的分类`)
+          message.success(`已更新 ${updated.scope} 的权限分类`)
           closeEditModal()
           setTwoFactorPromptOpen(false)
         } finally {
@@ -177,12 +177,12 @@ export default function ScopeManagementPage() {
           <Space>
             <LockOutlined style={{ fontSize: 20 }} />
             <Typography.Title level={4} style={{ margin: 0 }}>
-              Scope 管理
+              权限范围管理
             </Typography.Title>
           </Space>
           <Flex wrap="wrap" gap={8} style={{ width: isMobile ? '100%' : 'auto' }}>
             <Input
-              placeholder="搜索权限 / scope / 说明"
+              placeholder="搜索权限 / 权限标识 / 说明"
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
               allowClear
@@ -207,7 +207,7 @@ export default function ScopeManagementPage() {
           rowKey="id"
           loading={loading}
           pagination={{ pageSize: 10 }}
-          locale={{ emptyText: '暂无 scope 数据' }}
+          locale={{ emptyText: '暂无权限范围数据' }}
           scroll={{ x: 'max-content' }}
         />
       </Card>
@@ -226,7 +226,7 @@ export default function ScopeManagementPage() {
           <Alert
             type="warning"
             showIcon
-            message="危险 scope 应只用于高风险能力"
+            message="危险权限范围应只用于高风险能力"
             description="例如密码修改、管理员写操作或其他可能造成不可逆影响的行为。"
           />
           <Form form={form} layout="vertical" requiredMark={false}>
@@ -265,7 +265,7 @@ export default function ScopeManagementPage() {
             setSaving(true)
             const updated = await updateScope(editingScope.scope, { category: values.category }, code)
             setScopes((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
-            message.success(`已更新 ${updated.scope} 的分类`)
+            message.success(`已更新 ${updated.scope} 的权限分类`)
             closeEditModal()
             setTwoFactorPromptOpen(false)
           } catch (err) {

@@ -87,7 +87,7 @@ export default function ResultView({
               onOpenEntry={onOpenEntry}
             />
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 Wiki 首页" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无知识库首页" />
           )}
         </section>
 

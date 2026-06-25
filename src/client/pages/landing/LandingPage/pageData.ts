@@ -111,7 +111,7 @@ export const landingNavGroups: LandingNavGroup[] = [
       {
         label: '稿件生产',
         path: '/content-growth?stage=production&writerMode=single',
-        description: '选择策略 seed，生产主稿、变体和后续内容包。',
+        description: '选择策略种子，生产主稿、变体和后续内容包。',
         icon: FileText,
       },
       {
@@ -179,7 +179,7 @@ export const productionSteps = [
   {
     icon: Database,
     title: '知识库生成',
-    text: '从素材中提取痛点、热点、解决方案、选题、搜索入口和 Wiki 条目。',
+    text: '从素材中提取痛点、热点、解决方案、选题、搜索入口和知识库条目。',
   },
   {
     icon: Network,
@@ -189,7 +189,7 @@ export const productionSteps = [
   {
     icon: FileText,
     title: '主内容生成',
-    text: '围绕选题 seed 生成长文/主稿，保留来源矩阵、metadata 和内容产物路径。',
+    text: '围绕选题种子生成长文/主稿，保留来源矩阵、metadata 和内容产物路径。',
   },
   {
     icon: Wand2,
@@ -224,8 +224,8 @@ export const productionSteps = [
 ]
 
 export const productionFlow = [
-  ['从素材到选题', '对标内容、评论需求和业务目标进入知识库，生成可生产的选题 seed。'],
-  ['从选题到内容包', '一个 seed 生成主稿，再拆出标题、图文卡、短视频旁白和封面方向。'],
+  ['从素材到选题', '对标内容、评论需求和业务目标进入知识库，生成可生产的选题种子。'],
+  ['从选题到内容包', '一个种子生成主稿，再拆出标题、图文卡、短视频旁白和封面方向。'],
   ['从发布到转化', '按平台重写表达，设计评论、私信、到店、预约和购买承接动作。'],
   ['从复盘到资产库', '把表现数据、用户问题和新素材回写，下一轮继续复用。'],
 ]

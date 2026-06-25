@@ -232,7 +232,7 @@ export default function DailyWriterPage({
 
   const submit = async () => {
     if (!selectedMatrixId || !selectedSeedId) {
-      setError('请先选择一个已完成的选题策略和 seed')
+      setError('请先选择一个已完成的选题策略和种子')
       return
     }
     setSubmitting(true)
@@ -309,7 +309,7 @@ export default function DailyWriterPage({
           autoFocus
           defaultValue={nextTitle}
           maxLength={255}
-          placeholder={String(job.summary.title || job.row.topic || `Seed ${job.seed_id}`)}
+          placeholder={String(job.summary.title || job.row.topic || `种子 ${job.seed_id}`)}
           onChange={(event) => {
             nextTitle = event.target.value
           }}
@@ -331,7 +331,7 @@ export default function DailyWriterPage({
   }
 
   const columns: ColumnsType<MatrixRow> = [
-    { title: 'Seed', dataIndex: 'seed_id', width: 96, fixed: 'left' },
+    { title: '种子', dataIndex: 'seed_id', width: 96, fixed: 'left' },
     { title: '选题', dataIndex: 'topic', width: 280, ellipsis: true },
     { title: '痛点', dataIndex: 'pain_point', width: 260, ellipsis: true },
     { title: '解决方案', dataIndex: 'solution', width: 260, ellipsis: true },
@@ -445,7 +445,7 @@ function WriterTaskRail({
     <aside className="growth-task-rail">
       <Flex align="center" justify="space-between" gap={10} className="growth-task-rail-head">
         <div>
-          <Typography.Text className="growth-eyebrow">Article Tasks</Typography.Text>
+          <Typography.Text className="growth-eyebrow">稿件任务</Typography.Text>
           <Typography.Title level={5} className="growth-rail-title">稿件任务</Typography.Title>
         </div>
         <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={onRefresh} />
@@ -465,7 +465,7 @@ function WriterTaskRail({
             >
               <span className="growth-task-card-title">{writerJobTitle(job)}</span>
               <span className="growth-task-card-meta">
-                Seed {job.seed_id} · {formatDateTime(job.created_at)}
+                种子 {job.seed_id} · {formatDateTime(job.created_at)}
               </span>
               <span className="growth-task-card-tags">
                 <Tag color={statusColor(job.status)}>{statusMeta(job.status).label}</Tag>
@@ -578,7 +578,7 @@ function CreateWriterTask({
         <Typography.Text className="growth-eyebrow">新建任务</Typography.Text>
         <Typography.Title level={3}>生成稿件</Typography.Title>
         <Typography.Paragraph>
-          稿件任务以选题任务中的 seed 作为输入。提交后配置会锁定，并沉淀到左侧稿件任务列表。
+          稿件任务以选题任务中的种子作为输入。提交后配置会锁定，并沉淀到左侧稿件任务列表。
         </Typography.Paragraph>
       </div>
 
@@ -605,7 +605,7 @@ function CreateWriterTask({
                         onClick={() => onSelectMatrix(job.id)}
                       >
                         <span>{seedMatrixTaskTitle(job)}</span>
-                        <small>Seed {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)} · {formatDateTime(job.created_at)}</small>
+                        <small>种子 {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)} · {formatDateTime(job.created_at)}</small>
                       </button>
                     </List.Item>
                   )}
@@ -614,7 +614,7 @@ function CreateWriterTask({
                   <div className="growth-config-summary">
                     <ConfigItem label="选题任务" value={shortId(selectedMatrix.id)} />
                     <ConfigItem label="策略类型" value={seedMatrixTaskTitle(selectedMatrix)} />
-                    <ConfigItem label="Seed 数量" value={String(Number(selectedMatrix.summary.seed_count ?? selectedMatrix.params.expected_seed_count ?? 0))} />
+                    <ConfigItem label="种子数量" value={String(Number(selectedMatrix.summary.seed_count ?? selectedMatrix.params.expected_seed_count ?? 0))} />
                   </div>
                 )}
               </>
@@ -622,12 +622,12 @@ function CreateWriterTask({
           },
           {
             key: 'seed',
-            title: '选择 Seed',
+            title: '选择种子',
             nextDisabled: !selectedSeedId,
             content: (
               <>
                 <Input.Search
-                  placeholder="搜索 seed、选题、痛点、方案"
+                  placeholder="搜索种子、选题、痛点、方案"
                   allowClear
                   onSearch={onQueryChange}
                   onChange={(event) => onQueryChange(event.target.value)}
@@ -654,7 +654,7 @@ function CreateWriterTask({
                 />
                 {matrixResult && (
                   <div className="growth-config-summary">
-                    <ConfigItem label="当前 Seed" value={selectedSeedId ?? '-'} />
+                    <ConfigItem label="当前种子" value={selectedSeedId ?? '-'} />
                     <ConfigItem label="选题" value={selectedRow?.topic ?? '-'} />
                     <ConfigItem label="预计篇数" value={selectedRow?.expected_article_count ?? '-'} />
                   </div>
@@ -742,7 +742,7 @@ function WriterGenerationStatus({
         <Space wrap>
           <Tag color="blue">{statusMeta(job.status).label}</Tag>
           {job.queue_position !== null && <Tag>排队 {job.queue_position}</Tag>}
-          <Tag>Seed {job.seed_id}</Tag>
+          <Tag>种子 {job.seed_id}</Tag>
           <Tag>{dailyWriterModeLabel(job.params)}</Tag>
         </Space>
         <Button icon={<ReloadOutlined />} loading={refreshing} onClick={onRefresh}>刷新状态</Button>
@@ -775,18 +775,18 @@ function WriterTaskDetail({
         <div className="growth-panel-heading">
           <Typography.Text className="growth-eyebrow">稿件任务详情</Typography.Text>
           <Typography.Title level={3}>{writerJobTitle(job)}</Typography.Title>
-          <Typography.Paragraph>配置已锁定。你可以查看生成结果，或基于同一个 seed 新建一轮稿件任务。</Typography.Paragraph>
+          <Typography.Paragraph>配置已锁定。你可以查看生成结果，或基于同一个种子新建一轮稿件任务。</Typography.Paragraph>
         </div>
         <Space wrap>
           <Button icon={<ReloadOutlined />} onClick={onRefresh}>刷新</Button>
-          {result && <Button icon={<DownloadOutlined />} onClick={onDownload}>下载 ZIP</Button>}
-          <Button type="primary" onClick={onCreateFromCurrent}>基于同一 seed 新建任务</Button>
+          {result && <Button icon={<DownloadOutlined />} onClick={onDownload}>下载压缩包</Button>}
+          <Button type="primary" onClick={onCreateFromCurrent}>基于同一种子新建任务</Button>
         </Space>
       </Flex>
 
       <div className="growth-readonly-summary">
         <ConfigItem label="输入选题任务" value={shortId(job.source_seed_matrix_job_id)} />
-        <ConfigItem label="Seed" value={job.seed_id} />
+        <ConfigItem label="种子" value={job.seed_id} />
         <ConfigItem label="生产模式" value={dailyWriterModeLabel(job.params)} />
         <ConfigItem label="稿件数量" value={`${articleCountFromParams(job.params)} 篇`} />
         <ConfigItem label="插图" value={artworkStatus} />
@@ -806,7 +806,7 @@ function WriterTaskDetail({
         <div className="growth-table-section">
           <ArticlePreviewTabs
             result={result}
-            tabBarExtraContent={<Button icon={<DownloadOutlined />} onClick={onDownload}>下载 ZIP</Button>}
+            tabBarExtraContent={<Button icon={<DownloadOutlined />} onClick={onDownload}>下载压缩包</Button>}
           />
         </div>
       ) : (
@@ -877,7 +877,7 @@ function shortId(value: string): string {
 }
 
 function writerJobTitle(job: Pick<DailyWriterJobSummary, 'id' | 'seed_id' | 'summary' | 'row' | 'title'>): string {
-  return job.title || String(job.summary.title || job.row.topic || `Seed ${job.seed_id}` || job.id)
+  return job.title || String(job.summary.title || job.row.topic || `种子 ${job.seed_id}` || job.id)
 }
 
 function seedMatrixTaskTitle(job: Pick<SeedMatrixJobSummary, 'title' | 'params'>): string {

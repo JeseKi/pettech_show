@@ -252,7 +252,7 @@ export default function SocialCardVideosPage() {
       <aside className="growth-task-rail">
         <Flex align="center" justify="space-between" gap={10} className="growth-task-rail-head">
           <div>
-            <Typography.Text className="growth-eyebrow">Video</Typography.Text>
+            <Typography.Text className="growth-eyebrow">视频任务</Typography.Text>
             <Typography.Title level={5} className="growth-rail-title">视频任务</Typography.Title>
           </div>
           <Button size="small" icon={<ReloadOutlined />} loading={loadingHistory} onClick={() => void loadVideoJobs()} />
@@ -490,7 +490,7 @@ function CreateVideoTask({
                     value={voiceText}
                     rows={5}
                     maxLength={2000}
-                    placeholder="可留空，Agent 会根据图文内容自动生成。"
+                    placeholder="可留空，智能体会根据图文内容自动生成。"
                     onChange={(event) => onVoiceTextChange(event.target.value)}
                   />
                 </Form.Item>
@@ -605,7 +605,7 @@ function VideoTaskDetail({
         </div>
         <Space wrap>
           <Button icon={<ReloadOutlined />} onClick={onRefresh}>刷新</Button>
-          {result && <Button icon={<DownloadOutlined />} onClick={onDownload}>下载 ZIP</Button>}
+          {result && <Button icon={<DownloadOutlined />} onClick={onDownload}>下载压缩包</Button>}
           <Button type="primary" onClick={onCreateFromCurrent}>基于同一图文新建任务</Button>
         </Space>
       </Flex>

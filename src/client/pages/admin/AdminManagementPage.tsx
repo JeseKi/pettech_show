@@ -35,7 +35,7 @@ const tabItems = [
     label: (
       <span>
         <LockOutlined />
-        Scope 管理
+        权限范围管理
       </span>
     ),
     children: <ScopeManagementPage />,
@@ -65,7 +65,7 @@ const tabItems = [
     label: (
       <span>
         <AppstoreAddOutlined />
-        Agent 市场
+        智能体市场
       </span>
     ),
     children: <AgentMarketManagementPage />,
@@ -75,7 +75,7 @@ const tabItems = [
     label: (
       <span>
         <AppstoreAddOutlined />
-        Skill 市场
+        技能市场
       </span>
     ),
     children: <SkillMarketManagementPage />,

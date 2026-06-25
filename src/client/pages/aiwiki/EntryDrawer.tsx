@@ -27,7 +27,7 @@ export default function EntryDrawer({
       width={720}
       open={Boolean(entry)}
       onClose={onClose}
-      title={entry?.title ?? 'Wiki 词条'}
+      title={entry?.title ?? '知识库词条'}
     >
       {entry && (
         <Flex vertical gap={16}>

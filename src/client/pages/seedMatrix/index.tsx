@@ -179,7 +179,7 @@ export default function SeedMatrixPage({
   const columns: ColumnsType<MatrixRow> = [
     { title: '天', dataIndex: 'day', width: 72, fixed: 'left' },
     { title: 'Slot', dataIndex: 'slot', width: 72 },
-    { title: 'Seed', dataIndex: 'seed_id', width: 96 },
+    { title: '种子', dataIndex: 'seed_id', width: 96 },
     { title: '内容池', dataIndex: 'content_pool', width: 180, ellipsis: true },
     { title: '选题', dataIndex: 'topic', width: 280, ellipsis: true },
     { title: '痛点', dataIndex: 'pain_point', width: 260, ellipsis: true },
@@ -370,7 +370,7 @@ export default function SeedMatrixPage({
       </main>
 
       <Drawer
-        title={activeRow?.topic ?? 'Seed 详情'}
+        title={activeRow?.topic ?? '种子详情'}
         open={Boolean(activeRow)}
         onClose={() => setActiveRow(null)}
         width={620}
@@ -428,7 +428,7 @@ function TaskRail({
               </span>
               <span className="growth-task-card-tags">
                 <Tag color={statusColor(job.status)}>{statusMeta(job.status).label}</Tag>
-                <Tag>Seed {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)}</Tag>
+                <Tag>种子 {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)}</Tag>
                 <Tag>Slot {Number(job.params.slots_per_day ?? 0)}</Tag>
               </span>
               <Popconfirm
@@ -566,7 +566,7 @@ function CreateMatrixTask({
                   }))}
                 />
                 <div className="growth-config-summary">
-                  <ConfigItem label="Seed 数量" value={String(modeConfig.defaults.expected_seed_count)} />
+                  <ConfigItem label="种子数量" value={String(modeConfig.defaults.expected_seed_count)} />
                   <ConfigItem label="每日 Slot" value={String(modeConfig.defaults.slots_per_day)} />
                   <ConfigItem label="模式" value={modeConfig.navLabel} />
                 </div>
@@ -576,13 +576,13 @@ function CreateMatrixTask({
                       {(fields, { add, remove }) => (
                         <Flex vertical gap={8}>
                           <Flex align="center" justify="space-between" gap={8}>
-                            <Typography.Text>Hooks</Typography.Text>
+                            <Typography.Text>引流钩子</Typography.Text>
                             <Button size="small" icon={<PlusOutlined />} onClick={() => add('')}>新增</Button>
                           </Flex>
                           {fields.map((field, index) => (
                             <Flex key={field.key} align="flex-start" gap={8}>
                               <Form.Item {...field} style={{ flex: 1, marginBottom: 0 }}>
-                                <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} placeholder={`Hook ${index + 1}，可多行输入`} />
+                                <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} placeholder={`引流钩子 ${index + 1}，可多行输入`} />
                               </Form.Item>
                               <Button
                                 danger
@@ -673,7 +673,7 @@ function MatrixTaskDetail({
       <div className="growth-readonly-summary">
         <ConfigItem label="输入知识库" value={shortId(job.source_aiwiki_job_id)} />
         <ConfigItem label="生成模式" value={seedMatrixModeLabel(job.params)} />
-        <ConfigItem label="Seed 数量" value={String(Number(job.params.expected_seed_count ?? result?.summary.seed_count ?? 0))} />
+        <ConfigItem label="种子数量" value={String(Number(job.params.expected_seed_count ?? result?.summary.seed_count ?? 0))} />
         <ConfigItem label="每日 Slot" value={String(Number(job.params.slots_per_day ?? 0))} />
         <ConfigItem label="状态" value={statusMeta(job.status).label} />
         <ConfigItem label="创建时间" value={formatDateTime(job.created_at)} />
@@ -688,7 +688,7 @@ function MatrixTaskDetail({
             <Typography.Title level={4}>策略表结果</Typography.Title>
             <Space wrap>
               <Input.Search
-                placeholder="搜索 seed、选题、痛点、方案"
+                placeholder="搜索种子、选题、痛点、方案"
                 allowClear
                 value={query}
                 onSearch={onQueryChange}
@@ -700,7 +700,7 @@ function MatrixTaskDetail({
             </Space>
           </Flex>
           <div className="growth-readonly-summary is-compact">
-            <ConfigItem label="Seed" value={String(Number(result.summary.seed_count ?? 0))} />
+            <ConfigItem label="种子" value={String(Number(result.summary.seed_count ?? 0))} />
             <ConfigItem label="覆盖天数" value={String(Number(result.summary.day_count ?? 0))} />
             <ConfigItem label="预计文章" value={String(Number(result.summary.expected_article_total ?? 0))} />
             <ConfigItem label="账号类型" value={String(Number(result.summary.account_type_count ?? 0))} />
@@ -803,21 +803,21 @@ function ConfigItem({ label, value }: { label: string; value: string }) {
 
 function SeedDetail({ row }: { row: MatrixRow }) {
   const fields = [
-    ['seed_id', 'Seed'],
+    ['seed_id', '种子'],
     ['day', '天'],
     ['slot', 'Slot'],
     ['content_pool', '内容池'],
     ['topic', '选题'],
     ['pain_point', '痛点'],
     ['solution', '解决方案'],
-    ['hook', '钩子'],
-    ['mother_topic_prompt', '母题 Prompt'],
+    ['hook', '引流钩子'],
+    ['mother_topic_prompt', '母题提示词'],
     ['variant_ids_to_generate', '变体 ID'],
     ['expected_article_count', '预计篇数'],
     ['primary_account_type', '主账号类型'],
     ['backup_account_types', '备选账号类型'],
-    ['hook_package', 'Hook 包'],
-    ['primary_hook_ids', 'Hook IDs'],
+    ['hook_package', '引流钩子包'],
+    ['primary_hook_ids', '引流钩子 ID'],
     ['cta_strategy', 'CTA 策略'],
     ['publishing_note', '发布备注'],
   ]

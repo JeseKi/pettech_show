@@ -96,6 +96,15 @@ function uploadStatusColor(status: string): string {
   return 'processing'
 }
 
+function statusLabel(status: string): string {
+  if (status === 'completed') return '已完成'
+  if (status === 'partial_failed') return '部分失败'
+  if (status === 'failed') return '失败'
+  if (status === 'running') return '运行中'
+  if (status === 'queued') return '排队中'
+  return status
+}
+
 export default function DistributionStagePage() {
   const { message } = App.useApp()
   const { user } = useAuth()
@@ -214,7 +223,7 @@ export default function DistributionStagePage() {
       <aside className="growth-task-rail">
         <Flex align="center" justify="space-between" gap={8} className="growth-task-rail-head">
           <div>
-            <Typography.Text className="growth-eyebrow">Distribution</Typography.Text>
+            <Typography.Text className="growth-eyebrow">分发任务</Typography.Text>
             <Typography.Title level={5} className="growth-rail-title">待分发内容</Typography.Title>
           </div>
           <Button
@@ -254,7 +263,7 @@ export default function DistributionStagePage() {
                   </span>
                   <span className="growth-task-card-tags">
                     <Tag>{sourceLabel(sourceType)}</Tag>
-                    <Tag color={job.status === 'completed' ? 'success' : 'warning'}>{job.status}</Tag>
+                    <Tag color={job.status === 'completed' ? 'success' : 'warning'}>{statusLabel(job.status)}</Tag>
                   </span>
                 </button>
               </List.Item>
@@ -268,7 +277,7 @@ export default function DistributionStagePage() {
           <Flex align="center" justify="space-between" gap={12} wrap="wrap">
             <div className="growth-panel-heading">
               <Typography.Text className="growth-eyebrow">分发中心</Typography.Text>
-              <Typography.Title level={4}>上传到 Info Distribution</Typography.Title>
+              <Typography.Title level={4}>上传到信息分发平台</Typography.Title>
               <Typography.Text type="secondary">集中处理稿件、图文和视频的远端项目、主题、账号和排期。</Typography.Text>
             </div>
             <Button
@@ -339,7 +348,7 @@ function UploadHistory({ jobs, loading }: { jobs: DistributionUploadJob[]; loadi
             <Flex vertical gap={8} style={{ width: '100%' }}>
               <Flex align="center" justify="space-between" gap={12} wrap="wrap">
                 <Space wrap>
-                  <Tag color={uploadStatusColor(job.status)}>{job.status}</Tag>
+                  <Tag color={uploadStatusColor(job.status)}>{statusLabel(job.status)}</Tag>
                   <Tag>{uploadTypeLabel(job.upload_type)}</Tag>
                   <Typography.Text strong>{job.id}</Typography.Text>
                 </Space>

@@ -1582,7 +1582,7 @@ export default function InteractiveMoviePage() {
           <WorkbenchHomeButton className="movie-mobile-workbench-home" />
           <Flex align="center" gap={12} className="movie-project-heading">
             <div>
-              <Typography.Text className="movie-kicker">云端项目 / GalGame 式编辑器 MVP</Typography.Text>
+              <Typography.Text className="movie-kicker">云端项目 / 互动电影创作平台 MVP</Typography.Text>
               <Input
                 variant="borderless"
                 value={activeProject.title}
@@ -2201,7 +2201,7 @@ function SceneEditor({
       </section>
 
       <section className="movie-panel-section">
-        <Typography.Text className="movie-panel-label">视频 Prompt</Typography.Text>
+        <Typography.Text className="movie-panel-label">视频提示词</Typography.Text>
         <div className="movie-prompt-template">
           <Typography.Text className="movie-panel-label">结构化视频提示词</Typography.Text>
           <div className="movie-prompt-tips">
@@ -2259,7 +2259,7 @@ function SceneEditor({
           onChange={(event) => updatePromptParts({ constraints: event.target.value })}
           placeholder="约束：不出现文字水印，不切换主角，主体一致"
         />
-        <Typography.Text className="movie-panel-label">最终 Prompt</Typography.Text>
+        <Typography.Text className="movie-panel-label">最终提示词</Typography.Text>
         <Input.TextArea
           value={scene.script.videoPrompt || generatedPrompt}
           autoSize={{ minRows: 3, maxRows: 6 }}

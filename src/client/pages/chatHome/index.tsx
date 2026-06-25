@@ -748,7 +748,7 @@ export default function ChatHomePage() {
       if (capabilityMarketOpen) {
         await loadSkillMarket()
       }
-      message.success('Skill 已添加到智能体')
+      message.success('技能已添加到智能体')
     } catch (err) {
       message.error(resolveErrorMessage(err))
     } finally {
@@ -764,7 +764,7 @@ export default function ChatHomePage() {
       if (capabilityMarketOpen) {
         await loadSkillMarket()
       }
-      message.success('Skill 已从智能体移除')
+      message.success('技能已从智能体移除')
     } catch (err) {
       message.error(resolveErrorMessage(err))
     } finally {
@@ -1211,7 +1211,7 @@ export default function ChatHomePage() {
             ))
           ) : (
             <p className="chat-skill-mention-empty">
-              {mySkills.length > 0 ? '没有匹配的 Skill' : '暂无已添加 Skill'}
+              {mySkills.length > 0 ? '没有匹配的技能' : '暂无已添加技能'}
             </p>
           )}
         </div>
@@ -1524,7 +1524,7 @@ export default function ChatHomePage() {
               <div className="chat-capability-block">
                 <div className="chat-capability-block-title">
                   <Store size={13} />
-                  <span>Skill</span>
+                  <span>技能</span>
                 </div>
                 <div className="chat-installed-list">
                   {skillsLoading && mySkills.length === 0 ? (
@@ -1532,7 +1532,7 @@ export default function ChatHomePage() {
                   ) : mySkills.length > 0 ? (
                     mySkills.map(renderInstalledSkillItem)
                   ) : (
-                    <p className="chat-skill-empty">还没有添加 Skill</p>
+                    <p className="chat-skill-empty">还没有添加技能</p>
                   )}
                 </div>
               </div>
@@ -1659,7 +1659,7 @@ export default function ChatHomePage() {
             onClick={() => setCapabilityMarketMode('agents')}
           >
             <Bot size={14} />
-            <span>Agent</span>
+            <span>智能体</span>
           </button>
           <button
             className={capabilityMarketMode === 'skills' ? 'is-active' : ''}
@@ -1667,17 +1667,17 @@ export default function ChatHomePage() {
             onClick={() => setCapabilityMarketMode('skills')}
           >
             <Store size={14} />
-            <span>Skill</span>
+            <span>技能</span>
           </button>
         </div>
 
         {capabilityMarketMode === 'agents' ? (
-          <section className="chat-capability-modal-section" aria-label="Agent 市场">
+          <section className="chat-capability-modal-section" aria-label="智能体市场">
             <label className="chat-skill-search">
               <Search size={14} />
               <input
                 onChange={(event) => setAgentSearchDraft(event.target.value)}
-                placeholder="搜索 Agent"
+                placeholder="搜索智能体"
                 type="search"
                 value={agentSearchDraft}
               />
@@ -1711,17 +1711,17 @@ export default function ChatHomePage() {
               ) : visibleAgents.length > 0 ? (
                 visibleAgents.map(renderMarketAgentCard)
               ) : (
-                <p className="chat-skill-empty">暂无可用 Agent</p>
+                <p className="chat-skill-empty">暂无可用智能体</p>
               )}
             </div>
           </section>
         ) : (
-          <section className="chat-capability-modal-section" aria-label="Skill 市场">
+          <section className="chat-capability-modal-section" aria-label="技能市场">
             <label className="chat-skill-search">
               <Search size={14} />
               <input
                 onChange={(event) => setSkillSearchDraft(event.target.value)}
-                placeholder="搜索 Skill"
+                placeholder="搜索技能"
                 type="search"
                 value={skillSearchDraft}
               />
@@ -1755,7 +1755,7 @@ export default function ChatHomePage() {
               ) : marketSkills.length > 0 ? (
                 marketSkills.map((skill) => renderSkillCard(skill, 'market'))
               ) : (
-                <p className="chat-skill-empty">暂无可用 Skill</p>
+                <p className="chat-skill-empty">暂无可用技能</p>
               )}
             </div>
             {renderSkillPagination()}

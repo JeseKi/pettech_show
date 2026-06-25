@@ -29,7 +29,7 @@ const DETAIL_MODULES = [
   { key: 'daily-writer', label: '长文生成' },
   { key: 'scripts', label: '脚本创作' },
   { key: 'capabilities', label: '能力任务' },
-  { key: 'agent-skills', label: 'Skill' },
+  { key: 'agent-skills', label: '技能' },
   { key: 'interactive-movie', label: '互动电影' },
   { key: 'users', label: '用户' },
   { key: 'chat', label: '智能体聊天' },
@@ -121,6 +121,99 @@ function formatCell(value: unknown): string {
   if (typeof value === 'boolean') return value ? '是' : '否'
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
+}
+
+const ROW_FIELD_LABELS: Record<string, string> = {
+  id: 'ID',
+  key: '键',
+  title: '标题',
+  status: '状态',
+  owner_user_id: '用户 ID',
+  asset_count: '资产数',
+  created_at: '创建时间',
+  started_at: '开始时间',
+  finished_at: '完成时间',
+  updated_at: '更新时间',
+  mode: '模式',
+  article_count: '长文数',
+  capability_key: '能力标识',
+  capability_label: '能力名称',
+  group: '能力分组',
+  skill_id: '技能 ID',
+  current_user_count: '当前添加用户数',
+  add_events: '添加次数',
+  remove_events: '移除次数',
+  is_published: '已发布',
+  username: '用户名',
+  role: '角色',
+}
+
+const ROW_FIELD_ORDER = [
+  'id',
+  'title',
+  'username',
+  'status',
+  'role',
+  'mode',
+  'capability_label',
+  'capability_key',
+  'group',
+  'owner_user_id',
+  'skill_id',
+  'asset_count',
+  'article_count',
+  'current_user_count',
+  'add_events',
+  'remove_events',
+  'is_published',
+  'created_at',
+  'started_at',
+  'finished_at',
+  'updated_at',
+]
+
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  queued: { label: '排队中', color: 'default' },
+  running: { label: '运行中', color: 'blue' },
+  completed: { label: '已完成', color: 'green' },
+  failed: { label: '失败', color: 'red' },
+}
+
+const ROW_VALUE_LABELS: Record<string, Record<string, string>> = {
+  role: {
+    admin: '管理员',
+    user: '普通用户',
+  },
+  status: Object.fromEntries(Object.entries(STATUS_LABELS).map(([key, value]) => [key, value.label])),
+  group: {
+    'competitor-insights': '竞品洞察',
+    'topic-planning': '选题策划',
+    'script-creation': '脚本创作',
+    unknown: '未知分组',
+  },
+}
+
+const DATE_FIELD_KEYS = new Set(['created_at', 'started_at', 'finished_at', 'updated_at'])
+
+function labelForRowField(key: string): string {
+  return ROW_FIELD_LABELS[key] ?? key
+}
+
+function fieldOrder(key: string): number {
+  const index = ROW_FIELD_ORDER.indexOf(key)
+  return index >= 0 ? index : ROW_FIELD_ORDER.length
+}
+
+function formatRowCell(key: string, value: unknown): string {
+  if (DATE_FIELD_KEYS.has(key) && typeof value === 'string' && value) {
+    const parsed = dayjs(value)
+    return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : value
+  }
+  const valueMap = ROW_VALUE_LABELS[key]
+  if (valueMap && typeof value === 'string') {
+    return valueMap[value] ?? value
+  }
+  return formatCell(value)
 }
 
 function formatMetricTagValue(value: number | null | undefined, unit: string): string {
@@ -247,7 +340,7 @@ export default function AdminMonitoringPage() {
       <Flex align="center" justify="space-between" gap={12} wrap="wrap">
         <Space direction="vertical" size={0}>
           <Typography.Title level={4} style={{ margin: 0 }}>监控概览</Typography.Title>
-          <Typography.Text type="secondary">企业数据资产、内容生产、脚本、Skill 和智能体使用情况。</Typography.Text>
+          <Typography.Text type="secondary">企业数据资产、内容生产、脚本、技能和智能体使用情况。</Typography.Text>
         </Space>
         <Space wrap>
           <RangePicker
@@ -551,15 +644,17 @@ function MiniBreakdown({ module }: { module: MonitoringModule }) {
 
 function RowsTable({ rows, loading }: { rows: Array<Record<string, unknown>>; loading: boolean }) {
   const columns = useMemo<TableColumnsType<Record<string, unknown>>>(() => {
-    const keys = Array.from(new Set(rows.flatMap((row) => Object.keys(row)))).slice(0, 10)
+    const keys = Array.from(new Set(rows.flatMap((row) => Object.keys(row))))
+      .sort((left, right) => fieldOrder(left) - fieldOrder(right) || left.localeCompare(right))
+      .slice(0, 10)
     return keys.map((key) => ({
       dataIndex: key,
-      title: key,
+      title: labelForRowField(key),
       ellipsis: true,
       render: (value: unknown) => (
         key === 'status'
-          ? <Tag color={value === 'completed' ? 'green' : value === 'failed' ? 'red' : 'blue'}>{formatCell(value)}</Tag>
-          : <Typography.Text>{formatCell(value)}</Typography.Text>
+          ? <Tag color={typeof value === 'string' ? STATUS_LABELS[value]?.color ?? 'blue' : 'blue'}>{formatRowCell(key, value)}</Tag>
+          : <Typography.Text>{formatRowCell(key, value)}</Typography.Text>
       ),
     }))
   }, [rows])

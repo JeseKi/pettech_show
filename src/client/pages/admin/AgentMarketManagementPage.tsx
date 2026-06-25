@@ -104,7 +104,7 @@ export default function AgentMarketManagementPage() {
       setTags(nextTags)
       setLastError(null)
     } catch (error) {
-      showRequestError('加载 Agent 市场失败', error)
+      showRequestError('加载智能体市场失败', error)
     } finally {
       setLoading(false)
     }
@@ -138,7 +138,7 @@ export default function AgentMarketManagementPage() {
       })
       setAgentModalOpen(true)
     } catch (error) {
-      showRequestError('加载 Agent 详情失败', error)
+      showRequestError('加载智能体详情失败', error)
     } finally {
       setLoading(false)
     }
@@ -258,8 +258,8 @@ export default function AgentMarketManagementPage() {
 
   const confirmDeleteAgent = (agent: AgentMarketItem) => {
     Modal.confirm({
-      title: `停用 Agent「${agent.name}」？`,
-      content: 'Agent 会从用户市场隐藏，已有会话仍会保留已锁定的 Prompt 版本。',
+      title: `停用智能体「${agent.name}」？`,
+      content: '智能体会从用户市场隐藏，已有会话仍会保留已锁定的提示词版本。',
       okText: '确认停用',
       okButtonProps: { danger: true },
       cancelText: '取消',
@@ -268,7 +268,7 @@ export default function AgentMarketManagementPage() {
           await deleteAdminAgent(agent.id)
           await loadAll()
         } catch (error) {
-          showRequestError('停用 Agent 失败', error)
+          showRequestError('停用智能体失败', error)
           throw error
         }
       },
@@ -278,7 +278,7 @@ export default function AgentMarketManagementPage() {
   const confirmDeleteCategory = (category: AgentCategory) => {
     Modal.confirm({
       title: `删除分类「${category.name}」？`,
-      content: '如果已有 Agent 使用这个分类，删除会被拒绝。',
+      content: '如果已有智能体使用这个分类，删除会被拒绝。',
       okText: '确认删除',
       okButtonProps: { danger: true },
       cancelText: '取消',
@@ -297,7 +297,7 @@ export default function AgentMarketManagementPage() {
   const confirmDeleteTag = (tag: AgentTag) => {
     Modal.confirm({
       title: `删除标签「${tag.name}」？`,
-      content: '会从已关联的 Agent 上移除这个标签。',
+      content: '会从已关联的智能体上移除这个标签。',
       okText: '确认删除',
       okButtonProps: { danger: true },
       cancelText: '取消',
@@ -327,7 +327,7 @@ export default function AgentMarketManagementPage() {
 
   const agentColumns: ColumnsType<AgentMarketItem> = [
     {
-      title: 'Agent',
+      title: '智能体',
       dataIndex: 'name',
       key: 'name',
       render: (_value, record) => (
@@ -431,9 +431,9 @@ export default function AgentMarketManagementPage() {
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Space align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
         <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>Agent 市场</Typography.Title>
+          <Typography.Title level={4} style={{ margin: 0 }}>智能体市场</Typography.Title>
           <Typography.Text type="secondary">
-            维护会话级 System Prompt；Skill 仍通过 @ 在单轮消息中混用。
+            维护会话级系统提示词；技能仍通过 @ 在单轮消息中混用。
           </Typography.Text>
         </div>
         <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadAll()}>
@@ -447,11 +447,11 @@ export default function AgentMarketManagementPage() {
         items={[
           {
             key: 'agents',
-            label: 'Agent',
+            label: '智能体',
             children: (
               <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                 <Button type="primary" icon={<PlusOutlined />} onClick={openCreateAgent}>
-                  添加 Agent
+                  添加智能体
                 </Button>
                 <Table rowKey="id" columns={agentColumns} dataSource={agents} loading={loading} pagination={false} />
               </Space>
@@ -485,24 +485,24 @@ export default function AgentMarketManagementPage() {
       />
 
       <Modal
-        title={editingAgent ? `编辑 Agent：${editingAgent.name}` : '添加 Agent'}
+        title={editingAgent ? `编辑智能体：${editingAgent.name}` : '添加智能体'}
         open={agentModalOpen}
         confirmLoading={saving}
         width={760}
         onCancel={() => setAgentModalOpen(false)}
         onOk={() => {
-          void saveAgent().catch((error) => showRequestError('保存 Agent 失败', error))
+          void saveAgent().catch((error) => showRequestError('保存智能体失败', error))
         }}
       >
         <Form form={agentForm} layout="vertical" initialValues={emptyAgentFormValues}>
-          <Form.Item label="Agent ID" name="id" rules={[{ required: true, message: '请输入 Agent ID' }]}>
+          <Form.Item label="智能体 ID" name="id" rules={[{ required: true, message: '请输入智能体 ID' }]}>
             <Input disabled={Boolean(editingAgent)} placeholder="例如 pet-content-director" />
           </Form.Item>
           <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
             <Input placeholder="例如 宠物内容总监" />
           </Form.Item>
           <Form.Item label="描述" name="description" rules={[{ required: true, message: '请输入描述' }]}>
-            <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} placeholder="说明这个 Agent 的角色、适用对象和任务边界" />
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} placeholder="说明这个智能体的角色、适用对象和任务边界" />
           </Form.Item>
           <Form.Item label="分类" name="category_id" rules={[{ required: true, message: '请选择分类' }]}>
             <Select options={categoryOptions} placeholder="选择分类" />
@@ -523,11 +523,11 @@ export default function AgentMarketManagementPage() {
               <Switch disabled={editingAgent.protected || editingAgent.is_default} />
             </Form.Item>
           )}
-          <Form.Item label="System Prompt" name="system_prompt" rules={[{ required: true, message: '请输入 System Prompt' }]}>
-            <Input.TextArea autoSize={{ minRows: 12, maxRows: 22 }} placeholder="写入这个 Agent 的身份、目标、边界、输出要求和风格..." />
+          <Form.Item label="系统提示词" name="system_prompt" rules={[{ required: true, message: '请输入系统提示词' }]}>
+            <Input.TextArea autoSize={{ minRows: 12, maxRows: 22 }} placeholder="写入这个智能体的身份、目标、边界、输出要求和风格..." />
           </Form.Item>
           <Form.Item label="版本备注" name="change_note">
-            <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} placeholder={editingAgent ? '说明这次 Prompt 更新的原因' : '初始版本'} />
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} placeholder={editingAgent ? '说明这次提示词更新的原因' : '初始版本'} />
           </Form.Item>
         </Form>
       </Modal>
@@ -593,4 +593,3 @@ export default function AgentMarketManagementPage() {
     </Space>
   )
 }
-
