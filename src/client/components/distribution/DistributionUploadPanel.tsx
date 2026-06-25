@@ -65,8 +65,8 @@ export default function DistributionUploadPanel({
   const [plan, setPlan] = useState<DistributionUploadPlan | null>(null)
   const [uploadResult, setUploadResult] = useState<DistributionUploadResult | null>(null)
 
-  const projects = directory?.project_themes.projects ?? []
-  const themes = directory?.project_themes.themes ?? []
+  const projects = useMemo(() => directory?.project_themes.projects ?? [], [directory])
+  const themes = useMemo(() => directory?.project_themes.themes ?? [], [directory])
   const selectedProject = projects.find((project) => project.id === projectId) ?? null
   const themeIds = projectThemeIds(selectedProject)
   const themeOptions = themes.filter((theme) => !themeIds.length || themeIds.includes(theme.id))

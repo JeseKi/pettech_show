@@ -54,6 +54,7 @@ import {
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import { formatDateTime, progressEventColor, statusMeta } from '../aiwiki/helpers'
 import { DAILY_WRITER_MODES, dailyWriterModeLabel, seedMatrixModeLabel, type DailyWriterModeId } from '../../lib/workflowModes'
+import { StepWizard } from '../../components/workflow/StepWizard'
 import '../seedMatrix/GrowthWorkflow.css'
 
 type MatrixRow = Record<string, string>
@@ -581,125 +582,139 @@ function CreateWriterTask({
         </Typography.Paragraph>
       </div>
 
-      <div className="growth-create-grid growth-create-grid-large">
-        <section className="growth-config-section">
-          <Flex align="center" justify="space-between" gap={12}>
-            <Typography.Title level={5}>输入选题任务</Typography.Title>
-            <Button size="small" icon={<ReloadOutlined />} loading={loadingMatrices} onClick={onRefreshMatrices} />
-          </Flex>
-          <List
-            className="growth-input-source-list"
-            loading={loadingMatrices}
-            dataSource={matrixJobs}
-            locale={{ emptyText: '暂无已完成选题任务' }}
-            renderItem={(job) => (
-              <List.Item>
-                <button
-                  type="button"
-                  className={job.id === selectedMatrixId ? 'growth-input-source is-active' : 'growth-input-source'}
-                  onClick={() => onSelectMatrix(job.id)}
-                >
-                  <span>{seedMatrixTaskTitle(job)}</span>
-                  <small>Seed {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)} · {formatDateTime(job.created_at)}</small>
-                </button>
-              </List.Item>
-            )}
-          />
-          {selectedMatrix && (
-            <div className="growth-config-summary">
-              <ConfigItem label="选题任务" value={shortId(selectedMatrix.id)} />
-              <ConfigItem label="策略类型" value={seedMatrixTaskTitle(selectedMatrix)} />
-              <ConfigItem label="Seed 数量" value={String(Number(selectedMatrix.summary.seed_count ?? selectedMatrix.params.expected_seed_count ?? 0))} />
-            </div>
-          )}
-        </section>
-
-        <section className="growth-config-section">
-          <Typography.Title level={5}>选择 Seed</Typography.Title>
-          <Input.Search
-            placeholder="搜索 seed、选题、痛点、方案"
-            allowClear
-            onSearch={onQueryChange}
-            onChange={(event) => onQueryChange(event.target.value)}
-          />
-          <Table
-            size="small"
-            rowKey={(row) => row.seed_id}
-            columns={columns}
-            dataSource={filteredRows}
-            loading={loadingRows}
-            scroll={{ x: 1280, y: 300 }}
-            pagination={{ pageSize: 6, showSizeChanger: false }}
-            rowSelection={{
-              type: 'radio',
-              selectedRowKeys: selectedSeedId ? [selectedSeedId] : [],
-              onChange: (keys) => {
-                const nextKey = keys[0]
-                if (nextKey) onSelectSeed(String(nextKey))
-              },
-            }}
-            onRow={(row) => ({
-              onClick: () => onSelectSeed(row.seed_id),
-            })}
-          />
-          {matrixResult && (
-            <div className="growth-config-summary">
-              <ConfigItem label="当前 Seed" value={selectedSeedId ?? '-'} />
-              <ConfigItem label="选题" value={selectedRow?.topic ?? '-'} />
-              <ConfigItem label="预计篇数" value={selectedRow?.expected_article_count ?? '-'} />
-            </div>
-          )}
-        </section>
-      </div>
-
-      <section className="growth-config-section">
-        <Typography.Title level={5}>生产配置</Typography.Title>
-        <Segmented
-          block
-          value={mode}
-          onChange={(value) => onModeChange(value as DailyWriterModeId)}
-          options={WRITER_MODE_IDS.map((modeId) => ({
-            label: DAILY_WRITER_MODES[modeId].navLabel,
-            value: modeId,
-          }))}
-        />
-        <div className="growth-writer-config-row">
-          {modeConfig.fixedTotal ? (
-            <ConfigItem label="稿件总数" value={`${modeConfig.fixedTotal} 篇`} />
-          ) : (
-            <label className="growth-number-field">
-              <span>稿件总数</span>
-              <InputNumber
-                min={modeConfig.minTotal}
-                max={modeConfig.maxTotal}
-                value={articleTotal}
-                onChange={(value) => onArticleTotalChange(Number(value ?? modeConfig.defaultTotal))}
-              />
-            </label>
-          )}
-          <label className="growth-switch-field">
-            <span>生成封面/插图</span>
-            <Switch checked={generateArtwork} onChange={onGenerateArtworkChange} />
-          </label>
-          <ConfigItem label="主稿" value="1 篇" />
-          <ConfigItem label="变体" value={`${variantCount} 篇`} />
-          <ConfigItem label="合计产出" value={`${productionTotal} 篇`} />
-        </div>
-      </section>
-
       {error && <Alert type="error" showIcon message={error} />}
-      <div className="growth-primary-action">
-        <Button
-          type="primary"
-          size="large"
-          icon={<PlayCircleOutlined />}
-          loading={submitting}
-          disabled={!selectedMatrixId || !selectedSeedId}
-          onClick={onSubmit}
-        >
-          {modeConfig.buttonText}
-        </Button>
-      </div>
+      <StepWizard
+        steps={[
+          {
+            key: 'matrix',
+            title: '选择选题结果',
+            nextDisabled: !selectedMatrixId,
+            extra: <Button size="small" icon={<ReloadOutlined />} loading={loadingMatrices} onClick={onRefreshMatrices} />,
+            content: (
+              <>
+                <List
+                  className="growth-input-source-list"
+                  loading={loadingMatrices}
+                  dataSource={matrixJobs}
+                  locale={{ emptyText: '暂无已完成选题任务' }}
+                  renderItem={(job) => (
+                    <List.Item>
+                      <button
+                        type="button"
+                        className={job.id === selectedMatrixId ? 'growth-input-source is-active' : 'growth-input-source'}
+                        onClick={() => onSelectMatrix(job.id)}
+                      >
+                        <span>{seedMatrixTaskTitle(job)}</span>
+                        <small>Seed {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)} · {formatDateTime(job.created_at)}</small>
+                      </button>
+                    </List.Item>
+                  )}
+                />
+                {selectedMatrix && (
+                  <div className="growth-config-summary">
+                    <ConfigItem label="选题任务" value={shortId(selectedMatrix.id)} />
+                    <ConfigItem label="策略类型" value={seedMatrixTaskTitle(selectedMatrix)} />
+                    <ConfigItem label="Seed 数量" value={String(Number(selectedMatrix.summary.seed_count ?? selectedMatrix.params.expected_seed_count ?? 0))} />
+                  </div>
+                )}
+              </>
+            ),
+          },
+          {
+            key: 'seed',
+            title: '选择 Seed',
+            nextDisabled: !selectedSeedId,
+            content: (
+              <>
+                <Input.Search
+                  placeholder="搜索 seed、选题、痛点、方案"
+                  allowClear
+                  onSearch={onQueryChange}
+                  onChange={(event) => onQueryChange(event.target.value)}
+                />
+                <Table
+                  size="small"
+                  rowKey={(row) => row.seed_id}
+                  columns={columns}
+                  dataSource={filteredRows}
+                  loading={loadingRows}
+                  scroll={{ x: 1280, y: 300 }}
+                  pagination={{ pageSize: 6, showSizeChanger: false }}
+                  rowSelection={{
+                    type: 'radio',
+                    selectedRowKeys: selectedSeedId ? [selectedSeedId] : [],
+                    onChange: (keys) => {
+                      const nextKey = keys[0]
+                      if (nextKey) onSelectSeed(String(nextKey))
+                    },
+                  }}
+                  onRow={(row) => ({
+                    onClick: () => onSelectSeed(row.seed_id),
+                  })}
+                />
+                {matrixResult && (
+                  <div className="growth-config-summary">
+                    <ConfigItem label="当前 Seed" value={selectedSeedId ?? '-'} />
+                    <ConfigItem label="选题" value={selectedRow?.topic ?? '-'} />
+                    <ConfigItem label="预计篇数" value={selectedRow?.expected_article_count ?? '-'} />
+                  </div>
+                )}
+              </>
+            ),
+          },
+          {
+            key: 'production',
+            title: '生产配置',
+            content: (
+              <>
+                <Segmented
+                  block
+                  value={mode}
+                  onChange={(value) => onModeChange(value as DailyWriterModeId)}
+                  options={WRITER_MODE_IDS.map((modeId) => ({
+                    label: DAILY_WRITER_MODES[modeId].navLabel,
+                    value: modeId,
+                  }))}
+                />
+                <div className="growth-writer-config-row">
+                  {modeConfig.fixedTotal ? (
+                    <ConfigItem label="稿件总数" value={`${modeConfig.fixedTotal} 篇`} />
+                  ) : (
+                    <label className="growth-number-field">
+                      <span>稿件总数</span>
+                      <InputNumber
+                        min={modeConfig.minTotal}
+                        max={modeConfig.maxTotal}
+                        value={articleTotal}
+                        onChange={(value) => onArticleTotalChange(Number(value ?? modeConfig.defaultTotal))}
+                      />
+                    </label>
+                  )}
+                  <label className="growth-switch-field">
+                    <span>生成封面/插图</span>
+                    <Switch checked={generateArtwork} onChange={onGenerateArtworkChange} />
+                  </label>
+                  <ConfigItem label="主稿" value="1 篇" />
+                  <ConfigItem label="变体" value={`${variantCount} 篇`} />
+                  <ConfigItem label="合计产出" value={`${productionTotal} 篇`} />
+                </div>
+              </>
+            ),
+          },
+        ]}
+        submitButton={(
+          <Button
+            type="primary"
+            size="large"
+            icon={<PlayCircleOutlined />}
+            loading={submitting}
+            disabled={!selectedMatrixId || !selectedSeedId}
+            onClick={onSubmit}
+          >
+            {modeConfig.buttonText}
+          </Button>
+        )}
+      />
     </section>
   )
 }

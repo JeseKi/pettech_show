@@ -43,6 +43,7 @@ import {
 } from '../../lib/socialCardVideos'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import { formatDateTime, progressEventColor, statusMeta } from '../aiwiki/helpers'
+import { StepWizard } from '../../components/workflow/StepWizard'
 import '../seedMatrix/GrowthWorkflow.css'
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
@@ -434,107 +435,114 @@ function CreateVideoTask({
         </Typography.Paragraph>
       </div>
 
-      <div className="growth-create-grid">
-        <section className="growth-config-section">
-          <Flex align="center" justify="space-between" gap={12}>
-            <Typography.Title level={5}>输入图文</Typography.Title>
-            <Button size="small" icon={<ReloadOutlined />} loading={loadingSources} onClick={onRefreshSources} />
-          </Flex>
-          <List
-            className="growth-input-source-list"
-            loading={loadingSources}
-            dataSource={sourceJobs}
-            locale={{ emptyText: '暂无已完成图文任务' }}
-            renderItem={(job) => (
-              <List.Item>
-                <button
-                  type="button"
-                  className={job.id === selectedSourceJobId ? 'growth-input-source is-active' : 'growth-input-source'}
-                  onClick={() => onSelectSourceJob(job.id)}
-                >
-                  <span>{socialCardTaskTitle(job)}</span>
-                  <small>{formatDateTime(job.created_at)} · {socialCardJobCountLabel(job)}</small>
-                </button>
-              </List.Item>
-            )}
-          />
-          {selectedSourceJob && (
-            <div className="growth-config-summary">
-              <ConfigItem label="图文任务" value={shortId(selectedSourceJob.id)} />
-              <ConfigItem label="图文数量" value={socialCardJobCountLabel(selectedSourceJob)} />
-              <ConfigItem label="图片产出" value={`${Number(selectedSourceJob.summary.image_count ?? 0)} 张`} />
-            </div>
-          )}
-        </section>
-
-        <section className="growth-config-section">
-          <Typography.Title level={5}>视频配置</Typography.Title>
-          <Form layout="vertical" requiredMark={false}>
-            <Form.Item label="顶部标题">
-              <Input
-                value={title}
-                placeholder={String(selectedSourceJob?.summary.title || '小红书轮播视频')}
-                onChange={(event) => onTitleChange(event.target.value)}
-              />
-            </Form.Item>
-            <Form.Item label="配音文案">
-              <Input.TextArea
-                value={voiceText}
-                rows={5}
-                maxLength={2000}
-                placeholder="可留空，Agent 会根据图文内容自动生成。"
-                onChange={(event) => onVoiceTextChange(event.target.value)}
-              />
-            </Form.Item>
-            <div className="growth-social-config-row">
-              <Form.Item
-                label="BGM 起始时间"
-                validateStatus={bgmStartError ? 'error' : undefined}
-                help={bgmStartError || '支持 1:30 或 90，留空按 0:00 处理。'}
-                style={{ minWidth: 220, marginBottom: 0 }}
-              >
-                <Input
-                  value={bgmStartText}
-                  placeholder="0:00"
-                  addonAfter="分:秒"
-                  onBlur={onBgmStartTextBlur}
-                  onChange={(event) => onBgmStartTextChange(event.target.value)}
-                />
-              </Form.Item>
-              <Upload
-                accept="audio/*"
-                maxCount={1}
-                beforeUpload={(file) => {
-                  onBgmFileChange(file)
-                  return false
-                }}
-                onRemove={() => onBgmFileChange(null)}
-              >
-                <Button>上传 BGM</Button>
-              </Upload>
-            </div>
-            <div className="growth-config-summary">
-              <ConfigItem label="比例" value="1080 x 1440" />
-              <ConfigItem label="BGM 起始" value={formatMinuteSecond(parseMinuteSecondInput(bgmStartText) ?? 0)} />
-              <ConfigItem label="BGM" value={bgmFile?.name || '未上传'} />
-            </div>
-          </Form>
-        </section>
-      </div>
-
       {error && <Alert type="error" showIcon message={error} />}
-      <div className="growth-primary-action">
-        <Button
-          type="primary"
-          size="large"
-          icon={<VideoCameraOutlined />}
-          loading={submitting}
-          disabled={!selectedSourceJobId}
-          onClick={onSubmit}
-        >
-          生成轮播视频
-        </Button>
-      </div>
+      <StepWizard
+        steps={[
+          {
+            key: 'source',
+            title: '选择图文',
+            nextDisabled: !selectedSourceJobId,
+            extra: <Button size="small" icon={<ReloadOutlined />} loading={loadingSources} onClick={onRefreshSources} />,
+            content: (
+              <>
+                <List
+                  className="growth-input-source-list"
+                  loading={loadingSources}
+                  dataSource={sourceJobs}
+                  locale={{ emptyText: '暂无已完成图文任务' }}
+                  renderItem={(job) => (
+                    <List.Item>
+                      <button
+                        type="button"
+                        className={job.id === selectedSourceJobId ? 'growth-input-source is-active' : 'growth-input-source'}
+                        onClick={() => onSelectSourceJob(job.id)}
+                      >
+                        <span>{socialCardTaskTitle(job)}</span>
+                        <small>{formatDateTime(job.created_at)} · {socialCardJobCountLabel(job)}</small>
+                      </button>
+                    </List.Item>
+                  )}
+                />
+                {selectedSourceJob && (
+                  <div className="growth-config-summary">
+                    <ConfigItem label="图文任务" value={shortId(selectedSourceJob.id)} />
+                    <ConfigItem label="图文数量" value={socialCardJobCountLabel(selectedSourceJob)} />
+                    <ConfigItem label="图片产出" value={`${Number(selectedSourceJob.summary.image_count ?? 0)} 张`} />
+                  </div>
+                )}
+              </>
+            ),
+          },
+          {
+            key: 'config',
+            title: '视频配置',
+            content: (
+              <Form layout="vertical" requiredMark={false}>
+                <Form.Item label="顶部标题">
+                  <Input
+                    value={title}
+                    placeholder={String(selectedSourceJob?.summary.title || '小红书轮播视频')}
+                    onChange={(event) => onTitleChange(event.target.value)}
+                  />
+                </Form.Item>
+                <Form.Item label="配音文案">
+                  <Input.TextArea
+                    value={voiceText}
+                    rows={5}
+                    maxLength={2000}
+                    placeholder="可留空，Agent 会根据图文内容自动生成。"
+                    onChange={(event) => onVoiceTextChange(event.target.value)}
+                  />
+                </Form.Item>
+                <div className="growth-social-config-row">
+                  <Form.Item
+                    label="BGM 起始时间"
+                    validateStatus={bgmStartError ? 'error' : undefined}
+                    help={bgmStartError || '支持 1:30 或 90，留空按 0:00 处理。'}
+                    style={{ minWidth: 220, marginBottom: 0 }}
+                  >
+                    <Input
+                      value={bgmStartText}
+                      placeholder="0:00"
+                      addonAfter="分:秒"
+                      onBlur={onBgmStartTextBlur}
+                      onChange={(event) => onBgmStartTextChange(event.target.value)}
+                    />
+                  </Form.Item>
+                  <Upload
+                    accept="audio/*"
+                    maxCount={1}
+                    beforeUpload={(file) => {
+                      onBgmFileChange(file)
+                      return false
+                    }}
+                    onRemove={() => onBgmFileChange(null)}
+                  >
+                    <Button>上传 BGM</Button>
+                  </Upload>
+                </div>
+                <div className="growth-config-summary">
+                  <ConfigItem label="比例" value="1080 x 1440" />
+                  <ConfigItem label="BGM 起始" value={formatMinuteSecond(parseMinuteSecondInput(bgmStartText) ?? 0)} />
+                  <ConfigItem label="BGM" value={bgmFile?.name || '未上传'} />
+                </div>
+              </Form>
+            ),
+          },
+        ]}
+        submitButton={(
+          <Button
+            type="primary"
+            size="large"
+            icon={<VideoCameraOutlined />}
+            loading={submitting}
+            disabled={!selectedSourceJobId}
+            onClick={onSubmit}
+          >
+            生成轮播视频
+          </Button>
+        )}
+      />
     </section>
   )
 }

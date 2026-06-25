@@ -49,6 +49,7 @@ import {
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import { dailyWriterModeLabel } from '../../lib/workflowModes'
 import { formatDateTime, progressEventColor, statusMeta } from '../aiwiki/helpers'
+import { StepWizard } from '../../components/workflow/StepWizard'
 import '../seedMatrix/GrowthWorkflow.css'
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
@@ -438,84 +439,93 @@ function CreateSocialCardTask({
         </Typography.Paragraph>
       </div>
 
-      <div className="growth-create-grid">
-        <section className="growth-config-section">
-          <Flex align="center" justify="space-between" gap={12}>
-            <Typography.Title level={5}>输入稿件</Typography.Title>
-            <Button size="small" icon={<ReloadOutlined />} loading={loadingWriters} onClick={onRefreshWriters} />
-          </Flex>
-          <List
-            className="growth-input-source-list"
-            loading={loadingWriters}
-            dataSource={writerJobs}
-            locale={{ emptyText: '暂无已完成稿件' }}
-            renderItem={(job) => (
-              <List.Item>
-                <button
-                  type="button"
-                  className={job.id === selectedWriterJobId ? 'growth-input-source is-active' : 'growth-input-source'}
-                  onClick={() => onSelectWriterJob(job.id)}
-                >
-                  <span>{writerJobTitle(job)}</span>
-                  <small>{dailyWriterModeLabel(job.params)} · {formatDateTime(job.created_at)}</small>
-                </button>
-              </List.Item>
-            )}
-          />
-          {selectedWriterJob && (
-            <div className="growth-config-summary">
-              <ConfigItem label="稿件任务" value={shortId(selectedWriterJob.id)} />
-              <ConfigItem label="生产模式" value={dailyWriterModeLabel(selectedWriterJob.params)} />
-              <ConfigItem label="稿件数量" value={`${articleCountFromParams(selectedWriterJob.params)} 篇`} />
-            </div>
-          )}
-        </section>
-
-        <section className="growth-config-section">
-          <Typography.Title level={5}>生成配置</Typography.Title>
-          <div className="growth-social-config-row">
-            <label className="growth-number-field">
-              <span>图文篇数</span>
-              <InputNumber
-                min={1}
-                max={5}
-                value={postCount}
-                addonAfter="篇"
-                onChange={(value) => onPostCountChange(Number(value ?? 1))}
-              />
-            </label>
-            <label className="growth-number-field">
-              <span>每篇卡片数</span>
-              <InputNumber
-                min={1}
-                max={9}
-                value={cardsPerPost}
-                addonAfter="张"
-                onChange={(value) => onCardsPerPostChange(Number(value ?? 6))}
-              />
-            </label>
-          </div>
-          <div className="growth-config-summary">
-            <ConfigItem label="平台" value="小红书" />
-            <ConfigItem label="比例" value="3:4" />
-            <ConfigItem label="预计产出" value={`${postCount} 篇 · ${postCount * cardsPerPost} 张`} />
-          </div>
-        </section>
-      </div>
-
       {error && <Alert type="error" showIcon message={error} />}
-      <div className="growth-primary-action">
-        <Button
-          type="primary"
-          size="large"
-          icon={<PlayCircleOutlined />}
-          loading={submitting}
-          disabled={!selectedWriterJobId}
-          onClick={onSubmit}
-        >
-          生成图文
-        </Button>
-      </div>
+      <StepWizard
+        steps={[
+          {
+            key: 'writer',
+            title: '选择稿件',
+            nextDisabled: !selectedWriterJobId,
+            extra: <Button size="small" icon={<ReloadOutlined />} loading={loadingWriters} onClick={onRefreshWriters} />,
+            content: (
+              <>
+                <List
+                  className="growth-input-source-list"
+                  loading={loadingWriters}
+                  dataSource={writerJobs}
+                  locale={{ emptyText: '暂无已完成稿件' }}
+                  renderItem={(job) => (
+                    <List.Item>
+                      <button
+                        type="button"
+                        className={job.id === selectedWriterJobId ? 'growth-input-source is-active' : 'growth-input-source'}
+                        onClick={() => onSelectWriterJob(job.id)}
+                      >
+                        <span>{writerJobTitle(job)}</span>
+                        <small>{dailyWriterModeLabel(job.params)} · {formatDateTime(job.created_at)}</small>
+                      </button>
+                    </List.Item>
+                  )}
+                />
+                {selectedWriterJob && (
+                  <div className="growth-config-summary">
+                    <ConfigItem label="稿件任务" value={shortId(selectedWriterJob.id)} />
+                    <ConfigItem label="生产模式" value={dailyWriterModeLabel(selectedWriterJob.params)} />
+                    <ConfigItem label="稿件数量" value={`${articleCountFromParams(selectedWriterJob.params)} 篇`} />
+                  </div>
+                )}
+              </>
+            ),
+          },
+          {
+            key: 'config',
+            title: '生成配置',
+            content: (
+              <>
+                <div className="growth-social-config-row">
+                  <label className="growth-number-field">
+                    <span>图文篇数</span>
+                    <InputNumber
+                      min={1}
+                      max={5}
+                      value={postCount}
+                      addonAfter="篇"
+                      onChange={(value) => onPostCountChange(Number(value ?? 1))}
+                    />
+                  </label>
+                  <label className="growth-number-field">
+                    <span>每篇卡片数</span>
+                    <InputNumber
+                      min={1}
+                      max={9}
+                      value={cardsPerPost}
+                      addonAfter="张"
+                      onChange={(value) => onCardsPerPostChange(Number(value ?? 6))}
+                    />
+                  </label>
+                </div>
+                <div className="growth-config-summary">
+                  <ConfigItem label="平台" value="小红书" />
+                  <ConfigItem label="比例" value="3:4" />
+                  <ConfigItem label="预计产出" value={`${postCount} 篇 · ${postCount * cardsPerPost} 张`} />
+                </div>
+              </>
+            ),
+          },
+        ]}
+        submitButton={(
+          <Button
+            type="primary"
+            size="large"
+            icon={<PlayCircleOutlined />}
+            loading={submitting}
+            disabled={!selectedWriterJobId}
+            onClick={onSubmit}
+          >
+            生成图文
+          </Button>
+        )}
+      />
     </section>
   )
 }

@@ -37,6 +37,7 @@ import {
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import { formatDateTime, progressEventColor, statusMeta } from '../aiwiki/helpers'
 import { SEED_MATRIX_MODES, seedMatrixModeLabel, type SeedMatrixModeId } from '../../lib/workflowModes'
+import { StepWizard } from '../../components/workflow/StepWizard'
 import './GrowthWorkflow.css'
 
 type MatrixRow = Record<string, string>
@@ -512,99 +513,108 @@ function CreateMatrixTask({
         </Typography.Paragraph>
       </div>
 
-      <div className="growth-create-grid">
-        <section className="growth-config-section">
-          <Flex align="center" justify="space-between" gap={12}>
-            <Typography.Title level={5}>输入知识库</Typography.Title>
-            <Button size="small" icon={<ReloadOutlined />} loading={loadingInputs} onClick={onRefreshInputs} />
-          </Flex>
-          <List
-            className="growth-input-source-list"
-            loading={loadingInputs}
-            dataSource={aiwikiJobs}
-            locale={{ emptyText: '暂无已完成知识库' }}
-            renderItem={(job) => (
-              <List.Item>
-                <button
-                  type="button"
-                  className={job.id === selectedAiwikiJobId ? 'growth-input-source is-active' : 'growth-input-source'}
-                  onClick={() => onSelectAiwikiJob(job.id)}
-                >
-                  <span>{job.title || job.files[0]?.filename || shortId(job.id)}</span>
-                  <small>{job.files.length} 文件 · 素材 {Number(job.summary.material_count ?? 0)}</small>
-                </button>
-              </List.Item>
-            )}
-          />
-          {selectedAiwikiJob && (
-            <div className="growth-config-summary">
-              <ConfigItem label="知识库" value={selectedAiwikiJob.title || selectedAiwikiJob.files[0]?.filename || selectedAiwikiJob.id} />
-              <ConfigItem label="文件" value={`${selectedAiwikiJob.files.length} 个`} />
-              <ConfigItem label="素材" value={String(Number(selectedAiwikiJob.summary.material_count ?? 0))} />
-            </div>
-          )}
-        </section>
-
-        <section className="growth-config-section">
-          <Typography.Title level={5}>生成配置</Typography.Title>
-          <Segmented
-            block
-            value={mode}
-            onChange={(value) => onModeChange(value as SeedMatrixModeId)}
-            options={STRATEGY_MODE_IDS.map((modeId) => ({
-              label: SEED_MATRIX_MODES[modeId].navLabel,
-              value: modeId,
-            }))}
-          />
-          <div className="growth-config-summary">
-            <ConfigItem label="Seed 数量" value={String(modeConfig.defaults.expected_seed_count)} />
-            <ConfigItem label="每日 Slot" value={String(modeConfig.defaults.slots_per_day)} />
-            <ConfigItem label="模式" value={modeConfig.navLabel} />
-          </div>
-          {modeConfig.showHooks && (
-            <Form form={form} layout="vertical" initialValues={modeConfig.defaults}>
-              <Form.List name="hooks">
-                {(fields, { add, remove }) => (
-                  <Flex vertical gap={8}>
-                    <Flex align="center" justify="space-between" gap={8}>
-                      <Typography.Text>Hooks</Typography.Text>
-                      <Button size="small" icon={<PlusOutlined />} onClick={() => add('')}>新增</Button>
-                    </Flex>
-                    {fields.map((field, index) => (
-                      <Flex key={field.key} align="flex-start" gap={8}>
-                        <Form.Item {...field} style={{ flex: 1, marginBottom: 0 }}>
-                          <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} placeholder={`Hook ${index + 1}，可多行输入`} />
-                        </Form.Item>
-                        <Button
-                          danger
-                          type="text"
-                          icon={<DeleteOutlined />}
-                          disabled={fields.length <= 1}
-                          onClick={() => remove(field.name)}
-                        />
-                      </Flex>
-                    ))}
-                  </Flex>
-                )}
-              </Form.List>
-            </Form>
-          )}
-        </section>
-      </div>
-
       {error && <Alert type="error" showIcon message={error} />}
-      <div className="growth-primary-action">
-        <Button
-          type="primary"
-          size="large"
-          icon={<PlayCircleOutlined />}
-          loading={submitting}
-          disabled={!selectedAiwikiJobId}
-          onClick={onSubmit}
-        >
-          {modeConfig.buttonText}
-        </Button>
-      </div>
+      <StepWizard
+        steps={[
+          {
+            key: 'source',
+            title: '选择输入知识库',
+            nextDisabled: !selectedAiwikiJobId,
+            extra: <Button size="small" icon={<ReloadOutlined />} loading={loadingInputs} onClick={onRefreshInputs} />,
+            content: (
+              <>
+                <List
+                  className="growth-input-source-list"
+                  loading={loadingInputs}
+                  dataSource={aiwikiJobs}
+                  locale={{ emptyText: '暂无已完成知识库' }}
+                  renderItem={(job) => (
+                    <List.Item>
+                      <button
+                        type="button"
+                        className={job.id === selectedAiwikiJobId ? 'growth-input-source is-active' : 'growth-input-source'}
+                        onClick={() => onSelectAiwikiJob(job.id)}
+                      >
+                        <span>{job.title || job.files[0]?.filename || shortId(job.id)}</span>
+                        <small>{job.files.length} 文件 · 素材 {Number(job.summary.material_count ?? 0)}</small>
+                      </button>
+                    </List.Item>
+                  )}
+                />
+                {selectedAiwikiJob && (
+                  <div className="growth-config-summary">
+                    <ConfigItem label="知识库" value={selectedAiwikiJob.title || selectedAiwikiJob.files[0]?.filename || selectedAiwikiJob.id} />
+                    <ConfigItem label="文件" value={`${selectedAiwikiJob.files.length} 个`} />
+                    <ConfigItem label="素材" value={String(Number(selectedAiwikiJob.summary.material_count ?? 0))} />
+                  </div>
+                )}
+              </>
+            ),
+          },
+          {
+            key: 'config',
+            title: '生成配置',
+            content: (
+              <>
+                <Segmented
+                  block
+                  value={mode}
+                  onChange={(value) => onModeChange(value as SeedMatrixModeId)}
+                  options={STRATEGY_MODE_IDS.map((modeId) => ({
+                    label: SEED_MATRIX_MODES[modeId].navLabel,
+                    value: modeId,
+                  }))}
+                />
+                <div className="growth-config-summary">
+                  <ConfigItem label="Seed 数量" value={String(modeConfig.defaults.expected_seed_count)} />
+                  <ConfigItem label="每日 Slot" value={String(modeConfig.defaults.slots_per_day)} />
+                  <ConfigItem label="模式" value={modeConfig.navLabel} />
+                </div>
+                {modeConfig.showHooks && (
+                  <Form form={form} layout="vertical" initialValues={modeConfig.defaults}>
+                    <Form.List name="hooks">
+                      {(fields, { add, remove }) => (
+                        <Flex vertical gap={8}>
+                          <Flex align="center" justify="space-between" gap={8}>
+                            <Typography.Text>Hooks</Typography.Text>
+                            <Button size="small" icon={<PlusOutlined />} onClick={() => add('')}>新增</Button>
+                          </Flex>
+                          {fields.map((field, index) => (
+                            <Flex key={field.key} align="flex-start" gap={8}>
+                              <Form.Item {...field} style={{ flex: 1, marginBottom: 0 }}>
+                                <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} placeholder={`Hook ${index + 1}，可多行输入`} />
+                              </Form.Item>
+                              <Button
+                                danger
+                                type="text"
+                                icon={<DeleteOutlined />}
+                                disabled={fields.length <= 1}
+                                onClick={() => remove(field.name)}
+                              />
+                            </Flex>
+                          ))}
+                        </Flex>
+                      )}
+                    </Form.List>
+                  </Form>
+                )}
+              </>
+            ),
+          },
+        ]}
+        submitButton={(
+          <Button
+            type="primary"
+            size="large"
+            icon={<PlayCircleOutlined />}
+            loading={submitting}
+            disabled={!selectedAiwikiJobId}
+            onClick={onSubmit}
+          >
+            {modeConfig.buttonText}
+          </Button>
+        )}
+      />
     </section>
   )
 }
