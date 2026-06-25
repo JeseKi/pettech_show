@@ -18,6 +18,11 @@ from .payloads import (
     _resolve_chat_model,
     _skill_context_from_payload,
 )
+from .personal_aiwiki import (
+    PERSONAL_AIWIKI_TOOL_NAME,
+    build_personal_aiwiki_chat_context,
+    complete_with_personal_aiwiki_tools,
+)
 from .serializers import (
     _message_out,
     _message_role,
@@ -52,6 +57,9 @@ __all__ = [
     "_stream_chat_events",
     "_stream_sse_events",
     "_upstream_error_detail",
+    "PERSONAL_AIWIKI_TOOL_NAME",
+    "build_personal_aiwiki_chat_context",
+    "complete_with_personal_aiwiki_tools",
     "create_chat_completion",
     "delete_chat_session",
     "list_chat_messages",

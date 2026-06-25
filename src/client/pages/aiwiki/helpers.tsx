@@ -31,6 +31,11 @@ export function entryTypeLabel(type: string): string {
     topic: '选题',
     search_intent: '搜索入口',
     article: '文章',
+    entity: '实体',
+    concept: '概念',
+    comparison: '对比',
+    query: '问答',
+    note: '笔记',
     index: '索引',
   }[type] ?? type
 }

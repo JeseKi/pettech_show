@@ -22,6 +22,7 @@ from ..models import ChatSession
 from ..schemas import ChatCompletionIn, ChatMessageIn, ChatMessageOut, ChatSessionRenameIn, ChatSessionStreamIn, ChatSessionSummaryOut
 from .http_client import _chat_completions_url, _upstream_error_detail
 from .payloads import _build_upstream_payload, _resolve_chat_model
+from .personal_aiwiki import build_personal_aiwiki_chat_context, stream_personal_aiwiki_tool_events
 from .serializers import _message_out, _message_role, _session_summary_out, _session_title_from_prompt
 from .streaming import _configured_stream_chat_events, _sse_event
 
@@ -93,6 +94,7 @@ async def stream_persistent_chat_session(
 
     dao.append_message(owner_user_id=user.id, session_id=session.id, role="user", content=prompt)
     skill_context = build_mentioned_skill_context(db, user, prompt)
+    personal_aiwiki_context = build_personal_aiwiki_chat_context(user, prompt)
     session = dao.get_session(owner_user_id=user.id, session_id=session.id) or session
     messages = dao.list_messages(owner_user_id=user.id, session_id=session.id)
     completion_payload = ChatCompletionIn(
@@ -108,6 +110,8 @@ async def stream_persistent_chat_session(
         stream=True,
         agent_system_prompt=agent_context.system_prompt,
         extra_system_context=skill_context,
+        extra_user_context=personal_aiwiki_context.user_context,
+        tools=personal_aiwiki_context.tools,
     )
     yield _sse_event("session", _session_summary_out(
         db,
@@ -118,7 +122,12 @@ async def stream_persistent_chat_session(
     assistant_parts: list[str] = []
     assistant_completed = False
     try:
-        async for event, data in _configured_stream_chat_events(config, upstream_payload):
+        event_stream = (
+            stream_personal_aiwiki_tool_events(config, upstream_payload, user)
+            if personal_aiwiki_context.enabled
+            else _configured_stream_chat_events(config, upstream_payload)
+        )
+        async for event, data in event_stream:
             if event == "delta":
                 content = data.get("content")
                 if isinstance(content, str) and content:

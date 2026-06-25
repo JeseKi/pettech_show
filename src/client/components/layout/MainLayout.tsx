@@ -28,6 +28,7 @@ import {
   FileTextOutlined,
   TableOutlined,
   VideoCameraOutlined,
+  BookOutlined,
 } from '@ant-design/icons'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
@@ -41,6 +42,7 @@ import {
   CONTENT_GROWTH_TOOL,
   GESTURE_CONTROL_TOOL,
   INTERACTIVE_MOVIE_TOOL,
+  PERSONAL_AIWIKI_TOOL,
   VISIBLE_CAPABILITY_ENTRIES,
   type CapabilityGroupId,
 } from '../../lib/workflowModes'
@@ -48,6 +50,7 @@ import {
 const workflowEntries = [
   AGENT_TOOL,
   CONTENT_GROWTH_TOOL,
+  PERSONAL_AIWIKI_TOOL,
   GESTURE_CONTROL_TOOL,
   INTERACTIVE_MOVIE_TOOL,
   ...VISIBLE_CAPABILITY_ENTRIES,
@@ -151,6 +154,11 @@ export default function MainLayout() {
           {
             key: AGENT_TOOL.key,
             label: <Link to={AGENT_TOOL.path}>{AGENT_TOOL.navLabel}</Link>,
+          },
+          {
+            key: PERSONAL_AIWIKI_TOOL.key,
+            icon: <BookOutlined />,
+            label: <Link to={PERSONAL_AIWIKI_TOOL.path}>{PERSONAL_AIWIKI_TOOL.navLabel}</Link>,
           },
           {
             key: GESTURE_CONTROL_TOOL.key,

@@ -11,6 +11,8 @@ interface ResultViewProps {
   result: AiwikiResult
   selectedTerms: string[]
   entryFilter: string
+  entryFilterOptions?: string[]
+  summaryItems?: Array<{ title: string; value: number }>
   filteredEntries: AiwikiWikiEntry[]
   entriesBySlug: Map<string, AiwikiWikiEntry>
   activeEntry: AiwikiWikiEntry | null
@@ -24,6 +26,8 @@ export default function ResultView({
   result,
   selectedTerms,
   entryFilter,
+  entryFilterOptions = ['全部', '热点', '痛点', '解决方案', '选题', '搜索入口', '文章', '实体', '概念', '对比', '问答', '笔记'],
+  summaryItems,
   filteredEntries,
   entriesBySlug,
   activeEntry,
@@ -72,10 +76,14 @@ export default function ResultView({
           </Flex>
           <Divider />
           <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={12} md={6}><Statistic title="素材" value={Number(result.summary.material_count ?? 0)} /></Col>
-            <Col xs={12} md={6}><Statistic title="词条" value={Number(result.summary.wiki_entry_count ?? 0)} /></Col>
-            <Col xs={12} md={6}><Statistic title="关键词" value={Number(result.summary.search_intent_count ?? 0)} /></Col>
-            <Col xs={12} md={6}><Statistic title="选题" value={Number(result.summary.topic_count ?? 0)} /></Col>
+            {(summaryItems ?? [
+              { title: '素材', value: Number(result.summary.material_count ?? 0) },
+              { title: '词条', value: Number(result.summary.wiki_entry_count ?? 0) },
+              { title: '关键词', value: Number(result.summary.search_intent_count ?? 0) },
+              { title: '选题', value: Number(result.summary.topic_count ?? 0) },
+            ]).map((item) => (
+              <Col key={item.title} xs={12} md={6}><Statistic title={item.title} value={item.value} /></Col>
+            ))}
           </Row>
           {mainView === 'graph' ? (
             <KnowledgeGraph result={result} onOpenEntry={onOpenEntry} />
@@ -97,7 +105,7 @@ export default function ResultView({
             <Segmented
               value={entryFilter}
               onChange={(value) => onEntryFilterChange(String(value))}
-              options={['全部', '热点', '痛点', '解决方案', '选题', '搜索入口', '文章']}
+              options={entryFilterOptions}
             />
           </Flex>
           <List

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent, ReactNode } from 'react'
+import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import { Alert, App, Avatar, Dropdown, Input, Modal, Typography, type MenuProps } from 'antd'
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   Bot,
   Check,
@@ -33,6 +35,10 @@ import {
   type ChatMessageRecord,
   type ChatSessionSummary,
 } from '../../lib/chat'
+import {
+  getPersonalAiwikiEntryPage,
+  type PersonalAiwikiEntryPage,
+} from '../../lib/personalAiwiki'
 import {
   addMyAgentSkill,
   listAgentSkillMarket,
@@ -89,6 +95,14 @@ type NormalizedAgentDisplay = {
 
 type SkillCenterMode = 'market' | 'my'
 type CapabilityMarketMode = 'agents' | 'skills'
+type MentionOption = {
+  id: string
+  insertText: string
+  kind: 'knowledge' | 'skill'
+  label: string
+  subtitle: string
+  tag: string
+}
 const AGENT_CATEGORY_ALL = '__all__'
 const SKILL_CATEGORY_ALL = '__all__'
 const DEFAULT_AGENT_ID = 'zhongying-advertising'
@@ -96,6 +110,7 @@ const DEFAULT_AGENT_NAME = '中影广告智能体'
 const AGENT_PAGE_SIZE = 30
 const SKILL_PAGE_SIZE = 20
 const MENTION_SKILL_PAGE_SIZE = 6
+const KNOWLEDGE_MENTION = '$知识库'
 
 const quickPrompts: QuickPrompt[] = [
   {
@@ -215,14 +230,124 @@ function sessionUpdatedAt(session: ChatSessionSummary): number {
   return Number.isFinite(updatedAt) ? updatedAt : 0
 }
 
-const renderChatMessage: RenderMessage = ({ editableContent }) => (
-  <div className="chat-message-markdown">
-    {editableContent}
-  </div>
-)
+function ChatMarkdownMessage({
+  content,
+  onOpenWikiPage,
+}: {
+  content: string
+  onOpenWikiPage: (page: string) => void
+}) {
+  const components: Components = {
+    a: ({ href, children }) => {
+      if (href?.startsWith(CHAT_WIKI_ENTRY_HREF_PREFIX)) {
+        const page = decodeURIComponent(href.slice(CHAT_WIKI_ENTRY_HREF_PREFIX.length))
+        return (
+          <ChatWikiLinkButton page={page} onOpenWikiPage={onOpenWikiPage}>
+            {children}
+          </ChatWikiLinkButton>
+        )
+      }
+      return (
+        <a href={href} target="_blank" rel="noreferrer">
+          {children}
+        </a>
+      )
+    },
+    code: ({ className, children }) => {
+      const text = reactNodeText(children).trim()
+      const wikiLink = className ? null : parseInlineWikiLink(text)
+      if (wikiLink) {
+        return (
+          <ChatWikiLinkButton page={wikiLink.page} onOpenWikiPage={onOpenWikiPage}>
+            {wikiLink.label}
+          </ChatWikiLinkButton>
+        )
+      }
+      return <code className={className}>{children}</code>
+    },
+  }
+
+  return (
+    <div className="chat-message-markdown">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {renderChatWikiLinks(content)}
+      </ReactMarkdown>
+    </div>
+  )
+}
+
+function ChatWikiLinkButton({
+  children,
+  onOpenWikiPage,
+  page,
+}: {
+  children: ReactNode
+  onOpenWikiPage: (page: string) => void
+  page: string
+}) {
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    onOpenWikiPage(page)
+  }
+  return (
+    <button className="chat-wiki-link" onClick={handleClick} type="button">
+      {children}
+    </button>
+  )
+}
+
+function renderChatWikiLinks(markdown: string): string {
+  return markdown.replace(/\[\[([^\]]+)\]\]/g, (_, raw: string) => {
+    const [page, explicitLabel] = splitWikiLink(raw)
+    if (!page) return raw
+    const label = explicitLabel || page.split('/').at(-1) || page
+    return `[${escapeMarkdownLabel(label)}](${CHAT_WIKI_ENTRY_HREF_PREFIX}${encodeURIComponent(page)})`
+  })
+}
+
+function parseInlineWikiLink(text: string): { label: string; page: string } | null {
+  const markdownLink = text.match(/^\[([^\]]+)]\(#personal-aiwiki-entry-([^)]+)\)$/)
+  if (markdownLink) {
+    return {
+      label: markdownLink[1].replaceAll('\\[', '[').replaceAll('\\]', ']'),
+      page: decodeURIComponent(markdownLink[2]),
+    }
+  }
+
+  const rawWikiLink = text.match(/^\[\[([^\]]+)]]$/)
+  if (rawWikiLink) {
+    const [page, explicitLabel] = splitWikiLink(rawWikiLink[1])
+    if (!page) return null
+    return {
+      label: explicitLabel || page.split('/').at(-1) || page,
+      page,
+    }
+  }
+  return null
+}
+
+function reactNodeText(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(reactNodeText).join('')
+  return ''
+}
+
+function splitWikiLink(raw: string): [string, string | null] {
+  const normalized = raw.replace(/\\\|/g, '|')
+  const index = normalized.indexOf('|')
+  if (index < 0) return [normalized.trim(), null]
+  return [normalized.slice(0, index).trim(), normalized.slice(index + 1).trim() || null]
+}
+
+function escapeMarkdownLabel(label: string): string {
+  return label.replaceAll('[', '\\[').replaceAll(']', '\\]')
+}
 
 const CHAT_HOME_PATH = '/agents'
 const SKILL_MENTION_TRIGGER_PATTERN = /(^|\s)@([A-Za-z0-9_-]*)$/
+const KNOWLEDGE_MENTION_TRIGGER_PATTERN = /(^|\s)\$([\u4e00-\u9fa5A-Za-z0-9_-]*)$/
+const CHAT_WIKI_ENTRY_HREF_PREFIX = '#personal-aiwiki-entry-'
 
 function chatSessionPath(sessionId: string): string {
   return `${CHAT_HOME_PATH}/chat/${encodeURIComponent(sessionId)}`
@@ -258,6 +383,10 @@ export default function ChatHomePage() {
   const [mentionSkillCandidates, setMentionSkillCandidates] = useState<UserAgentSkill[]>([])
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0)
   const [mentionSkillsLoading, setMentionSkillsLoading] = useState(false)
+  const [wikiPreviewOpen, setWikiPreviewOpen] = useState(false)
+  const [wikiPreviewLoading, setWikiPreviewLoading] = useState(false)
+  const [wikiPreviewError, setWikiPreviewError] = useState<string | null>(null)
+  const [wikiPreviewEntry, setWikiPreviewEntry] = useState<PersonalAiwikiEntryPage | null>(null)
   const [skillsLoading, setSkillsLoading] = useState(false)
   const [skillActionId, setSkillActionId] = useState<string | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
@@ -271,7 +400,31 @@ export default function ChatHomePage() {
   const streamAbortRef = useRef<AbortController | null>(null)
   const streamFrameRef = useRef<number | null>(null)
 
-  const renderMessages = useMemo(() => ({ default: renderChatMessage }), [])
+  const openWikiPreview = useCallback(async (page: string) => {
+    setWikiPreviewOpen(true)
+    setWikiPreviewLoading(true)
+    setWikiPreviewError(null)
+    setWikiPreviewEntry(null)
+    try {
+      const entry = await getPersonalAiwikiEntryPage(page)
+      setWikiPreviewEntry(entry)
+    } catch (err) {
+      setWikiPreviewError(resolveErrorMessage(err))
+    } finally {
+      setWikiPreviewLoading(false)
+    }
+  }, [])
+
+  const renderMessages = useMemo<Record<string, RenderMessage>>(() => ({
+    default: ({ content }) => (
+      <ChatMarkdownMessage
+        content={content}
+        onOpenWikiPage={(page) => {
+          void openWikiPreview(page)
+        }}
+      />
+    ),
+  }), [openWikiPreview])
   const orderedSessions = useMemo(
     () => [...sessions].sort((a, b) => sessionUpdatedAt(b) - sessionUpdatedAt(a)),
     [sessions],
@@ -320,7 +473,41 @@ export default function ChatHomePage() {
     const match = draft.match(SKILL_MENTION_TRIGGER_PATTERN)
     return match ? match[2].toLowerCase() : null
   }, [draft])
-  const hasSelectableMentionSkill = activeSkillMentionQuery !== null && !mentionSkillsLoading && mentionSkillCandidates.length > 0
+  const activeKnowledgeMentionQuery = useMemo(() => {
+    if (activeSkillMentionQuery !== null) return null
+    const match = draft.match(KNOWLEDGE_MENTION_TRIGGER_PATTERN)
+    return match ? match[2] : null
+  }, [activeSkillMentionQuery, draft])
+  const mentionOptions = useMemo<MentionOption[]>(() => {
+    if (activeSkillMentionQuery !== null) {
+      return mentionSkillCandidates.map((skill) => ({
+        id: skill.id,
+        insertText: skill.mention,
+        kind: 'skill',
+        label: skill.name,
+        subtitle: skill.mention,
+        tag: skill.category_label,
+      }))
+    }
+    if (activeKnowledgeMentionQuery !== null && '知识库'.startsWith(activeKnowledgeMentionQuery)) {
+      return [{
+        id: 'personal-aiwiki',
+        insertText: KNOWLEDGE_MENTION,
+        kind: 'knowledge',
+        label: '个人 AI Wiki',
+        subtitle: KNOWLEDGE_MENTION,
+        tag: '知识库',
+      }]
+    }
+    return []
+  }, [activeKnowledgeMentionQuery, activeSkillMentionQuery, mentionSkillCandidates])
+  const activeMentionKind = activeSkillMentionQuery !== null
+    ? 'skill'
+    : activeKnowledgeMentionQuery !== null
+      ? 'knowledge'
+      : null
+  const mentionLoading = activeMentionKind === 'skill' && mentionSkillsLoading
+  const hasSelectableMention = !mentionLoading && mentionOptions.length > 0
 
   const loadInstalledAgents = useCallback(async () => {
     setAgentsLoading(true)
@@ -468,12 +655,12 @@ export default function ChatHomePage() {
 
   useEffect(() => {
     setSelectedMentionIndex((current) => {
-      if (mentionSkillCandidates.length === 0) {
+      if (mentionOptions.length === 0) {
         return 0
       }
-      return Math.min(current, mentionSkillCandidates.length - 1)
+      return Math.min(current, mentionOptions.length - 1)
     })
-  }, [mentionSkillCandidates.length])
+  }, [mentionOptions.length])
 
   useEffect(() => () => {
     streamAbortRef.current?.abort()
@@ -816,48 +1003,49 @@ export default function ChatHomePage() {
     setError(null)
   }
 
-  const selectMentionCandidate = (skill: UserAgentSkill) => {
+  const selectMentionOption = (option: MentionOption) => {
     setDraft((current) => {
-      if (!SKILL_MENTION_TRIGGER_PATTERN.test(current)) {
+      const pattern = option.kind === 'skill' ? SKILL_MENTION_TRIGGER_PATTERN : KNOWLEDGE_MENTION_TRIGGER_PATTERN
+      if (!pattern.test(current)) {
         const prefix = current.trimEnd()
-        return prefix ? `${prefix} ${skill.mention} ` : `${skill.mention} `
+        return prefix ? `${prefix} ${option.insertText} ` : `${option.insertText} `
       }
-      return current.replace(SKILL_MENTION_TRIGGER_PATTERN, `$1${skill.mention} `)
+      return current.replace(pattern, `$1${option.insertText} `)
     })
     setError(null)
   }
 
   const confirmSelectedMentionCandidate = () => {
-    if (!hasSelectableMentionSkill) {
+    if (!hasSelectableMention) {
       return false
     }
-    const skill = mentionSkillCandidates[selectedMentionIndex] ?? mentionSkillCandidates[0]
-    if (!skill) {
+    const option = mentionOptions[selectedMentionIndex] ?? mentionOptions[0]
+    if (!option) {
       return false
     }
-    selectMentionCandidate(skill)
+    selectMentionOption(option)
     return true
   }
 
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!hasSelectableMentionSkill) {
+    if (!hasSelectableMention) {
       return
     }
     if (event.key === 'ArrowDown') {
       event.preventDefault()
       event.stopPropagation()
-      setSelectedMentionIndex((current) => (current + 1) % mentionSkillCandidates.length)
+      setSelectedMentionIndex((current) => (current + 1) % mentionOptions.length)
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
       event.stopPropagation()
       setSelectedMentionIndex((current) => (
-        current - 1 < 0 ? mentionSkillCandidates.length - 1 : current - 1
+        current - 1 < 0 ? mentionOptions.length - 1 : current - 1
       ))
     }
   }
 
   const handleComposerPressEnter = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (activeSkillMentionQuery === null) {
+    if (activeMentionKind === null || !hasSelectableMention) {
       return
     }
     event.preventDefault()
@@ -865,7 +1053,7 @@ export default function ChatHomePage() {
   }
 
   const handleComposerSend = () => {
-    if (activeSkillMentionQuery !== null) {
+    if (activeMentionKind !== null && hasSelectableMention) {
       confirmSelectedMentionCandidate()
       return
     }
@@ -1184,34 +1372,34 @@ export default function ChatHomePage() {
 
   const renderComposer = (floating = false) => (
     <div className={floating ? 'chat-composer chat-composer-floating' : 'chat-composer'}>
-      {activeSkillMentionQuery !== null && (
+      {activeMentionKind !== null && (
         <div className="chat-skill-mention-popover" role="listbox">
-          {mentionSkillsLoading ? (
+          {mentionLoading ? (
             <p className="chat-skill-mention-empty">搜索中...</p>
-          ) : mentionSkillCandidates.length > 0 ? (
-            mentionSkillCandidates.map((skill, index) => (
+          ) : mentionOptions.length > 0 ? (
+            mentionOptions.map((option, index) => (
               <button
                 aria-selected={index === selectedMentionIndex}
                 className={index === selectedMentionIndex ? 'chat-skill-mention-option is-active' : 'chat-skill-mention-option'}
-                key={skill.id}
+                key={option.id}
                 onMouseDown={(event) => {
                   event.preventDefault()
-                  selectMentionCandidate(skill)
+                  selectMentionOption(option)
                 }}
                 onMouseEnter={() => setSelectedMentionIndex(index)}
                 role="option"
                 type="button"
               >
                 <span>
-                  <strong>{skill.name}</strong>
-                  <small>{skill.mention}</small>
+                  <strong>{option.label}</strong>
+                  <small>{option.subtitle}</small>
                 </span>
-                <Tag color="info" size="small">{skill.category_label}</Tag>
+                <Tag color={option.kind === 'knowledge' ? 'success' : 'info'} size="small">{option.tag}</Tag>
               </button>
             ))
           ) : (
             <p className="chat-skill-mention-empty">
-              {mySkills.length > 0 ? '没有匹配的技能' : '暂无已添加技能'}
+              {activeMentionKind === 'knowledge' ? '没有匹配的知识库指令' : mySkills.length > 0 ? '没有匹配的技能' : '暂无已添加技能'}
             </p>
           )}
         </div>
@@ -1644,6 +1832,35 @@ export default function ChatHomePage() {
           </div>
         </div>
       </main>
+      <Modal
+        className="chat-wiki-preview-modal"
+        footer={null}
+        onCancel={() => setWikiPreviewOpen(false)}
+        open={wikiPreviewOpen}
+        title={wikiPreviewEntry?.title ?? '知识库词条'}
+        width={760}
+      >
+        {wikiPreviewLoading ? (
+          <Typography.Text type="secondary">正在读取词条...</Typography.Text>
+        ) : wikiPreviewError ? (
+          <Alert message={wikiPreviewError} showIcon type="error" />
+        ) : wikiPreviewEntry ? (
+          <div className="chat-wiki-preview-content">
+            <div className="chat-wiki-preview-meta">
+              <Tag color="success" size="small">{wikiPreviewEntry.type}</Tag>
+              <Typography.Text>{wikiPreviewEntry.path}</Typography.Text>
+            </div>
+            <ChatMarkdownMessage
+              content={wikiPreviewEntry.body_markdown || wikiPreviewEntry.markdown}
+              onOpenWikiPage={(page) => {
+                void openWikiPreview(page)
+              }}
+            />
+          </div>
+        ) : (
+          <Typography.Text type="secondary">暂无词条内容</Typography.Text>
+        )}
+      </Modal>
       <Modal
         className="chat-capability-modal"
         footer={null}

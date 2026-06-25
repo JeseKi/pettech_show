@@ -23,6 +23,8 @@ def _build_upstream_payload(
     stream: bool,
     agent_system_prompt: str | None = None,
     extra_system_context: str = "",
+    extra_user_context: str = "",
+    tools: list[dict[str, Any]] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     model = _resolve_chat_model(payload.model, config)
     upstream_payload: dict[str, Any] = {
@@ -32,12 +34,16 @@ def _build_upstream_payload(
             config,
             agent_system_prompt=agent_system_prompt,
             extra_system_context=extra_system_context,
+            extra_user_context=extra_user_context,
         ),
         "temperature": payload.temperature if payload.temperature is not None else config.chat_temperature,
         "max_tokens": payload.max_tokens if payload.max_tokens is not None else config.chat_max_tokens,
     }
     if stream:
         upstream_payload["stream"] = True
+    if tools:
+        upstream_payload["tools"] = tools
+        upstream_payload["tool_choice"] = "auto"
     return model, upstream_payload
 
 
@@ -63,6 +69,7 @@ def _build_messages(
     *,
     agent_system_prompt: str | None = None,
     extra_system_context: str = "",
+    extra_user_context: str = "",
 ) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
     base_system_prompt = (
@@ -75,6 +82,8 @@ def _build_messages(
         messages.append({"role": "system", "content": "\n\n".join(system_parts)})
 
     messages.extend({"role": message.role, "content": message.content} for message in payload.messages)
+    if extra_user_context.strip():
+        messages.append({"role": "user", "content": extra_user_context.strip()})
     return messages
 
 

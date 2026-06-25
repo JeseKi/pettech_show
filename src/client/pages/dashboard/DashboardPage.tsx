@@ -1,5 +1,5 @@
 import { Button, Card, Col, Flex, Row, Typography } from 'antd'
-import { BarChartOutlined, FileSearchOutlined, FileTextOutlined, RightOutlined, TableOutlined, VideoCameraOutlined } from '@ant-design/icons'
+import { BarChartOutlined, BookOutlined, FileSearchOutlined, FileTextOutlined, RightOutlined, TableOutlined } from '@ant-design/icons'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -8,6 +8,7 @@ import {
   CONTENT_GROWTH_TOOL,
   GESTURE_CONTROL_TOOL,
   INTERACTIVE_MOVIE_TOOL,
+  PERSONAL_AIWIKI_TOOL,
   VISIBLE_CAPABILITY_ENTRIES,
   type CapabilityGroupId,
 } from '../../lib/workflowModes'
@@ -26,8 +27,8 @@ const entryGroups = [
   },
   {
     title: '工具',
-    icon: <VideoCameraOutlined />,
-    entries: [AGENT_TOOL, GESTURE_CONTROL_TOOL, INTERACTIVE_MOVIE_TOOL],
+    icon: <BookOutlined />,
+    entries: [AGENT_TOOL, PERSONAL_AIWIKI_TOOL, GESTURE_CONTROL_TOOL, INTERACTIVE_MOVIE_TOOL],
   },
   ...Object.entries(CAPABILITY_GROUP_META).map(([groupId, meta]) => ({
     title: meta.title,

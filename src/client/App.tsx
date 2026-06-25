@@ -14,6 +14,7 @@ import LandingPage from './pages/landing/LandingPage'
 import DashboardPage from './pages/dashboard/DashboardPage'
 import ChatHomePage from './pages/chatHome'
 import AiwikiPage from './pages/aiwiki'
+import PersonalAiwikiPage from './pages/personalAiwiki'
 import InteractiveMoviePage from './pages/interactiveMovie'
 import PublicInteractiveMoviePlayer from './pages/interactiveMovie/PublicInteractiveMoviePlayer'
 import CapabilityEntryPage from './pages/capabilities/CapabilityEntryPage'
@@ -21,7 +22,7 @@ import GestureControlPage from './pages/gestureControl'
 import { AuthProvider, RequireAdmin, RequireAuth } from './providers/AuthProvider'
 import { RuntimeConfigProvider } from './providers/RuntimeConfigProvider'
 import { GestureControlProvider } from './components/gesture/GestureControlProvider'
-import { GESTURE_CONTROL_TOOL, VISIBLE_CAPABILITY_ENTRIES } from './lib/workflowModes'
+import { GESTURE_CONTROL_TOOL, PERSONAL_AIWIKI_TOOL, VISIBLE_CAPABILITY_ENTRIES } from './lib/workflowModes'
 
 function LegacyChatSessionRedirect() {
   const { sessionId } = useParams<{ sessionId?: string }>()
@@ -112,6 +113,7 @@ export default function App() {
                   <Route path="/aiwiki/search-assets" element={<Navigate to="/knowledge-base" replace />} />
                   <Route path="/aiwiki/full" element={<Navigate to="/knowledge-base" replace />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path={PERSONAL_AIWIKI_TOOL.path} element={<PersonalAiwikiPage />} />
                   <Route path={GESTURE_CONTROL_TOOL.path} element={<GestureControlPage />} />
                   <Route path="/seed-matrices" element={<Navigate to="/content-growth?stage=strategy&strategyMode=standard" replace />} />
                   <Route path="/seed-matrices/standard" element={<Navigate to="/content-growth?stage=strategy&strategyMode=standard" replace />} />

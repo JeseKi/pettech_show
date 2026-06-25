@@ -6,6 +6,7 @@ export interface AiwikiUploadedFile {
   filename: string
   size_bytes: number
   raw_path: string
+  workspace_raw_path?: string | null
   raw_source_path?: string | null
   upload_path?: string | null
   extension?: string | null

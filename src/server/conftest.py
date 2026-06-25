@@ -117,6 +117,7 @@ def test_db_engine() -> Iterator[Connection]:
     import src.server.agent_skills.models  # noqa: F401
     import src.server.agent_market.models  # noqa: F401
     import src.server.distribution.models  # noqa: F401
+    import src.server.personal_aiwiki.models  # noqa: F401
 
     Base.metadata.create_all(bind=keep_conn)
 

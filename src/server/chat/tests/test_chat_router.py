@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import json
 from http import HTTPStatus
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -12,6 +14,7 @@ from src.server.auth.models import User
 from src.server.auth.schemas import UserRole
 from src.server.chat import service as chat_service
 from src.server.config import global_config
+from src.server.personal_aiwiki import service as personal_aiwiki_service
 
 
 def _create_user(test_db_session, username: str, *, role: UserRole = UserRole.USER) -> User:
@@ -104,6 +107,24 @@ def _create_agent(
     )
     assert resp.status_code == HTTPStatus.CREATED, resp.text
     return resp.json()
+
+
+def _write_personal_aiwiki_fixture(user: User) -> Path:
+    workspace_root = personal_aiwiki_service.user_workspace_root(int(user.id))
+    personal_aiwiki_service.ensure_workspace(workspace_root)
+    wiki_root = workspace_root / "wiki"
+    (wiki_root / "index.md").write_text(
+        "---\ntitle: 个人知识库\ntype: index\ncreated: 2026-06-26\nupdated: 2026-06-26\ntags: [personal-ai-wiki]\n---\n\n"
+        "# 个人知识库\n\n## 最近更新\n\n- [[concepts/personal-knowledge|个人知识沉淀]]\n",
+        encoding="utf-8",
+    )
+    (wiki_root / "concepts").mkdir(parents=True, exist_ok=True)
+    (wiki_root / "concepts" / "personal-knowledge.md").write_text(
+        "---\ntitle: 个人知识沉淀\ntype: concept\ncreated: 2026-06-26\nupdated: 2026-06-26\ntags: [wiki]\n---\n\n"
+        "# 个人知识沉淀\n\n## 结论\n\n演示阶段通过索引触发，再按需读取词条全文。\n",
+        encoding="utf-8",
+    )
+    return workspace_root
 
 
 def test_chat_completion_requires_authentication(test_client):
@@ -299,6 +320,121 @@ def test_persistent_chat_stream_stores_server_messages_and_uses_server_history(
     delete_resp = test_client.delete(f"/api/chat/sessions/{session_id}", headers=headers)
     assert delete_resp.status_code == HTTPStatus.NO_CONTENT, delete_resp.text
     assert test_client.get("/api/chat/sessions", headers=headers).json() == []
+
+
+def test_persistent_chat_injects_personal_aiwiki_index_as_user_context(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    monkeypatch.setattr(global_config, "project_root", tmp_path)
+    user = _create_user(test_db_session, "chat_personal_aiwiki_owner")
+    headers = _auth_headers(user)
+    _write_personal_aiwiki_fixture(user)
+    captured_payloads: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "personal-aiwiki-model")
+    monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
+        captured_payloads.append(payload)
+        return {
+            "id": "chatcmpl-personal-aiwiki",
+            "model": payload["model"],
+            "choices": [{"message": {"role": "assistant", "content": "已根据个人知识库索引回答"}}],
+        }
+
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
+
+    resp = test_client.post(
+        "/api/chat/sessions/stream",
+        headers=headers,
+        json={"content": "$知识库 个人知识库里有什么？"},
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert 'event: delta\ndata: {"content": "已根据个人知识库索引回答"}' in resp.text
+    payload = captured_payloads[0]
+    assert payload["tools"][0]["function"]["name"] == chat_service.PERSONAL_AIWIKI_TOOL_NAME
+    assert payload["messages"][-2] == {"role": "user", "content": "$知识库 个人知识库里有什么？"}
+    assert payload["messages"][-1]["role"] == "user"
+    assert "【个人 AI Wiki 最新索引】" in payload["messages"][-1]["content"]
+    assert "concepts/personal-knowledge" in payload["messages"][-1]["content"]
+
+    sessions = test_client.get("/api/chat/sessions", headers=headers).json()
+    messages_resp = test_client.get(f"/api/chat/sessions/{sessions[0]['id']}/messages", headers=headers)
+    assert [(item["role"], item["content"]) for item in messages_resp.json()] == [
+        ("user", "$知识库 个人知识库里有什么？"),
+        ("assistant", "已根据个人知识库索引回答"),
+    ]
+
+
+def test_chat_completion_personal_aiwiki_tool_reads_entry_page(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    monkeypatch.setattr(global_config, "project_root", tmp_path)
+    user = _create_user(test_db_session, "chat_personal_aiwiki_tool_owner")
+    headers = _auth_headers(user)
+    _write_personal_aiwiki_fixture(user)
+    captured_payloads: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "personal-aiwiki-tool-model")
+    monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
+        captured_payloads.append(payload)
+        if len(captured_payloads) == 1:
+            return {
+                "id": "chatcmpl-tool-plan",
+                "model": payload["model"],
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "call_entry_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": chat_service.PERSONAL_AIWIKI_TOOL_NAME,
+                                        "arguments": json.dumps({"page": "concepts/personal-knowledge"}, ensure_ascii=False),
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ],
+            }
+        return {
+            "id": "chatcmpl-tool-final",
+            "model": payload["model"],
+            "choices": [{"message": {"role": "assistant", "content": "词条全文已经读取。"}}],
+        }
+
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
+
+    resp = test_client.post(
+        "/api/chat/completions",
+        headers=headers,
+        json={"messages": [{"role": "user", "content": "$知识库 读取个人知识沉淀词条"}]},
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert resp.json()["content"] == "词条全文已经读取。"
+    assert "tools" in captured_payloads[0]
+    assert "tools" not in captured_payloads[1]
+    tool_message = next(message for message in captured_payloads[1]["messages"] if message["role"] == "tool")
+    assert tool_message["tool_call_id"] == "call_entry_1"
+    tool_payload = json.loads(tool_message["content"])
+    assert tool_payload["slug"] == "concepts/personal-knowledge"
+    assert "演示阶段通过索引触发" in tool_payload["markdown"]
 
 
 def test_persistent_chat_injects_only_added_mentioned_skill(

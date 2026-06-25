@@ -32,6 +32,15 @@ export const GESTURE_CONTROL_TOOL = {
   buttonText: '管理手势操作',
 }
 
+export const PERSONAL_AIWIKI_TOOL = {
+  key: 'personal-aiwiki',
+  path: '/personal-aiwiki',
+  navLabel: '个人 AI Wiki',
+  title: '个人 AI Wiki',
+  description: '把零散资料整理成可检索、可追问、可复用的个人知识库。',
+  buttonText: '进入个人知识库',
+}
+
 export const CONTENT_GROWTH_TOOL = {
   key: 'content-growth',
   path: '/content-growth',
