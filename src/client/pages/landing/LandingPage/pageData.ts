@@ -1,52 +1,157 @@
 import {
   Archive,
+  BarChart3,
+  Bot,
+  CalendarDays,
   Database,
   FileText,
+  Film,
+  Flame,
+  Hand,
   Layers3,
+  Lightbulb,
+  MessageCircle,
+  MessageCircleWarning,
   Network,
   PenLine,
+  PenTool,
+  Puzzle,
   Route,
+  ScrollText,
+  Search,
+  Sparkles,
   Target,
+  TrendingUp,
   UploadCloud,
   Wand2,
+  Wrench,
+  Zap,
+  type LucideIcon,
 } from 'lucide-react'
+import {
+  AGENT_TOOL,
+  CAPABILITY_GROUP_META,
+  CONTENT_GROWTH_TOOL,
+  GESTURE_CONTROL_TOOL,
+  INTERACTIVE_MOVIE_TOOL,
+  VISIBLE_CAPABILITY_ENTRIES,
+} from '../../../lib/workflowModes'
 
-export const navGroups = [
+type LandingNavMenuItem = {
+  label: string
+  path: string
+  description: string
+  icon: LucideIcon
+}
+
+export type LandingNavGroup = {
+  label: string
+  path: string
+  icon: LucideIcon
+  items: LandingNavMenuItem[]
+}
+
+const topicIconByKey: Record<string, LucideIcon> = {
+  'pain-point-topics': MessageCircleWarning,
+  'gap-opportunity-topics': Search,
+  'crossover-topics': Puzzle,
+  'counterintuitive-topics': Zap,
+  'trend-topics': TrendingUp,
+  'festival-topics': CalendarDays,
+  'controversy-topics': Flame,
+  'series-topics': Layers3,
+  'seasonal-topics': Route,
+}
+
+const scriptIconByKey: Record<string, LucideIcon> = {
+  'script-master-draft': ScrollText,
+  'viral-template-adaptation': Flame,
+  'warm-healing-script': MessageCircle,
+  'professional-authority-script': Target,
+  'lively-humor-script': Sparkles,
+  'humanize-script': PenLine,
+}
+
+const topicPlanningItems = VISIBLE_CAPABILITY_ENTRIES
+  .filter((entry) => entry.group === 'topic-planning')
+  .map((entry) => ({
+    label: entry.navLabel,
+    path: entry.path,
+    description: entry.description,
+    icon: topicIconByKey[entry.key] ?? Lightbulb,
+  }))
+
+const scriptCreationItems = VISIBLE_CAPABILITY_ENTRIES
+  .filter((entry) => entry.group === 'script-creation')
+  .map((entry) => ({
+    label: entry.navLabel,
+    path: entry.path,
+    description: entry.description,
+    icon: scriptIconByKey[entry.key] ?? PenLine,
+  }))
+
+export const landingNavGroups: LandingNavGroup[] = [
   {
-    label: '7天课程',
-    href: '#courses',
+    label: CONTENT_GROWTH_TOOL.navLabel,
+    path: CONTENT_GROWTH_TOOL.path,
+    icon: BarChart3,
     items: [
-      ['课程卡片轮盘', '左右浏览 Day 0 到毕业项目，每张卡展示内容、收获、时间和交付物。'],
-      ['业务诊断', '先明确账号身份、目标用户和首轮内容方向。'],
-      ['分发转化', '设计推荐流、搜索流、私域承接和复盘沉淀。'],
+      {
+        label: '内容资产库',
+        path: '/content-growth?stage=assets',
+        description: '上传和沉淀对标素材、搜索入口、知识条目和内容资产。',
+        icon: Database,
+      },
+      {
+        label: '选题策略',
+        path: '/content-growth?stage=strategy&strategyMode=standard',
+        description: '基于内容资产生成可筛选、可下载、可复盘的选题策略表。',
+        icon: Network,
+      },
+      {
+        label: '稿件生产',
+        path: '/content-growth?stage=production&writerMode=single',
+        description: '选择策略 seed，生产主稿、变体和后续内容包。',
+        icon: FileText,
+      },
     ],
   },
   {
-    label: '课程介绍',
-    href: '#course-intro',
+    label: '工具',
+    path: '/dashboard',
+    icon: Wrench,
     items: [
-      ['7 天训练营', '每天围绕一个真实宠物行业运营场景，产出可交付业务资产。'],
-      ['适合对象', '宠物医院、门店、美容洗护、品牌、博主达人和供应链团队。'],
-      ['交付结果', '带走选题池、内容包、分发计划、转化路径和资产库。'],
+      {
+        label: AGENT_TOOL.navLabel,
+        path: AGENT_TOOL.path,
+        description: AGENT_TOOL.description,
+        icon: Bot,
+      },
+      {
+        label: GESTURE_CONTROL_TOOL.navLabel,
+        path: GESTURE_CONTROL_TOOL.path,
+        description: GESTURE_CONTROL_TOOL.description,
+        icon: Hand,
+      },
+      {
+        label: INTERACTIVE_MOVIE_TOOL.navLabel,
+        path: INTERACTIVE_MOVIE_TOOL.path,
+        description: INTERACTIVE_MOVIE_TOOL.description,
+        icon: Film,
+      },
     ],
   },
   {
-    label: '内容生产系统',
-    href: '#production',
-    items: [
-      ['知识库生成', '把对标素材、课程资料和运营素材沉淀为可检索资产。'],
-      ['选题矩阵', '从素材库生成 30 天选题规划，保留痛点、方案和承接动作。'],
-      ['主稿与变体', '从一个 seed 生成主内容，再拆成多平台内容包。'],
-    ],
+    label: CAPABILITY_GROUP_META['topic-planning'].title,
+    path: topicPlanningItems[0]?.path ?? '/dashboard',
+    icon: Lightbulb,
+    items: topicPlanningItems,
   },
   {
-    label: '交付成果',
-    href: '#deliverables',
-    items: [
-      ['内容增长场景表', '明确每个业务最该解决的内容增长问题。'],
-      ['30 天选题矩阵', '每条选题都有痛点、解决方案和转化策略。'],
-      ['内容资产库', '把做完的内容回写到下一轮可复用资产中。'],
-    ],
+    label: CAPABILITY_GROUP_META['script-creation'].title,
+    path: scriptCreationItems[0]?.path ?? '/dashboard',
+    icon: PenTool,
+    items: scriptCreationItems,
   },
 ]
 
