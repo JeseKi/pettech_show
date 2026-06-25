@@ -142,6 +142,17 @@ body.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover {
   gap: 6px;
 }
 
+.landing-nav__mobile-toggle,
+.landing-mobile-menu,
+.landing-nav__auth-label--short {
+  display: none;
+}
+
+.landing-mobile-menu-open {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 .landing-nav__item {
   position: relative;
 }
