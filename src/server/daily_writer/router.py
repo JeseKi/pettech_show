@@ -102,6 +102,20 @@ async def download_daily_writer_result(
     )
 
 
+@router.get(
+    "/jobs/{job_id}/artwork/{asset_key}",
+    summary="获取长文封面或插图",
+)
+async def get_daily_writer_artwork(
+    job_id: str,
+    asset_key: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    path, media_type = service.artwork_file(db, job_id, asset_key, current_user)
+    return FileResponse(path, media_type=media_type, filename=path.name)
+
+
 @router.delete(
     "/jobs/{job_id}",
     status_code=status.HTTP_204_NO_CONTENT,

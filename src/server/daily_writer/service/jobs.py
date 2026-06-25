@@ -23,6 +23,7 @@ from src.server.aiwiki.service.progress import (
     mark_progress_failure,
     mark_progress_running,
     progress_marked_complete,
+    read_progress,
     write_progress,
 )
 from src.server.auth.models import User
@@ -33,7 +34,11 @@ from src.server.seed_matrix.service.persistence import get_accessible_job as get
 
 from ..dao import DailyWriterJobDAO, parse_json_dict, parse_json_str_dict
 from ..models import DailyWriterJob
-from ..parser import parse_daily_writer_result
+from ..parser import (
+    parse_daily_writer_result,
+    resolve_artwork_asset_path,
+    resolve_result_paths,
+)
 from ..queue_state import get_queue
 from ..schemas import (
     DailyWriterCreate,
@@ -43,7 +48,12 @@ from ..schemas import (
 )
 from .artifacts import copy_source_artifacts, prepare_skill
 from .constants import MAX_VARIANT_COUNT, RESULT_ZIP_NAME, SELECTED_SEED_ROW_PATH
-from .opencode import run_opencode, run_repair_opencode, run_variant_opencode
+from .opencode import (
+    run_artwork_opencode,
+    run_opencode,
+    run_repair_opencode,
+    run_variant_opencode,
+)
 from .permissions import is_admin
 from .persistence import (
     build_session_factory,
@@ -106,7 +116,7 @@ def create_job(
     (workdir / "input").mkdir(parents=True, exist_ok=True)
     write_progress(workdir, initial_progress())
     copy_source_artifacts(source_workdir, workdir)
-    prepare_skill(workdir)
+    prepare_skill(workdir, include_artwork=payload.generate_artwork)
 
     (workdir / SELECTED_SEED_ROW_PATH).write_text(
         json.dumps(row, ensure_ascii=False, indent=2),
@@ -117,6 +127,7 @@ def create_job(
         "generate_variants": payload.generate_variants,
         "variant_count": payload.variant_count if payload.generate_variants else 0,
         "max_variant_count": MAX_VARIANT_COUNT,
+        "generate_artwork": payload.generate_artwork,
     }
     job = DailyWriterJobDAO(db).create(
         job_id=job_id,
@@ -153,6 +164,7 @@ def list_jobs(
         owner_user_id=owner_filter,
         source_seed_matrix_job_id=source_seed_matrix_job_id,
     )
+    jobs = [_reconcile_orphaned_finished_job(db, job) for job in jobs]
     return DailyWriterJobListOut(
         items=[job_summary_from_model(job, dao.owner_username(job.owner_user_id)) for job in jobs],
         total=dao.count(
@@ -166,6 +178,7 @@ def list_jobs(
 
 def get_job(db: Session, job_id: str, current_user: User) -> DailyWriterJobOut:
     job = get_accessible_job(db, job_id, current_user)
+    job = _reconcile_orphaned_finished_job(db, job)
     return job_out_from_model(job, DailyWriterJobDAO(db).owner_username(job.owner_user_id))
 
 
@@ -233,7 +246,37 @@ def result_zip_file(db: Session, job_id: str, current_user: User) -> Path:
             for path in sorted((workdir / variants_root).rglob("*")):
                 if path.is_file():
                     archive.write(path, arcname=path.relative_to(workdir / variants_root.parent).as_posix())
+        artwork_root = Path(result.metadata_path).parent / "artwork"
+        if (workdir / artwork_root).is_dir():
+            for path in sorted((workdir / artwork_root).rglob("*")):
+                if path.is_file():
+                    archive.write(path, arcname=path.relative_to(workdir / artwork_root.parent).as_posix())
     return zip_path
+
+
+def artwork_file(
+    db: Session,
+    job_id: str,
+    asset_key: str,
+    current_user: User,
+) -> tuple[Path, str]:
+    job = get_accessible_job(db, job_id, current_user)
+    if job.status not in {"completed", "partial_failed"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="任务尚未完成")
+    try:
+        _, metadata_path = resolve_result_paths(
+            Path(job.workdir),
+            article_path=job.article_path,
+            metadata_path=job.metadata_path,
+        )
+        return resolve_artwork_asset_path(
+            job_id=job.id,
+            workdir=Path(job.workdir),
+            article_dir=metadata_path.parent,
+            asset_key=asset_key,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
 def sync_job_records(db: Session) -> None:
@@ -294,11 +337,15 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
         write_manifest(workdir, job)
         prepare_opencode_config(workdir)
         params = parse_json_dict(job.params_json)
-        run_opencode(
-            workdir,
-            params,
-            parse_json_str_dict(job.row_json),
-        )
+        main_progress_events = _progress_events_snapshot(workdir)
+        try:
+            run_opencode(
+                workdir,
+                params,
+                parse_json_str_dict(job.row_json),
+            )
+        finally:
+            _ensure_progress_events_preserved(workdir, main_progress_events, "长文生成")
         if not progress_marked_complete(workdir):
             raise RuntimeError("progress.json 未写入任务完成标记")
         _run_daily_writer_json_check_with_repair(workdir)
@@ -311,6 +358,7 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
             workdir=workdir,
             article_path=None,
             metadata_path=None,
+            write_artwork_assets=True,
         )
 
         generate_variants = bool(params.get("generate_variants"))
@@ -332,12 +380,22 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
                     },
                 )
                 write_manifest(workdir, DailyWriterJobDAO(session).get(job_id))
-                write_progress(workdir, initial_progress())
-                run_variant_opencode(
+                mark_progress_running(
                     workdir,
-                    article_dir=Path(result.metadata_path).parent.as_posix(),
-                    variant_count=variant_count,
+                    step="生成长文变体",
+                    summary="长文已生成，正在生成长文变体",
                 )
+                variant_progress_events = _progress_events_snapshot(workdir)
+                try:
+                    run_variant_opencode(
+                        workdir,
+                        article_dir=Path(result.metadata_path).parent.as_posix(),
+                        variant_count=variant_count,
+                    )
+                finally:
+                    _ensure_progress_events_preserved(
+                        workdir, variant_progress_events, "长文变体生成"
+                    )
                 if not progress_marked_complete(workdir):
                     raise RuntimeError("progress.json 未写入变体任务完成标记")
                 _run_daily_writer_json_check_with_repair(
@@ -353,6 +411,7 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
                     workdir=workdir,
                     article_path=result.article_path,
                     metadata_path=result.metadata_path,
+                    write_artwork_assets=True,
                 )
                 if len(result.variants) < variant_count:
                     raise RuntimeError(
@@ -397,6 +456,93 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
                     "variant_requested_count": 0,
                     "variant_failed_count": 0,
                     "variant_status": "not_requested",
+                }
+            )
+
+        generate_artwork = bool(params.get("generate_artwork"))
+        if generate_artwork:
+            try:
+                update_job(
+                    session,
+                    job_id,
+                    status="running",
+                    message="OpenCode 正在生成封面和插图",
+                    article_path=result.article_path,
+                    metadata_path=result.metadata_path,
+                    summary={
+                        **result.summary,
+                        "artwork_status": "running",
+                        "artwork_cover_count": 0,
+                        "artwork_inline_count": 0,
+                    },
+                )
+                write_manifest(workdir, DailyWriterJobDAO(session).get(job_id))
+                mark_progress_running(
+                    workdir,
+                    step="生成封面插图",
+                    summary="长文已生成，正在生成封面和插图",
+                )
+                artwork_progress_events = _progress_events_snapshot(workdir)
+                try:
+                    run_artwork_opencode(
+                        workdir,
+                        article_dir=Path(result.metadata_path).parent.as_posix(),
+                    )
+                finally:
+                    _ensure_progress_events_preserved(
+                        workdir, artwork_progress_events, "封面插图生成"
+                    )
+                if not progress_marked_complete(workdir):
+                    raise RuntimeError("progress.json 未写入封面插图任务完成标记")
+                result = parse_daily_writer_result(
+                    job_id=job.id,
+                    source_seed_matrix_job_id=job.source_seed_matrix_job_id,
+                    source_aiwiki_job_id=job.source_aiwiki_job_id,
+                    seed_id=job.seed_id,
+                    workdir=workdir,
+                    article_path=result.article_path,
+                    metadata_path=result.metadata_path,
+                    write_artwork_assets=True,
+                )
+                if not result.artwork.cover_images or not result.artwork.inline_images:
+                    raise RuntimeError("封面或正文插图生成数量不足")
+                result.summary.update(
+                    {
+                        "artwork_status": "completed",
+                        "artwork_cover_count": len(result.artwork.cover_images),
+                        "artwork_inline_count": len(result.artwork.inline_images),
+                    }
+                )
+            except Exception as artwork_exc:
+                logger.exception("Daily writer artwork generation failed: {}", job_id)
+                append_log(Path(job.workdir), f"ARTWORK ERROR: {artwork_exc}")
+                mark_progress_failure(Path(job.workdir), f"封面插图生成失败：{artwork_exc}")
+                result.summary.update(
+                    {
+                        "artwork_status": "failed",
+                        "artwork_error": str(artwork_exc),
+                        "artwork_cover_count": len(result.artwork.cover_images),
+                        "artwork_inline_count": len(result.artwork.inline_images),
+                    }
+                )
+                update_job(
+                    session,
+                    job_id,
+                    status="partial_failed",
+                    message=f"长文已生成，封面插图生成失败：{artwork_exc}",
+                    article_path=result.article_path,
+                    metadata_path=result.metadata_path,
+                    summary=result.summary,
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                write_manifest(workdir, DailyWriterJobDAO(session).get(job_id))
+                return
+        else:
+            result.summary.update(
+                {
+                    "artwork_status": "not_requested",
+                    "artwork_cover_count": 0,
+                    "artwork_inline_count": 0,
                 }
             )
 
@@ -451,6 +597,60 @@ def _coerce_variant_count(value: object) -> int:
     return max(0, min(count, MAX_VARIANT_COUNT))
 
 
+def _reconcile_orphaned_finished_job(
+    db: Session, job: DailyWriterJob
+) -> DailyWriterJob:
+    if job.status not in {"queued", "running"}:
+        return job
+    if get_queue().queue_position(job.id) is not None:
+        return job
+    workdir = Path(job.workdir)
+    if not progress_marked_complete(workdir):
+        return job
+
+    params = parse_json_dict(job.params_json)
+    try:
+        result = parse_daily_writer_result(
+            job_id=job.id,
+            source_seed_matrix_job_id=job.source_seed_matrix_job_id,
+            source_aiwiki_job_id=job.source_aiwiki_job_id,
+            seed_id=job.seed_id,
+            workdir=workdir,
+            article_path=job.article_path,
+            metadata_path=job.metadata_path,
+            write_artwork_assets=True,
+        )
+        expected_variants = (
+            _coerce_variant_count(params.get("variant_count"))
+            if params.get("generate_variants")
+            else 0
+        )
+        if expected_variants and len(result.variants) < expected_variants:
+            return job
+        if params.get("generate_artwork") and (
+            not result.artwork.cover_images or not result.artwork.inline_images
+        ):
+            return job
+    except Exception as exc:
+        logger.warning("跳过 Daily Writer 孤儿任务收尾 {}: {}", job.id, exc)
+        return job
+
+    append_log(workdir, "RECOVERY: progress.json 已完成，补写 Daily Writer 任务状态。")
+    update_job(
+        db,
+        job.id,
+        status="completed",
+        message="长文生成完成",
+        article_path=result.article_path,
+        metadata_path=result.metadata_path,
+        summary=result.summary,
+        finished_at=datetime.now(timezone.utc).isoformat(),
+    )
+    reconciled = DailyWriterJobDAO(db).get(job.id) or job
+    write_manifest(workdir, reconciled)
+    return reconciled
+
+
 def _run_daily_writer_json_check_with_repair(
     workdir: Path, *, article_dir: str | None = None, include_variants: bool = False
 ) -> None:
@@ -468,7 +668,13 @@ def _run_daily_writer_json_check_with_repair(
             step="修复 metadata JSON",
             summary="metadata JSON 校验失败，正在下发 OpenCode 修复任务",
         )
-        run_repair_opencode(workdir, error=str(first_error), article_dir=article_dir)
+        repair_progress_events = _progress_events_snapshot(workdir)
+        try:
+            run_repair_opencode(workdir, error=str(first_error), article_dir=article_dir)
+        finally:
+            _ensure_progress_events_preserved(
+                workdir, repair_progress_events, "metadata JSON 修复"
+            )
         if not progress_marked_complete(workdir):
             raise RuntimeError("修复后 progress.json 未写入任务完成标记")
         _run_daily_writer_json_check(
@@ -487,3 +693,18 @@ def _run_daily_writer_json_check(
     if include_variants:
         args.append("--include-variants")
     run_check_command(workdir, args, label="长文 metadata JSON 校验")
+
+
+def _progress_events_snapshot(workdir: Path) -> list[object]:
+    events = read_progress(workdir).get("events")
+    return list(events) if isinstance(events, list) else []
+
+
+def _ensure_progress_events_preserved(
+    workdir: Path, baseline_events: list[object], stage: str
+) -> None:
+    events = read_progress(workdir).get("events")
+    if not isinstance(events, list):
+        raise RuntimeError(f"{stage} 阶段重置了 progress.json：events 缺失或不是数组")
+    if len(events) < len(baseline_events) or events[: len(baseline_events)] != baseline_events:
+        raise RuntimeError(f"{stage} 阶段重置了 progress.json：必须保留已有 events 并追加新事件")

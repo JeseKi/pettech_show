@@ -19,5 +19,6 @@ httpx[socks]
 types-python-jose
 alembic
 python-multipart
+pillow
 boto3
 pymupdf

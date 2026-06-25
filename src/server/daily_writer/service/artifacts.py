@@ -8,7 +8,7 @@ from pathlib import Path
 
 from src.server.config import global_config
 
-from .constants import DAILY_WRITER_SKILL_NAMES
+from .constants import ARTWORK_SKILL_NAMES, DAILY_WRITER_SKILL_NAMES
 
 
 def copy_source_artifacts(source_workdir: Path, target_workdir: Path) -> None:
@@ -22,11 +22,15 @@ def copy_source_artifacts(source_workdir: Path, target_workdir: Path) -> None:
             )
 
 
-def prepare_skill(workdir: Path) -> None:
+def prepare_skill(workdir: Path, *, include_artwork: bool = False) -> None:
     source_root = Path(global_config.project_root) / ".agents" / "skills"
     target_root = workdir / ".agents" / "skills"
     target_root.mkdir(parents=True, exist_ok=True)
-    for skill_name in DAILY_WRITER_SKILL_NAMES:
+    skill_names = [
+        *DAILY_WRITER_SKILL_NAMES,
+        *(ARTWORK_SKILL_NAMES if include_artwork else []),
+    ]
+    for skill_name in skill_names:
         source = source_root / skill_name
         if not source.exists():
             raise RuntimeError(f"Skill 不存在：{source}")

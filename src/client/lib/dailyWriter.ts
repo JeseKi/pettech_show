@@ -8,6 +8,7 @@ export interface DailyWriterCreatePayload {
   output_date?: string | null
   generate_variants?: boolean
   variant_count?: number
+  generate_artwork?: boolean
 }
 
 export interface DailyWriterJob {
@@ -70,9 +71,11 @@ export interface DailyWriterResult {
   article_path: string
   metadata_path: string
   markdown: string
+  illustrated_markdown: string
   metadata: Record<string, unknown>
   summary: Record<string, unknown>
   variants: DailyWriterVariant[]
+  artwork: DailyWriterArtwork
 }
 
 export interface DailyWriterVariant {
@@ -81,7 +84,23 @@ export interface DailyWriterVariant {
   markdown_path: string
   metadata_path: string
   markdown: string
+  illustrated_markdown: string
   metadata: Record<string, unknown>
+}
+
+export interface DailyWriterArtworkAsset {
+  key: string
+  path: string
+  url: string
+  kind: 'cover' | 'inline'
+  filename: string
+  content_type: string
+}
+
+export interface DailyWriterArtwork {
+  cover_images: DailyWriterArtworkAsset[]
+  inline_images: DailyWriterArtworkAsset[]
+  assets_path: string | null
 }
 
 export async function createDailyWriterJob(payload: DailyWriterCreatePayload): Promise<DailyWriterJob> {
@@ -116,6 +135,13 @@ export async function downloadDailyWriterResult(jobId: string): Promise<void> {
   link.click()
   link.remove()
   URL.revokeObjectURL(url)
+}
+
+export async function getDailyWriterArtworkBlob(jobId: string, assetKey: string): Promise<Blob> {
+  const response = await api.get<Blob>(`/daily-writer/jobs/${jobId}/artwork/${assetKey}`, {
+    responseType: 'blob',
+  })
+  return response.data
 }
 
 export async function deleteDailyWriterJob(jobId: string): Promise<void> {

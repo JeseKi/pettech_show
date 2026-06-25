@@ -6,6 +6,7 @@ import {
   Col,
   Empty,
   Flex,
+  Image,
   Input,
   InputNumber,
   List,
@@ -14,6 +15,7 @@ import {
   Row,
   Space,
   Statistic,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -28,7 +30,8 @@ import {
   PlayCircleOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
+import type { Components, UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   getSeedMatrixResult,
@@ -40,9 +43,11 @@ import {
   createDailyWriterJob,
   deleteDailyWriterJob,
   downloadDailyWriterResult,
+  getDailyWriterArtworkBlob,
   getDailyWriterJob,
   getDailyWriterResult,
   listDailyWriterJobs,
+  type DailyWriterArtworkAsset,
   type DailyWriterJob,
   type DailyWriterJobSummary,
   type DailyWriterResult,
@@ -54,6 +59,7 @@ import { DAILY_WRITER_MODES, dailyWriterModeLabel, type DailyWriterModeId } from
 type MatrixRow = Record<string, string>
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
+const ARTWORK_IMAGE_PREFIX = 'daily-writer-artwork:'
 export default function DailyWriterPage({
   mode = 'single',
   sourceAiwikiJobId,
@@ -80,6 +86,7 @@ export default function DailyWriterPage({
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [articleTotal, setArticleTotal] = useState(modeConfig.defaultTotal)
+  const [generateArtwork, setGenerateArtwork] = useState(false)
 
   const sectionStyle = {
     background: token.colorBgContainer,
@@ -223,6 +230,7 @@ export default function DailyWriterPage({
         seed_id: selectedSeedId,
         generate_variants: variantCount > 0,
         variant_count: variantCount,
+        generate_artwork: generateArtwork,
       })
       setActiveJob(created)
       message.success('稿件生产任务已提交')
@@ -375,6 +383,12 @@ export default function DailyWriterPage({
                 )}
               </Col>
             </Row>
+            <Flex align="center" wrap="wrap" gap={16} style={{ marginTop: 16 }}>
+              <Space>
+                <Switch checked={generateArtwork} onChange={setGenerateArtwork} />
+                <Typography.Text>生成封面和插图</Typography.Text>
+              </Space>
+            </Flex>
           </section>
 
           <section style={sectionStyle}>
@@ -447,17 +461,25 @@ function ArticlePreviewTabs({
   result: DailyWriterResult
   tabBarExtraContent: React.ReactNode
 }) {
+  const artwork = result.artwork
+  const artworkAssets = useMemo(
+    () => [...artwork.cover_images, ...artwork.inline_images],
+    [artwork.cover_images, artwork.inline_images],
+  )
+  const hasImages = hasArtwork(result)
   const articles = [
     {
       key: 'main',
       label: '主稿',
       markdown: result.markdown,
+      illustratedMarkdown: result.illustrated_markdown,
       metadata: result.metadata,
     },
     ...result.variants.map((variant, index) => ({
       key: variant.directory || `variant-${index + 1}`,
       label: variant.angle || `变体 ${index + 1}`,
       markdown: variant.markdown,
+      illustratedMarkdown: variant.illustrated_markdown,
       metadata: variant.metadata,
     })),
   ]
@@ -465,37 +487,239 @@ function ArticlePreviewTabs({
   return (
     <Tabs
       tabBarExtraContent={tabBarExtraContent}
-      items={articles.map((article) => ({
-        key: article.key,
-        label: article.label,
-        children: (
-          <Tabs
-            size="small"
-            items={[
+      items={[
+        ...articles.map((article) => ({
+          key: article.key,
+          label: article.label,
+          children: (
+            <Tabs
+              size="small"
+              items={[
+                {
+                  key: 'article',
+                  label: '无插图',
+                  children: (
+                    <ArticleMarkdown
+                      jobId={result.job_id}
+                      markdown={article.markdown}
+                      artworkAssets={artworkAssets}
+                    />
+                  ),
+                },
+                ...(hasImages
+                  ? [
+                      {
+                        key: 'illustrated',
+                        label: '带插图',
+                        children: (
+                          <ArticleMarkdown
+                            jobId={result.job_id}
+                            markdown={article.illustratedMarkdown || article.markdown}
+                            artworkAssets={artworkAssets}
+                          />
+                        ),
+                      },
+                    ]
+                  : []),
+                {
+                  key: 'metadata',
+                  label: 'Metadata',
+                  children: (
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', overflow: 'auto' }}>
+                      {JSON.stringify(article.metadata, null, 2)}
+                    </pre>
+                  ),
+                },
+              ]}
+            />
+          ),
+        })),
+        ...(hasImages
+          ? [
               {
-                key: 'article',
-                label: '正文',
+                key: 'artwork',
+                label: '封面/插图',
                 children: (
-                  <article style={{ maxWidth: 820 }}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {article.markdown}
-                    </ReactMarkdown>
-                  </article>
+                  <ArtworkPanel
+                    jobId={result.job_id}
+                    coverImages={artwork.cover_images}
+                    inlineImages={artwork.inline_images}
+                  />
                 ),
               },
-              {
-                key: 'metadata',
-                label: 'Metadata',
-                children: (
-                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', overflow: 'auto' }}>
-                    {JSON.stringify(article.metadata, null, 2)}
-                  </pre>
-                ),
-              },
-            ]}
-          />
-        ),
-      }))}
+            ]
+          : []),
+      ]}
+    />
+  )
+}
+
+function hasArtwork(result: DailyWriterResult): boolean {
+  return Boolean(result.artwork.cover_images.length || result.artwork.inline_images.length)
+}
+
+function ArticleMarkdown({
+  jobId,
+  markdown,
+  artworkAssets,
+}: {
+  jobId: string
+  markdown: string
+  artworkAssets: DailyWriterArtworkAsset[]
+}) {
+  const assetByKey = useMemo(
+    () => new Map(artworkAssets.map((asset) => [asset.key, asset])),
+    [artworkAssets],
+  )
+  const components = useMemo<Components>(() => ({
+    img: ({ src, alt }) => {
+      const key = parseArtworkImageKey(src)
+      const asset = key ? assetByKey.get(key) : null
+      if (asset) {
+        return (
+          <figure style={{ margin: '22px 0' }}>
+            <AuthenticatedArtworkImage jobId={jobId} asset={asset} maxHeight={460} />
+          </figure>
+        )
+      }
+      return (
+        <img
+          src={typeof src === 'string' ? src : ''}
+          alt={typeof alt === 'string' ? alt : ''}
+          loading="lazy"
+          style={{ maxWidth: '100%', borderRadius: 8 }}
+        />
+      )
+    },
+  }), [assetByKey, jobId])
+
+  return (
+    <article style={{ maxWidth: 820 }}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={components}
+        urlTransform={dailyWriterMarkdownUrlTransform}
+      >
+        {markdown}
+      </ReactMarkdown>
+    </article>
+  )
+}
+
+function parseArtworkImageKey(src: unknown): string | null {
+  if (typeof src !== 'string') return null
+  return src.startsWith(ARTWORK_IMAGE_PREFIX) ? src.slice(ARTWORK_IMAGE_PREFIX.length) : null
+}
+
+const dailyWriterMarkdownUrlTransform: UrlTransform = (url, key, node) => {
+  if (key === 'src' && node.tagName === 'img' && url.startsWith(ARTWORK_IMAGE_PREFIX)) {
+    return url
+  }
+  return defaultUrlTransform(url)
+}
+
+function ArtworkPanel({
+  jobId,
+  coverImages,
+  inlineImages,
+}: {
+  jobId: string
+  coverImages: DailyWriterArtworkAsset[]
+  inlineImages: DailyWriterArtworkAsset[]
+}) {
+  return (
+    <Flex vertical gap={20}>
+      <ArtworkImageList title="封面" jobId={jobId} assets={coverImages} />
+      <ArtworkImageList title="正文插图" jobId={jobId} assets={inlineImages} />
+    </Flex>
+  )
+}
+
+function ArtworkImageList({
+  title,
+  jobId,
+  assets,
+}: {
+  title: string
+  jobId: string
+  assets: DailyWriterArtworkAsset[]
+}) {
+  const { token } = theme.useToken()
+  if (!assets.length) {
+    return (
+      <section>
+        <Typography.Title level={5} style={{ marginTop: 0 }}>{title}</Typography.Title>
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`暂无${title}`} />
+      </section>
+    )
+  }
+  return (
+    <section>
+      <Typography.Title level={5} style={{ marginTop: 0 }}>{title}</Typography.Title>
+      <div style={{ columnCount: assets.length > 1 ? 2 : 1, columnGap: 12 }}>
+        {assets.map((asset) => (
+          <div
+            key={asset.key}
+            style={{
+              breakInside: 'avoid',
+              marginBottom: 12,
+              border: `1px solid ${token.colorBorderSecondary}`,
+              borderRadius: 8,
+              overflow: 'hidden',
+              background: token.colorBgElevated,
+            }}
+          >
+            <AuthenticatedArtworkImage jobId={jobId} asset={asset} maxHeight={520} />
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function AuthenticatedArtworkImage({
+  jobId,
+  asset,
+  maxHeight = 320,
+}: {
+  jobId: string
+  asset: DailyWriterArtworkAsset
+  maxHeight?: number
+}) {
+  const [src, setSrc] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let objectUrl: string | null = null
+    let cancelled = false
+    setSrc(null)
+    setFailed(false)
+    getDailyWriterArtworkBlob(jobId, asset.key)
+      .then((blob) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(blob)
+        setSrc(objectUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [asset.key, jobId])
+
+  if (failed) {
+    return <Alert type="warning" showIcon message="图片加载失败" />
+  }
+  if (!src) {
+    return <div style={{ height: Math.min(maxHeight, 180) }} />
+  }
+  return (
+    <Image
+      src={src}
+      alt={asset.filename}
+      style={{ width: '100%', maxHeight, objectFit: 'contain', display: 'block' }}
     />
   )
 }
@@ -555,6 +779,8 @@ function TaskPanel({
                   <Tag color={item.status === 'completed' ? 'green' : item.status === 'failed' ? 'red' : item.status === 'partial_failed' ? 'gold' : 'blue'}>{statusMeta(item.status).label}</Tag>
                   <Tag icon={<FileTextOutlined />}>{item.seed_id}</Tag>
                   <Tag>{dailyWriterModeLabel(item.params)}</Tag>
+                  {item.summary.artwork_status === 'completed' && <Tag color="purple">含封面插图</Tag>}
+                  {item.summary.artwork_status === 'failed' && <Tag color="red">封面插图失败</Tag>}
                   <Popconfirm
                     title="删除任务"
                     description="会删除该稿件任务记录和生成文件。"

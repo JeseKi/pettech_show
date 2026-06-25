@@ -65,6 +65,8 @@ packaging==25.0
     # via pytest
 pathspec==0.12.1
     # via mypy
+pillow==12.2.0
+    # via -r requirements.in
 pluggy==1.6.0
     # via pytest
 pyasn1==0.6.1

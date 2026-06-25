@@ -188,6 +188,7 @@ def build_prompt(workdir: Path, *, generate_search_assets: bool = True) -> str:
 - 当前目录下必须维护 `progress.json`，并保证它始终是合法 JSON。
 - `progress.json` 顶层必须包含 `status`、`current_step`、`events`。
 - `events` 必须是数组，每项至少包含 `event`、`step`、`summary`；`event`、`step` 的值必须使用中文。
+- 必须先读取已有 `progress.json` 的 `events` 并在末尾追加新事件；所有 Skill 和子 Agent 都禁止清空、重置或重建已有 `events`。
 - `event` 只能使用 `开始`、`完成` 或 `失败`。
 - 每开始一个步骤，立刻重写 `progress.json`，追加一条 `开始` 事件，并把 `status` 设为 `running`、`current_step` 设为当前正在做的中文步骤名。
 - 每完成一个步骤，立刻重写 `progress.json`，追加一条 `完成` 事件，`summary` 简要概括刚完成的内容。
@@ -222,6 +223,7 @@ def build_repair_prompt(workdir: Path, *, error: str) -> str:
 
 进度协议：
 - `progress.json` 顶层必须包含 `status`、`current_step`、`events`。
+- 必须先读取已有 `progress.json` 的 `events` 并在末尾追加新事件；所有 Skill 和子 Agent 都禁止清空、重置或重建已有 `events`。
 - `event`、`step` 的值必须使用中文；`event` 只能使用 `开始`、`完成` 或 `失败`。
 - 修复开始时写入 `status: running`，`current_step: 修复 JSON`，并追加 `开始` 事件。
 - 校验通过后，必须把 `status` 设为 `completed`，`current_step` 设为 `任务完成`，且最后一个事件必须精确为 `{{"event":"完成","step":"全部","summary":"任务完成"}}`。

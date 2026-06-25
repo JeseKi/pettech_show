@@ -268,6 +268,115 @@ def test_create_seed_matrix_job_and_download_result(
     assert missing_resp.status_code == HTTPStatus.NOT_FOUND
 
 
+def test_failed_seed_matrix_job_uses_agent_failure_report(
+    test_client,
+    test_db_session,
+    fake_seed_matrix_runtime: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    failing_opencode = fake_seed_matrix_runtime / "fake_seed_matrix_failure.py"
+    failing_opencode.write_text(
+        """
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+root = Path.cwd()
+report = root / "failure_report.md"
+report.write_text(
+    '''
+# 选题矩阵生成失败报告
+
+## 失败步骤
+检查当前目录资产
+
+## 失败原因
+material 目录缺少 260620 JSON 文件。
+
+## 已检查的输入资产
+- material/260620
+- wiki/index.md
+
+## 已执行的命令或校验
+尚未进入 CSV 校验。
+
+## 关键错误信息
+material/260620 下没有可用 JSON 文件。
+
+## 建议处理方式
+补充 material JSON 后重新运行任务。
+
+## 相关文件路径
+- material/260620
+'''.strip(),
+    encoding="utf-8",
+)
+events = [
+    {
+        "event": "开始",
+        "step": "检查当前目录资产",
+        "summary": "检查当前目录内的 material、wiki、脚本和输出目录",
+    },
+    {
+        "event": "失败",
+        "step": "检查当前目录资产",
+        "summary": "material 目录缺少 260620 JSON 文件；失败报告：failure_report.md",
+    },
+]
+(root / "progress.json").write_text(
+    json.dumps(
+        {
+            "status": "failure",
+            "current_step": "检查当前目录资产",
+            "events": events,
+        },
+        ensure_ascii=False,
+    ),
+    encoding="utf-8",
+)
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        global_config,
+        "aiwiki_opencode_command",
+        f"{sys.executable} {failing_opencode}",
+    )
+
+    user = _create_user(test_db_session, "seed_matrix_failure_owner")
+    source = _create_source_aiwiki_job(test_db_session, fake_seed_matrix_runtime, user)
+    headers = _auth_headers(user)
+
+    create_resp = test_client.post(
+        "/api/seed-matrices",
+        headers=headers,
+        json={"source_aiwiki_job_id": source.id},
+    )
+    assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
+    created = create_resp.json()
+
+    finished = _wait_for_terminal_status(test_client, created["id"], headers)
+    assert finished["status"] == "failed", finished
+    assert "检查当前目录资产" in finished["message"]
+    assert "material 目录缺少 260620 JSON 文件" in finished["message"]
+    assert "未写入任务完成标记" not in finished["message"]
+    assert "Agent 未写入失败报告" not in finished["message"]
+
+    progress_path = fake_seed_matrix_runtime / "data" / created["id"] / "progress.json"
+    progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    assert progress["status"] == "failure"
+    assert progress["events"][-1]["event"] == "失败"
+    assert "material 目录缺少 260620 JSON 文件" in progress["events"][-1]["summary"]
+    assert "failure_report.md" in progress["events"][-1]["summary"]
+    assert "未写入任务完成标记" not in progress["events"][-1]["summary"]
+    report_path = fake_seed_matrix_runtime / "data" / created["id"] / "failure_report.md"
+    assert report_path.is_file()
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "选题矩阵生成失败报告" in report_text
+    assert "material 目录缺少 260620 JSON 文件" in report_text
+
+
 def test_rejects_unfinished_aiwiki_source(
     test_client, test_db_session, fake_seed_matrix_runtime: Path
 ):

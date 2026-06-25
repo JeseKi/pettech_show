@@ -17,6 +17,7 @@ from src.server.aiwiki.models import AiwikiJob
 from src.server.auth import service as auth_service
 from src.server.auth.models import User
 from src.server.config import global_config
+from src.server.daily_writer.models import DailyWriterJob
 from src.server.daily_writer.queue_state import reset_queue_for_tests
 from src.server.seed_matrix.models import SeedMatrixJob
 
@@ -36,8 +37,62 @@ from pathlib import Path
 
 root = Path.cwd()
 prompt = sys.argv[-1]
+
+def read_existing_events() -> list[object]:
+    progress_path = root / "progress.json"
+    if not progress_path.exists():
+        return []
+    progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    events = progress.get("events")
+    return list(events) if isinstance(events, list) else []
+
+if "wechat-main-artwork-coordinator" in prompt:
+    events = read_existing_events()
+
+    def write_progress(status: str, current_step: str) -> None:
+        (root / "progress.json").write_text(
+            json.dumps(
+                {"status": status, "current_step": current_step, "events": events},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+    events.append({"event": "开始", "step": "封面插图", "summary": "开始生成封面插图"})
+    write_progress("running", "正在生成封面插图")
+    upload_dir = root / "main" / "260620" / "260620_1" / "artwork" / "upload_ready"
+    output_dir = root / "main" / "260620" / "260620_1" / "artwork" / "output"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    cover_path = upload_dir / "cover-21x9.jpg"
+    inline_path = upload_dir / "inline-01.jpg"
+    cover_path.write_bytes(b"\\xff\\xd8\\xff\\xd9")
+    inline_path.write_bytes(b"\\xff\\xd8inline\\xff\\xd9")
+    (upload_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "images": [
+                    {
+                        "source": "main/260620/260620_1/artwork/cover/images/cover.png",
+                        "upload_path": cover_path.relative_to(root).as_posix(),
+                    },
+                    {
+                        "source": "main/260620/260620_1/artwork/illustrations/images/inline.png",
+                        "upload_path": inline_path.relative_to(root).as_posix(),
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    events.append({"event": "完成", "step": "封面插图", "summary": "已生成封面和插图"})
+    events.append({"event": "完成", "step": "全部", "summary": "任务完成"})
+    write_progress("completed", "任务完成")
+    raise SystemExit(0)
+
 if "wechat-main-variant-batch-rewriter" in prompt:
-    events = []
+    events = read_existing_events()
 
     def write_progress(status: str, current_step: str) -> None:
         (root / "progress.json").write_text(
@@ -93,7 +148,7 @@ assert (root / "material" / "260620" / "sample.json").is_file()
 assert (root / "raw" / "260620" / "sample.md").is_file()
 assert (root / "wiki" / "index.md").is_file()
 row = json.loads((root / "input" / "selected_seed_row.json").read_text(encoding="utf-8"))
-events = []
+events = read_existing_events()
 
 def write_progress(status: str, current_step: str) -> None:
     (root / "progress.json").write_text(
@@ -159,6 +214,8 @@ write_progress("completed", "任务完成")
         "wechat-daily-writer",
         "wechat-main-variant-batch-rewriter",
         "wechat-main-variant-rewriter",
+        "wechat-main-artwork-coordinator",
+        "guizang-social-card-skill",
     ):
         skill_dir = tmp_path / ".agents" / "skills" / skill_name
         (skill_dir / "scripts").mkdir(parents=True)
@@ -394,6 +451,143 @@ def test_create_daily_writer_job_with_variants(
     assert "variants/angle-1/output/others.md" in names
 
 
+def test_create_daily_writer_job_with_artwork(
+    test_client, test_db_session, fake_daily_writer_runtime: Path
+):
+    user = _create_user(test_db_session, "daily_writer_artwork")
+    _, matrix = _create_source_jobs(test_db_session, fake_daily_writer_runtime, user)
+    headers = _auth_headers(user)
+
+    create_resp = test_client.post(
+        "/api/daily-writer/jobs",
+        headers=headers,
+        json={
+            "source_seed_matrix_job_id": matrix.id,
+            "seed_id": "S001",
+            "generate_variants": True,
+            "variant_count": 5,
+            "generate_artwork": True,
+        },
+    )
+    assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
+    job_id = create_resp.json()["id"]
+    finished = _wait_for_terminal_status(test_client, job_id, headers)
+    assert finished["status"] == "completed", finished
+    assert finished["summary"]["artwork_status"] == "completed"
+    assert finished["summary"]["artwork_cover_count"] == 1
+    assert finished["summary"]["artwork_inline_count"] == 1
+    progress = json.loads(
+        (fake_daily_writer_runtime / "data" / job_id / "progress.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    progress_steps = [event["step"] for event in progress["events"]]
+    assert "draft" in progress_steps
+    assert "封面插图" in progress_steps
+
+    result_resp = test_client.get(f"/api/daily-writer/jobs/{job_id}/result", headers=headers)
+    assert result_resp.status_code == HTTPStatus.OK, result_resp.text
+    result = result_resp.json()
+    assert "daily-writer-artwork:cover_" in result["illustrated_markdown"]
+    assert "daily-writer-artwork:inline_" in result["illustrated_markdown"]
+    assert "daily-writer-artwork:" not in result["markdown"]
+    assert result["variants"]
+    assert "daily-writer-artwork:cover_" in result["variants"][0]["illustrated_markdown"]
+    assert "daily-writer-artwork:inline_" in result["variants"][0]["illustrated_markdown"]
+    assert "daily-writer-artwork:" not in result["variants"][0]["markdown"]
+    artwork = result["artwork"]
+    assert artwork["cover_images"][0]["key"] == "cover_01"
+    assert artwork["inline_images"][0]["key"] == "inline_01"
+    assert artwork["cover_images"][0]["url"] == f"/api/daily-writer/jobs/{job_id}/artwork/cover_01"
+
+    image_resp = test_client.get(
+        f"/api/daily-writer/jobs/{job_id}/artwork/cover_01",
+        headers=headers,
+    )
+    assert image_resp.status_code == HTTPStatus.OK, image_resp.text
+    assert image_resp.headers["content-type"] == "image/jpeg"
+    assert image_resp.content == b"\xff\xd8\xff\xd9"
+
+    other_user = _create_user(test_db_session, "daily_writer_artwork_other")
+    other_resp = test_client.get(
+        f"/api/daily-writer/jobs/{job_id}/artwork/cover_01",
+        headers=_auth_headers(other_user),
+    )
+    assert other_resp.status_code == HTTPStatus.NOT_FOUND
+
+    download_resp = test_client.get(f"/api/daily-writer/jobs/{job_id}/download", headers=headers)
+    assert download_resp.status_code == HTTPStatus.OK, download_resp.text
+    zip_path = fake_daily_writer_runtime / "artwork-download.zip"
+    zip_path.write_bytes(download_resp.content)
+    with zipfile.ZipFile(zip_path) as archive:
+        names = set(archive.namelist())
+    assert "artwork/upload_ready/cover-21x9.jpg" in names
+    assert "artwork/upload_ready/inline-01.jpg" in names
+
+
+def test_completed_progress_reconciles_orphaned_running_artwork_job(
+    test_client, test_db_session, fake_daily_writer_runtime: Path
+):
+    user = _create_user(test_db_session, "daily_writer_artwork_orphan")
+    _, matrix = _create_source_jobs(test_db_session, fake_daily_writer_runtime, user)
+    headers = _auth_headers(user)
+
+    create_resp = test_client.post(
+        "/api/daily-writer/jobs",
+        headers=headers,
+        json={
+            "source_seed_matrix_job_id": matrix.id,
+            "seed_id": "S001",
+            "generate_artwork": True,
+        },
+    )
+    assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
+    job_id = create_resp.json()["id"]
+    finished = _wait_for_terminal_status(test_client, job_id, headers)
+    assert finished["status"] == "completed", finished
+
+    job = test_db_session.get(DailyWriterJob, job_id)
+    assert job is not None
+    summary = json.loads(job.summary_json or "{}")
+    summary.update(
+        {
+            "artwork_status": "running",
+            "artwork_cover_count": 0,
+            "artwork_inline_count": 0,
+        }
+    )
+    job.status = "running"
+    job.message = "OpenCode 正在生成封面和插图"
+    job.finished_at = None
+    job.summary_json = json.dumps(summary, ensure_ascii=False)
+    test_db_session.commit()
+
+    manifest_path = fake_daily_writer_runtime / "data" / job_id / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.update(
+        {
+            "status": "running",
+            "message": "OpenCode 正在生成封面和插图",
+            "finished_at": None,
+            "summary": summary,
+        }
+    )
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+    detail_resp = test_client.get(f"/api/daily-writer/jobs/{job_id}", headers=headers)
+    assert detail_resp.status_code == HTTPStatus.OK, detail_resp.text
+    detail = detail_resp.json()
+    assert detail["status"] == "completed"
+    assert detail["summary"]["artwork_status"] == "completed"
+    assert detail["summary"]["artwork_cover_count"] == 1
+    assert detail["summary"]["artwork_inline_count"] == 1
+    assert detail["finished_at"] is not None
+
+    reconciled_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert reconciled_manifest["status"] == "completed"
+    assert reconciled_manifest["summary"]["artwork_status"] == "completed"
+
+
 def test_rejects_variant_count_above_api_limit(
     test_client, test_db_session, fake_daily_writer_runtime: Path
 ):
@@ -432,13 +626,24 @@ from pathlib import Path
 
 root = Path.cwd()
 prompt = sys.argv[-1]
+
+def read_existing_events() -> list[object]:
+    progress_path = root / "progress.json"
+    if not progress_path.exists():
+        return []
+    progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    events = progress.get("events")
+    return list(events) if isinstance(events, list) else []
+
 if "wechat-main-variant-batch-rewriter" in prompt:
+    events = read_existing_events()
+    events.append({"event": "失败", "step": "变体生成失败", "summary": "模拟失败"})
     (root / "progress.json").write_text(
         json.dumps(
             {
                 "status": "failed",
                 "current_step": "变体生成失败",
-                "events": [{"event": "failed", "step": "variants", "summary": "模拟失败"}],
+                "events": events,
             },
             ensure_ascii=False,
         ),
@@ -446,7 +651,8 @@ if "wechat-main-variant-batch-rewriter" in prompt:
     )
     raise SystemExit(2)
 
-events = [{"event": "started", "step": "draft", "summary": "开始生成长文"}]
+events = read_existing_events()
+events.append({"event": "started", "step": "draft", "summary": "开始生成长文"})
 output = root / "main" / "260620" / "260620_1"
 output.mkdir(parents=True, exist_ok=True)
 (output / "main.md").write_text("长文正文。\\n", encoding="utf-8")
@@ -561,7 +767,17 @@ import json
 from pathlib import Path
 
 root = Path.cwd()
-events = [{"event": "started", "step": "draft", "summary": "开始生成长文"}]
+
+def read_existing_events() -> list[object]:
+    progress_path = root / "progress.json"
+    if not progress_path.exists():
+        return []
+    progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    events = progress.get("events")
+    return list(events) if isinstance(events, list) else []
+
+events = read_existing_events()
+events.append({"event": "started", "step": "draft", "summary": "开始生成长文"})
 output = root / "main" / "260620" / "260620_1"
 output.mkdir(parents=True, exist_ok=True)
 (output / "main.md").write_text("正文\\n\\n![cover](cover.png)\\n", encoding="utf-8")

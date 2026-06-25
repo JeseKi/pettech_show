@@ -1,0 +1,4 @@
+openai:
+  display_name: "长文封面插图"
+  short_description: "为本地公众号长文生成封面和正文插图"
+  default_prompt: "使用 $wechat-main-artwork-coordinator 为这篇长文生成本地封面和插图。"

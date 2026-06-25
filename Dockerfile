@@ -82,9 +82,11 @@ RUN set -eux; \
             . /etc/os-release; \
             printf 'Types: deb\nURIs: https://mirrors.tuna.tsinghua.edu.cn/debian\nSuites: %s %s-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n\nTypes: deb\nURIs: https://mirrors.tuna.tsinghua.edu.cn/debian-security\nSuites: %s-security\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' "$VERSION_CODENAME" "$VERSION_CODENAME" "$VERSION_CODENAME" > /etc/apt/sources.list.d/debian.sources; \
             pypi_index="https://pypi.tuna.tsinghua.edu.cn/simple"; \
+            npm_registry="https://registry.npmmirror.com"; \
             ;; \
         global) \
             pypi_index="https://pypi.org/simple"; \
+            npm_registry="https://registry.npmjs.org"; \
             ;; \
         *) \
             echo "Unsupported MIRROR_MODE: $MIRROR_MODE"; \
@@ -93,13 +95,34 @@ RUN set -eux; \
     esac; \
     echo "Using mirror mode: $mirror_mode"; \
     apt-get update; \
-    apt-get install -y --no-install-recommends tmux bash; \
+    apt-get install -y --no-install-recommends \
+        bash \
+        ca-certificates \
+        chromium \
+        fontconfig \
+        fonts-liberation \
+        fonts-noto-cjk \
+        fonts-noto-color-emoji \
+        nodejs \
+        npm \
+        tmux; \
+    ln -sf /usr/bin/chromium /usr/local/bin/google-chrome; \
+    npm config set registry "$npm_registry"; \
     rm -rf /var/lib/apt/lists/*; \
     pip install --no-cache-dir --index-url "$pypi_index" uv; \
     uv pip install --no-cache-dir --index-url "$pypi_index" -r requirements.txt --system
 
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium \
+    CHROME_BIN=/usr/bin/chromium
+
 COPY src/server/ ./src/server/
 COPY .agents ./.agents
+RUN set -eux; \
+    cd .agents/skills/guizang-social-card-skill; \
+    npm ci --omit=dev --no-audit --no-fund; \
+    node --version; \
+    chromium --version
 COPY config ./config
 COPY --from=opencode_cli /usr/local/lib/node_modules/opencode-ai/bin/opencode.exe /usr/local/bin/opencode
 COPY --from=builder /app/dist ./dist

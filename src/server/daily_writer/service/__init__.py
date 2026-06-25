@@ -2,6 +2,7 @@
 """Daily writer public service exports."""
 
 from .jobs import (
+    artwork_file,
     create_job,
     delete_child_jobs_for_seed_matrix,
     delete_job,
@@ -13,6 +14,7 @@ from .jobs import (
 )
 
 __all__ = [
+    "artwork_file",
     "create_job",
     "delete_child_jobs_for_seed_matrix",
     "delete_job",
@@ -22,4 +24,3 @@ __all__ = [
     "result_zip_file",
     "sync_job_records",
 ]
-

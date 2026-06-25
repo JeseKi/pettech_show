@@ -21,6 +21,7 @@ from src.server.aiwiki.service.progress import (
     mark_progress_failure,
     mark_progress_running,
     progress_marked_complete,
+    read_progress,
     write_progress,
 )
 from src.server.auth.models import User
@@ -37,7 +38,7 @@ from ..schemas import (
     SeedMatrixResultOut,
 )
 from .artifacts import copy_source_artifacts, material_count, prepare_skill
-from .constants import RESULT_CSV_PATH
+from .constants import FAILURE_REPORT_PATH, RESULT_CSV_PATH
 from .opencode import build_generation_params, run_opencode, run_repair_opencode
 from .permissions import can_access_job, is_admin
 from .persistence import (
@@ -251,16 +252,19 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
         try:
             job = SeedMatrixJobDAO(session).get(job_id)
             if job is not None:
-                append_log(Path(job.workdir), f"ERROR: {exc}")
-                mark_progress_failure(Path(job.workdir), str(exc))
+                workdir = Path(job.workdir)
+                failure_message = _agent_failure_message(workdir, str(exc))
+                append_log(workdir, f"ERROR: {failure_message}")
+                if not _agent_failure_recorded(workdir):
+                    mark_progress_failure(workdir, failure_message)
                 update_job(
                     session,
                     job_id,
                     status="failed",
-                    message=str(exc),
+                    message=failure_message,
                     finished_at=datetime.now(timezone.utc).isoformat(),
                 )
-                write_manifest(Path(job.workdir), SeedMatrixJobDAO(session).get(job_id))
+                write_manifest(workdir, SeedMatrixJobDAO(session).get(job_id))
         finally:
             pass
     finally:
@@ -270,7 +274,7 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
 def _run_opencode_with_check(workdir: Path, params: dict[str, object]) -> None:
     run_opencode(workdir, params)
     if not progress_marked_complete(workdir):
-        raise RuntimeError("progress.json 未写入任务完成标记")
+        raise RuntimeError(_agent_failure_message(workdir, "progress.json 未写入任务完成标记"))
     try:
         _run_seed_matrix_check(workdir)
         return
@@ -283,7 +287,7 @@ def _run_opencode_with_check(workdir: Path, params: dict[str, object]) -> None:
         )
         run_repair_opencode(workdir, params, error=str(first_error))
         if not progress_marked_complete(workdir):
-            raise RuntimeError("修复后 progress.json 未写入任务完成标记")
+            raise RuntimeError(_agent_failure_message(workdir, "修复后 progress.json 未写入任务完成标记"))
         _run_seed_matrix_check(workdir)
 
 
@@ -297,3 +301,43 @@ def _run_seed_matrix_check(workdir: Path) -> None:
         ),
         label="选题矩阵校验",
     )
+
+
+def _agent_failure_recorded(workdir: Path) -> bool:
+    return _explicit_agent_failure_message(workdir) is not None and (
+        workdir / FAILURE_REPORT_PATH
+    ).is_file()
+
+
+def _agent_failure_message(workdir: Path, fallback: str) -> str:
+    explicit_message = _explicit_agent_failure_message(workdir)
+    report_exists = (workdir / FAILURE_REPORT_PATH).is_file()
+    if explicit_message and report_exists:
+        return explicit_message
+    if explicit_message:
+        return f"{explicit_message}（Agent 未写入失败报告：{FAILURE_REPORT_PATH}）"
+    if report_exists:
+        return f"OpenCode Agent 写入了失败报告但未在 progress.json 写明失败原因：{FAILURE_REPORT_PATH}"
+    return (
+        f"OpenCode Agent 未按失败协议写入失败原因和 {FAILURE_REPORT_PATH}"
+        f"（原始错误：{fallback}）"
+    )
+
+
+def _explicit_agent_failure_message(workdir: Path) -> str | None:
+    events = read_progress(workdir).get("events")
+    if not isinstance(events, list):
+        return None
+    for event in reversed(events):
+        if not isinstance(event, dict):
+            continue
+        if str(event.get("event") or "").strip() != "失败":
+            continue
+        summary = str(event.get("summary") or "").strip()
+        if not summary:
+            continue
+        step = str(event.get("step") or "").strip()
+        if step and step != "任务失败" and step not in summary:
+            return f"{step}：{summary}"
+        return summary
+    return None

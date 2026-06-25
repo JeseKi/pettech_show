@@ -16,7 +16,7 @@ from src.server.aiwiki.service.progress import progress_marked_complete
 from src.server.config import global_config
 
 from ..schemas import SeedMatrixCreate
-from .constants import RESULT_CSV_PATH
+from .constants import FAILURE_REPORT_PATH, RESULT_CSV_PATH
 
 
 def run_opencode(workdir: Path, params: dict[str, Any]) -> None:
@@ -113,11 +113,18 @@ def build_prompt(workdir: Path, params: dict[str, Any]) -> str:
 - 当前目录下必须维护 `progress.json`，并保证它始终是合法 JSON。
 - `progress.json` 顶层必须包含 `status`、`current_step`、`events`。
 - `events` 必须是数组，每项至少包含 `event`、`step`、`summary`；`event`、`step` 的值必须使用中文。
+- 必须先读取已有 `progress.json` 的 `events` 并在末尾追加新事件；所有 Skill 和子 Agent 都禁止清空、重置或重建已有 `events`。
 - `event` 只能使用 `开始`、`完成` 或 `失败`。
 - 每开始一个步骤，立刻重写 `progress.json`，追加一条 `开始` 事件，并把 `status` 设为 `running`、`current_step` 设为当前正在做的中文步骤名。
 - 每完成一个步骤，立刻重写 `progress.json`，追加一条 `完成` 事件，`summary` 简要概括刚完成的内容。
-- 如果任务失败，必须把 `status` 设为 `failure`，`current_step` 设为 `任务失败`，并追加 `失败` 事件。
+- 如果任务失败，必须先写 `{FAILURE_REPORT_PATH}`，再把 `progress.json` 的 `status` 设为 `failure`、`current_step` 设为 `任务失败`，并追加 `失败` 事件。
+- 失败事件的 `summary` 必须用一句话写清根因，并包含 `失败报告：{FAILURE_REPORT_PATH}`。
 - 所有矩阵生成和校验都完成后，必须把 `status` 设为 `completed`，`current_step` 设为 `任务完成`，且最后一个事件必须精确为 `{{"event":"完成","step":"全部","summary":"任务完成"}}`。
+
+失败报告要求：
+- 文件路径必须是当前目录下的 `{FAILURE_REPORT_PATH}`。
+- 用 Markdown 写一篇完整失败报告，必须包含：失败步骤、失败原因、已检查的输入资产、已执行的命令或校验、关键错误信息、建议处理方式、相关文件路径。
+- 不要只写“任务失败”或“未知错误”；如果原因不确定，报告里必须说明已经排除的情况和仍缺少的信息。
 
 目标：
 1. 使用 $wechat-seed-matrix-builder，从当前目录的 `material/` 和 `wiki/` 生成选题矩阵 CSV。
@@ -170,10 +177,17 @@ def build_repair_prompt(workdir: Path, params: dict[str, Any], *, error: str) ->
 
 进度协议：
 - `progress.json` 顶层必须包含 `status`、`current_step`、`events`。
+- 必须先读取已有 `progress.json` 的 `events` 并在末尾追加新事件；所有 Skill 和子 Agent 都禁止清空、重置或重建已有 `events`。
 - `event`、`step` 的值必须使用中文；`event` 只能使用 `开始`、`完成` 或 `失败`。
 - 修复开始时写入 `status: running`，`current_step: 修复选题矩阵`，并追加 `开始` 事件。
 - 校验通过后，必须把 `status` 设为 `completed`，`current_step` 设为 `任务完成`，且最后一个事件必须精确为 `{{"event":"完成","step":"全部","summary":"任务完成"}}`。
-- 如果无法修复，必须把 `status` 设为 `failure`，`current_step` 设为 `任务失败`，并追加 `失败` 事件说明原因。
+- 如果无法修复，必须先写 `{FAILURE_REPORT_PATH}`，再把 `progress.json` 的 `status` 设为 `failure`、`current_step` 设为 `任务失败`，并追加 `失败` 事件。
+- 失败事件的 `summary` 必须用一句话写清根因，并包含 `失败报告：{FAILURE_REPORT_PATH}`。
+
+失败报告要求：
+- 文件路径必须是当前目录下的 `{FAILURE_REPORT_PATH}`。
+- 用 Markdown 写一篇完整失败报告，必须包含：失败步骤、失败原因、已检查的输入资产、已执行的命令或校验、关键错误信息、建议处理方式、相关文件路径。
+- 不要只写“任务失败”或“未知错误”；如果原因不确定，报告里必须说明已经排除的情况和仍缺少的信息。
 """.strip()
 
 

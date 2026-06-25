@@ -18,6 +18,7 @@ class DailyWriterCreate(BaseModel):
     output_date: str | None = Field(default=None, pattern=r"^\d{6}$")
     generate_variants: bool = False
     variant_count: int = 5
+    generate_artwork: bool = False
 
     @model_validator(mode="after")
     def validate_variant_count(self) -> "DailyWriterCreate":
@@ -86,9 +87,11 @@ class DailyWriterResultOut(BaseModel):
     article_path: str
     metadata_path: str
     markdown: str
+    illustrated_markdown: str
     metadata: dict[str, Any]
     summary: dict[str, Any] = Field(default_factory=dict)
     variants: list["DailyWriterVariantOut"] = Field(default_factory=list)
+    artwork: "DailyWriterArtworkOut" = Field(default_factory=lambda: DailyWriterArtworkOut())
 
 
 class DailyWriterVariantOut(BaseModel):
@@ -97,4 +100,20 @@ class DailyWriterVariantOut(BaseModel):
     markdown_path: str
     metadata_path: str
     markdown: str
+    illustrated_markdown: str
     metadata: dict[str, Any]
+
+
+class DailyWriterArtworkAssetOut(BaseModel):
+    key: str
+    path: str
+    url: str
+    kind: Literal["cover", "inline"]
+    filename: str
+    content_type: str
+
+
+class DailyWriterArtworkOut(BaseModel):
+    cover_images: list[DailyWriterArtworkAssetOut] = Field(default_factory=list)
+    inline_images: list[DailyWriterArtworkAssetOut] = Field(default_factory=list)
+    assets_path: str | None = None
