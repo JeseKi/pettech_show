@@ -99,10 +99,14 @@ RUN set -eux; \
         bash \
         ca-certificates \
         chromium \
+        curl \
+        ffmpeg \
+        file \
         fontconfig \
         fonts-liberation \
         fonts-noto-cjk \
         fonts-noto-color-emoji \
+        imagemagick \
         nodejs \
         npm \
         tmux; \
