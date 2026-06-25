@@ -113,10 +113,10 @@
   gap: 4px;
 }
 
-.growth-task-card-delete {
+.growth-task-card-delete,
+.growth-task-card-edit {
   position: absolute;
   top: 9px;
-  right: 8px;
   display: inline-grid;
   width: 26px;
   height: 26px;
@@ -130,14 +130,29 @@
     opacity 180ms ease;
 }
 
+.growth-task-card-delete {
+  right: 8px;
+}
+
+.growth-task-card-edit {
+  right: 38px;
+}
+
 .growth-task-card:hover .growth-task-card-delete,
-.growth-task-card-delete:focus-visible {
+.growth-task-card-delete:focus-visible,
+.growth-task-card:hover .growth-task-card-edit,
+.growth-task-card-edit:focus-visible {
   opacity: 1;
 }
 
 .growth-task-card-delete:hover {
   background: rgba(239, 68, 68, 0.16);
   color: #fecaca;
+}
+
+.growth-task-card-edit:hover {
+  background: rgba(110, 231, 249, 0.16);
+  color: #bae6fd;
 }
 
 .growth-main-stage {

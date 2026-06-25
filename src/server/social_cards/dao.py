@@ -94,6 +94,8 @@ class SocialCardJobDAO(BaseDAO):
         job = self.get(job_id)
         if job is None:
             raise ValueError("任务不存在")
+        if "title" in fields:
+            job.title = fields["title"]
         if "status" in fields:
             job.status = str(fields["status"])
         if "message" in fields:
@@ -145,4 +147,3 @@ def coerce_datetime(value: Any) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
-

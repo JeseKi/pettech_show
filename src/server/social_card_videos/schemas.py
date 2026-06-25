@@ -11,11 +11,16 @@ from pydantic import BaseModel, ConfigDict, Field
 SocialCardVideoJobStatus = Literal["queued", "running", "completed", "failed"]
 
 
+class SocialCardVideoJobUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+
+
 class SocialCardVideoJobOut(BaseModel):
     id: str
     owner_user_id: int | None = None
     owner_username: str | None = None
     source_social_card_job_id: str
+    title: str | None = None
     status: SocialCardVideoJobStatus
     queue_position: int | None = None
     message: str | None = None
@@ -35,6 +40,7 @@ class SocialCardVideoJobSummaryOut(BaseModel):
     owner_user_id: int | None = None
     owner_username: str | None = None
     source_social_card_job_id: str
+    title: str | None = None
     status: SocialCardVideoJobStatus
     message: str | None = None
     params: dict[str, Any] = Field(default_factory=dict)
@@ -69,4 +75,3 @@ class SocialCardVideoResultOut(BaseModel):
     videos: list[SocialCardVideoAssetOut] = Field(default_factory=list)
     markdown: str = ""
     summary: dict[str, Any] = Field(default_factory=dict)
-

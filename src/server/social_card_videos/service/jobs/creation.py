@@ -73,6 +73,7 @@ async def create_job(
         workdir=workdir.as_posix(),
         params=params,
         created_at=now,
+        title=title.strip(),
     )
     write_manifest(workdir, job)
     session_factory = build_session_factory(db)

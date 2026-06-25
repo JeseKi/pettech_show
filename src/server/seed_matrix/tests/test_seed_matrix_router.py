@@ -236,6 +236,19 @@ def test_create_seed_matrix_job_and_download_result(
     created = create_resp.json()
     assert created["status"] == "queued"
     assert created["source_aiwiki_job_id"] == source.id
+    assert created["title"] is None
+
+    update_resp = test_client.patch(
+        f"/api/seed-matrices/{created['id']}",
+        headers=headers,
+        json={"title": "本周选题策略"},
+    )
+    assert update_resp.status_code == HTTPStatus.OK, update_resp.text
+    assert update_resp.json()["title"] == "本周选题策略"
+
+    list_resp = test_client.get("/api/seed-matrices", headers=headers)
+    assert list_resp.status_code == HTTPStatus.OK, list_resp.text
+    assert list_resp.json()["items"][0]["title"] == "本周选题策略"
 
     finished = _wait_for_terminal_status(test_client, created["id"], headers)
     assert finished["status"] == "completed", finished

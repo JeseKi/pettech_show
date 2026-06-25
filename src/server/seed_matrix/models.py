@@ -21,6 +21,7 @@ class SeedMatrixJob(Base):
     source_aiwiki_job_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("aiwiki_jobs.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    title: Mapped[str | None] = mapped_column(String(255), default=None)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
     message: Mapped[str | None] = mapped_column(Text, default=None)
     workdir: Mapped[str] = mapped_column(Text, nullable=False)

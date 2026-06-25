@@ -379,6 +379,19 @@ def test_create_daily_writer_job_and_download_result(
     assert created["status"] == "queued"
     assert created["source_seed_matrix_job_id"] == matrix.id
     assert created["row"]["topic"] == "AI Wiki 选题资产化"
+    assert created["title"] is None
+
+    update_resp = test_client.patch(
+        f"/api/daily-writer/jobs/{created['id']}",
+        headers=headers,
+        json={"title": "资产化长文任务"},
+    )
+    assert update_resp.status_code == HTTPStatus.OK, update_resp.text
+    assert update_resp.json()["title"] == "资产化长文任务"
+
+    list_resp = test_client.get("/api/daily-writer/jobs", headers=headers)
+    assert list_resp.status_code == HTTPStatus.OK, list_resp.text
+    assert list_resp.json()["items"][0]["title"] == "资产化长文任务"
 
     finished = _wait_for_terminal_status(test_client, created["id"], headers)
     assert finished["status"] == "completed", finished

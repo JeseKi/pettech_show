@@ -28,11 +28,13 @@ class SocialCardVideoJobDAO(BaseDAO):
         workdir: str,
         params: dict[str, Any],
         created_at: datetime,
+        title: str | None = None,
     ) -> SocialCardVideoJob:
         job = SocialCardVideoJob(
             id=job_id,
             owner_user_id=owner_user_id,
             source_social_card_job_id=source_social_card_job_id,
+            title=title,
             status="queued",
             message="任务已进入队列",
             workdir=workdir,
@@ -94,6 +96,8 @@ class SocialCardVideoJobDAO(BaseDAO):
         job = self.get(job_id)
         if job is None:
             raise ValueError("任务不存在")
+        if "title" in fields:
+            job.title = fields["title"]
         if "status" in fields:
             job.status = str(fields["status"])
         if "message" in fields:
@@ -145,4 +149,3 @@ def coerce_datetime(value: Any) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
-

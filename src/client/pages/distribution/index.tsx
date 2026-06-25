@@ -1,5 +1,5 @@
 import { Alert, App, Button, Empty, Flex, List, Segmented, Space, Statistic, Tag, Typography } from 'antd'
-import { FileMarkdownOutlined, PictureOutlined, ReloadOutlined } from '@ant-design/icons'
+import { FileMarkdownOutlined, PictureOutlined, ReloadOutlined, VideoCameraOutlined } from '@ant-design/icons'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import DistributionUploadPanel from '../../components/distribution/DistributionUploadPanel'
 import {
@@ -15,6 +15,10 @@ import {
   listSocialCardJobs,
   type SocialCardJobSummary,
 } from '../../lib/socialCards'
+import {
+  listSocialCardVideoJobs,
+  type SocialCardVideoJobSummary,
+} from '../../lib/socialCardVideos'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import { useAuth } from '../../hooks/useAuth'
 import { formatDateTime } from '../aiwiki/helpers'
@@ -31,6 +35,7 @@ type SourceItem = {
 const initialSourceIds: SourceIds = {
   daily_writer: null,
   social_cards: null,
+  social_card_videos: null,
 }
 
 function firstString(...values: unknown[]): string {
@@ -42,6 +47,7 @@ function firstString(...values: unknown[]): string {
 
 function dailyWriterTitle(job: DailyWriterJobSummary): string {
   return firstString(
+    job.title,
     job.summary.title,
     job.summary.headline,
     job.row.title,
@@ -55,6 +61,7 @@ function dailyWriterTitle(job: DailyWriterJobSummary): string {
 
 function socialCardTitle(job: SocialCardJobSummary): string {
   return firstString(
+    job.title,
     job.summary.title,
     job.summary.headline,
     job.source_daily_writer_job_id,
@@ -62,11 +69,24 @@ function socialCardTitle(job: SocialCardJobSummary): string {
   )
 }
 
+function socialCardVideoTitle(job: SocialCardVideoJobSummary): string {
+  return firstString(
+    job.title,
+    job.params.title,
+    job.summary.title,
+    job.source_social_card_job_id,
+    job.id,
+  )
+}
+
 function sourceLabel(sourceType: DistributionSourceType): string {
-  return sourceType === 'daily_writer' ? '稿件' : '图文'
+  if (sourceType === 'daily_writer') return '稿件'
+  if (sourceType === 'social_card_videos') return '视频'
+  return '图文'
 }
 
 function uploadTypeLabel(uploadType: string): string {
+  if (uploadType === 'video') return '视频'
   return uploadType === 'image_text' ? '图文' : '长文'
 }
 
@@ -83,6 +103,7 @@ export default function DistributionStagePage() {
   const [selectedIds, setSelectedIds] = useState<SourceIds>(initialSourceIds)
   const [dailyWriterJobs, setDailyWriterJobs] = useState<DailyWriterJobSummary[]>([])
   const [socialCardJobs, setSocialCardJobs] = useState<SocialCardJobSummary[]>([])
+  const [socialCardVideoJobs, setSocialCardVideoJobs] = useState<SocialCardVideoJobSummary[]>([])
   const [uploadJobs, setUploadJobs] = useState<DistributionUploadJob[]>([])
   const [loadingSources, setLoadingSources] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
@@ -91,12 +112,14 @@ export default function DistributionStagePage() {
     if (user?.role !== 'admin') return
     setLoadingSources(true)
     try {
-      const [dailyWriters, socialCards] = await Promise.all([
+      const [dailyWriters, socialCards, socialCardVideos] = await Promise.all([
         listDailyWriterJobs({ limit: 100, offset: 0 }),
         listSocialCardJobs({ limit: 100, offset: 0 }),
+        listSocialCardVideoJobs({ limit: 100, offset: 0 }),
       ])
       setDailyWriterJobs(dailyWriters.items.filter((item) => item.status === 'completed' || item.status === 'partial_failed'))
       setSocialCardJobs(socialCards.items.filter((item) => item.status === 'completed'))
+      setSocialCardVideoJobs(socialCardVideos.items.filter((item) => item.status === 'completed'))
     } catch (err) {
       message.error(resolveErrorMessage(err))
     } finally {
@@ -130,13 +153,21 @@ export default function DistributionStagePage() {
       const socialId = current.social_cards && socialCardJobs.some((item) => item.id === current.social_cards)
         ? current.social_cards
         : socialCardJobs[0]?.id ?? null
-      if (dailyId === current.daily_writer && socialId === current.social_cards) return current
+      const videoId = current.social_card_videos && socialCardVideoJobs.some((item) => item.id === current.social_card_videos)
+        ? current.social_card_videos
+        : socialCardVideoJobs[0]?.id ?? null
+      if (
+        dailyId === current.daily_writer
+        && socialId === current.social_cards
+        && videoId === current.social_card_videos
+      ) return current
       return {
         daily_writer: dailyId,
         social_cards: socialId,
+        social_card_videos: videoId,
       }
     })
-  }, [dailyWriterJobs, socialCardJobs])
+  }, [dailyWriterJobs, socialCardJobs, socialCardVideoJobs])
 
   const sourceItems = useMemo<SourceItem[]>(() => (
     sourceType === 'daily_writer'
@@ -146,17 +177,24 @@ export default function DistributionStagePage() {
         status: job.status,
         created_at: job.created_at,
       }))
-      : socialCardJobs.map((job) => ({
-        id: job.id,
-        title: socialCardTitle(job),
-        status: job.status,
-        created_at: job.created_at,
-      }))
-  ), [dailyWriterJobs, socialCardJobs, sourceType])
+      : sourceType === 'social_card_videos'
+        ? socialCardVideoJobs.map((job) => ({
+          id: job.id,
+          title: socialCardVideoTitle(job),
+          status: job.status,
+          created_at: job.created_at,
+        }))
+        : socialCardJobs.map((job) => ({
+          id: job.id,
+          title: socialCardTitle(job),
+          status: job.status,
+          created_at: job.created_at,
+        }))
+  ), [dailyWriterJobs, socialCardJobs, socialCardVideoJobs, sourceType])
 
   const selectedJobId = selectedIds[sourceType]
   const selectedJob = sourceItems.find((item) => item.id === selectedJobId) ?? null
-  const totalSourceCount = dailyWriterJobs.length + socialCardJobs.length
+  const totalSourceCount = dailyWriterJobs.length + socialCardJobs.length + socialCardVideoJobs.length
   const completedUploadCount = uploadJobs.filter((item) => item.status === 'completed').length
 
   if (user?.role !== 'admin') {
@@ -195,6 +233,7 @@ export default function DistributionStagePage() {
           options={[
             { label: '稿件', value: 'daily_writer', icon: <FileMarkdownOutlined /> },
             { label: '图文', value: 'social_cards', icon: <PictureOutlined /> },
+            { label: '视频', value: 'social_card_videos', icon: <VideoCameraOutlined /> },
           ]}
         />
         <div className="growth-task-list">
@@ -230,7 +269,7 @@ export default function DistributionStagePage() {
             <div className="growth-panel-heading">
               <Typography.Text className="growth-eyebrow">分发中心</Typography.Text>
               <Typography.Title level={4}>上传到 Info Distribution</Typography.Title>
-              <Typography.Text type="secondary">集中处理稿件和图文的远端项目、主题、账号和排期。</Typography.Text>
+              <Typography.Text type="secondary">集中处理稿件、图文和视频的远端项目、主题、账号和排期。</Typography.Text>
             </div>
             <Button
               icon={<ReloadOutlined />}
@@ -244,6 +283,7 @@ export default function DistributionStagePage() {
           <div className="growth-readonly-summary is-compact">
             <ConfigItem label="待分发稿件" value={`${dailyWriterJobs.length}`} />
             <ConfigItem label="待分发图文" value={`${socialCardJobs.length}`} />
+            <ConfigItem label="待分发视频" value={`${socialCardVideoJobs.length}`} />
             <ConfigItem label="最近上传" value={`${uploadJobs.length}`} />
             <ConfigItem label="成功任务" value={`${completedUploadCount}`} />
           </div>

@@ -17,7 +17,11 @@ from . import service
 from .schemas import (
     SocialCardVideoJobListOut,
     SocialCardVideoJobOut,
+    SocialCardVideoJobUpdate,
     SocialCardVideoResultOut,
+)
+from src.server.social_card_videos.service.jobs.mutations import (
+    update_job_title as update_social_card_video_job_title,
 )
 
 router = APIRouter(prefix="/api/social-card-videos", tags=["小红书轮播视频"])
@@ -81,6 +85,20 @@ async def get_social_card_video_job(
     current_user: User = Depends(get_current_user),
 ):
     return service.get_job(db, job_id, current_user)
+
+
+@router.patch(
+    "/jobs/{job_id}",
+    response_model=SocialCardVideoJobOut,
+    summary="更新小红书轮播视频任务",
+)
+async def update_social_card_video_job(
+    job_id: str,
+    payload: SocialCardVideoJobUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return update_social_card_video_job_title(db, job_id, payload, current_user)
 
 
 @router.get(

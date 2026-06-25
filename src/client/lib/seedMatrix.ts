@@ -14,6 +14,7 @@ export interface SeedMatrixJob {
   owner_user_id: number | null
   owner_username: string | null
   source_aiwiki_job_id: string
+  title: string | null
   status: SeedMatrixJobStatus
   queue_position: number | null
   message: string | null
@@ -35,6 +36,7 @@ export interface SeedMatrixJobSummary {
   owner_user_id: number | null
   owner_username: string | null
   source_aiwiki_job_id: string
+  title: string | null
   status: SeedMatrixJobStatus
   message: string | null
   params: Record<string, unknown>
@@ -72,6 +74,11 @@ export async function listSeedMatrixJobs(params: { limit?: number; offset?: numb
 
 export async function getSeedMatrixJob(jobId: string): Promise<SeedMatrixJob> {
   const { data } = await api.get<SeedMatrixJob>(`/seed-matrices/${jobId}`)
+  return data
+}
+
+export async function updateSeedMatrixJob(jobId: string, payload: { title?: string | null }): Promise<SeedMatrixJob> {
+  const { data } = await api.patch<SeedMatrixJob>(`/seed-matrices/${jobId}`, payload)
   return data
 }
 

@@ -29,6 +29,10 @@ class DailyWriterCreate(BaseModel):
         return self
 
 
+class DailyWriterJobUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+
+
 class DailyWriterJobOut(BaseModel):
     id: str
     owner_user_id: int | None = None
@@ -36,6 +40,7 @@ class DailyWriterJobOut(BaseModel):
     source_seed_matrix_job_id: str
     source_aiwiki_job_id: str
     seed_id: str
+    title: str | None = None
     status: DailyWriterJobStatus
     queue_position: int | None = None
     message: str | None = None
@@ -60,6 +65,7 @@ class DailyWriterJobSummaryOut(BaseModel):
     source_seed_matrix_job_id: str
     source_aiwiki_job_id: str
     seed_id: str
+    title: str | None = None
     status: DailyWriterJobStatus
     message: str | None = None
     row: dict[str, str] = Field(default_factory=dict)

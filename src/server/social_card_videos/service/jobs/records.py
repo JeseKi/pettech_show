@@ -45,6 +45,7 @@ def sync_job_records(db: Session) -> None:
             id=str(manifest["id"]),
             owner_user_id=coerce_int(manifest.get("owner_user_id")),
             source_social_card_job_id=str(manifest["source_social_card_job_id"]),
+            title=_normalize_title(manifest.get("title")),
             status=str(manifest.get("status") or "failed"),
             message=manifest.get("message"),
             workdir=workdir.as_posix(),
@@ -94,3 +95,9 @@ def reconcile_orphaned_finished_job(db: Session, job: SocialCardVideoJob) -> Soc
     write_manifest(workdir, reconciled)
     return reconciled
 
+
+def _normalize_title(value: object) -> str | None:
+    if value is None:
+        return None
+    stripped = str(value).strip()
+    return stripped or None

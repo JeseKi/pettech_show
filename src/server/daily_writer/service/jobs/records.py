@@ -48,6 +48,7 @@ def sync_job_records(db: Session) -> None:
             source_seed_matrix_job_id=str(manifest["source_seed_matrix_job_id"]),
             source_aiwiki_job_id=str(manifest["source_aiwiki_job_id"]),
             seed_id=str(manifest["seed_id"]),
+            title=_normalize_title(manifest.get("title")),
             status=str(manifest.get("status") or "failed"),
             message=manifest.get("message"),
             workdir=workdir.as_posix(),
@@ -124,3 +125,10 @@ def _result_satisfies_followups(result, params: dict[str, object]) -> bool:
     ):
         return False
     return True
+
+
+def _normalize_title(value: object) -> str | None:
+    if value is None:
+        return None
+    stripped = str(value).strip()
+    return stripped or None

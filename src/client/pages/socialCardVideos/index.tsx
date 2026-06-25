@@ -8,6 +8,7 @@ import {
   Form,
   Input,
   List,
+  Popconfirm,
   Progress,
   Space,
   Tag,
@@ -15,7 +16,9 @@ import {
   Upload,
 } from 'antd'
 import {
+  DeleteOutlined,
   DownloadOutlined,
+  EditOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
   VideoCameraOutlined,
@@ -26,11 +29,13 @@ import {
 } from '../../lib/socialCards'
 import {
   createSocialCardVideoJob,
+  deleteSocialCardVideoJob,
   downloadSocialCardVideoResult,
   getSocialCardVideoBlob,
   getSocialCardVideoJob,
   getSocialCardVideoResult,
   listSocialCardVideoJobs,
+  updateSocialCardVideoJob,
   type SocialCardVideoAsset,
   type SocialCardVideoJob,
   type SocialCardVideoJobSummary,
@@ -43,7 +48,7 @@ import '../seedMatrix/GrowthWorkflow.css'
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
 
 export default function SocialCardVideosPage() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const [sourceJobs, setSourceJobs] = useState<SocialCardJobSummary[]>([])
   const [videoJobs, setVideoJobs] = useState<SocialCardVideoJobSummary[]>([])
   const [selectedSourceJobId, setSelectedSourceJobId] = useState<string | null>(null)
@@ -193,6 +198,54 @@ export default function SocialCardVideosPage() {
     }
   }
 
+  const deleteVideoJob = async (jobId: string) => {
+    try {
+      await deleteSocialCardVideoJob(jobId)
+      message.success('视频任务已删除')
+      setVideoJobs((items) => items.filter((item) => item.id !== jobId))
+      if (activeJob?.id === jobId) {
+        setActiveJob(null)
+        setResult(null)
+        setCreating(true)
+      }
+      void loadVideoJobs()
+    } catch (err) {
+      const text = resolveErrorMessage(err)
+      setError(text)
+      message.error(text)
+    }
+  }
+
+  const renameVideoJob = (job: SocialCardVideoJobSummary) => {
+    let nextTitle = videoTaskTitle(job)
+    modal.confirm({
+      title: '编辑任务名称',
+      content: (
+        <Input
+          autoFocus
+          defaultValue={nextTitle}
+          maxLength={255}
+          placeholder={String(job.params.title || '小红书轮播视频')}
+          onChange={(event) => {
+            nextTitle = event.target.value
+          }}
+        />
+      ),
+      okText: '保存',
+      cancelText: '取消',
+      onOk: async () => {
+        const updated = await updateSocialCardVideoJob(job.id, { title: nextTitle })
+        setVideoJobs((items) => items.map((item) => (
+          item.id === updated.id ? { ...item, title: updated.title } : item
+        )))
+        if (activeJob?.id === updated.id) {
+          setActiveJob(updated)
+        }
+        message.success('任务名称已更新')
+      },
+    })
+  }
+
   return (
     <div className="growth-workflow">
       <aside className="growth-task-rail">
@@ -216,11 +269,47 @@ export default function SocialCardVideosPage() {
                 className={job.id === activeJob?.id && !creating ? 'growth-task-card is-active' : 'growth-task-card'}
                 onClick={() => void selectVideoJob(job.id)}
               >
-                <span className="growth-task-card-title">{shortId(job.id)}</span>
+                <span className="growth-task-card-title">{videoTaskTitle(job)}</span>
                 <span className="growth-task-card-meta">{formatDateTime(job.created_at)}</span>
                 <span className="growth-task-card-tags">
                   <Tag color={statusColor(job.status)}>{statusMeta(job.status).label}</Tag>
                   {job.summary.video_count ? <Tag color="green">视频 {Number(job.summary.video_count)}</Tag> : null}
+                </span>
+                <Popconfirm
+                  title="删除任务"
+                  description="会删除该视频任务记录和生成文件。"
+                  okText="删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={(event) => {
+                    event?.stopPropagation()
+                    void deleteVideoJob(job.id)
+                  }}
+                  onCancel={(event) => event?.stopPropagation()}
+                >
+                  <span
+                    className="growth-task-card-delete"
+                    role="button"
+                    tabIndex={0}
+                    aria-label="删除视频任务"
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                  >
+                    <DeleteOutlined />
+                  </span>
+                </Popconfirm>
+                <span
+                  className="growth-task-card-edit"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="编辑视频任务名称"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    renameVideoJob(job)
+                  }}
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
+                  <EditOutlined />
                 </span>
               </button>
             </List.Item>
@@ -363,7 +452,7 @@ function CreateVideoTask({
                   className={job.id === selectedSourceJobId ? 'growth-input-source is-active' : 'growth-input-source'}
                   onClick={() => onSelectSourceJob(job.id)}
                 >
-                  <span>{String(job.summary.title || job.id)}</span>
+                  <span>{socialCardTaskTitle(job)}</span>
                   <small>{formatDateTime(job.created_at)} · {socialCardJobCountLabel(job)}</small>
                 </button>
               </List.Item>
@@ -503,7 +592,7 @@ function VideoTaskDetail({
       <Flex align="flex-start" justify="space-between" wrap="wrap" gap={12}>
         <div className="growth-panel-heading">
           <Typography.Text className="growth-eyebrow">视频任务详情</Typography.Text>
-          <Typography.Title level={3}>{shortId(job.id)}</Typography.Title>
+          <Typography.Title level={3}>{videoTaskTitle(job)}</Typography.Title>
           <Typography.Paragraph>配置已锁定。你可以查看视频结果，或基于同一组图文重新生成。</Typography.Paragraph>
         </div>
         <Space wrap>
@@ -653,6 +742,14 @@ function socialCardJobCountLabel(job: SocialCardJobSummary): string {
     return `${postCount} 篇 · ${cardsPerPost} 张/篇`
   }
   return `${cardsPerPost} 张`
+}
+
+function socialCardTaskTitle(job: Pick<SocialCardJobSummary, 'id' | 'title' | 'summary'>): string {
+  return job.title || String(job.summary.title || job.id)
+}
+
+function videoTaskTitle(job: Pick<SocialCardVideoJobSummary, 'id' | 'title' | 'params' | 'summary'>): string {
+  return job.title || String(job.params.title || job.summary.title || shortId(job.id))
 }
 
 function latestProgressSummary(job: SocialCardVideoJob): string {

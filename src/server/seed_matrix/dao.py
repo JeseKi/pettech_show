@@ -90,6 +90,8 @@ class SeedMatrixJobDAO(BaseDAO):
         job = self.get(job_id)
         if job is None:
             raise ValueError("任务不存在")
+        if "title" in fields:
+            job.title = fields["title"]
         if "status" in fields:
             job.status = str(fields["status"])
         if "message" in fields:

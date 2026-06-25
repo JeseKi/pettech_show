@@ -18,8 +18,10 @@ from .schemas import (
     SeedMatrixCreate,
     SeedMatrixJobListOut,
     SeedMatrixJobOut,
+    SeedMatrixJobUpdate,
     SeedMatrixResultOut,
 )
+from .service.jobs import update_job_title as update_seed_matrix_job_title
 
 router = APIRouter(prefix="/api/seed-matrices", tags=["选题矩阵"])
 
@@ -70,6 +72,20 @@ async def get_seed_matrix_job(
     current_user: User = Depends(get_current_user),
 ):
     return service.get_job(db, job_id, current_user)
+
+
+@router.patch(
+    "/{job_id}",
+    response_model=SeedMatrixJobOut,
+    summary="更新选题矩阵任务",
+)
+async def update_seed_matrix_job(
+    job_id: str,
+    payload: SeedMatrixJobUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return update_seed_matrix_job_title(db, job_id, payload, current_user)
 
 
 @router.get(

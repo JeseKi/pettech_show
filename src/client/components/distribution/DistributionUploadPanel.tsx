@@ -46,7 +46,11 @@ export default function DistributionUploadPanel({
   sourceType: DistributionSourceType
 }) {
   const { user } = useAuth()
-  const uploadType: DistributionUploadType = sourceType === 'daily_writer' ? 'article' : 'image_text'
+  const uploadType: DistributionUploadType = sourceType === 'daily_writer'
+    ? 'article'
+    : sourceType === 'social_card_videos'
+      ? 'video'
+      : 'image_text'
   const [directory, setDirectory] = useState<DistributionDirectory | null>(null)
   const [loadingDirectory, setLoadingDirectory] = useState(false)
   const [planning, setPlanning] = useState(false)
@@ -166,7 +170,7 @@ export default function DistributionUploadPanel({
         <div>
           <Typography.Title level={5}>上传到分发平台</Typography.Title>
           <Typography.Text type="secondary">
-            {uploadType === 'article' ? '长文稿件' : '小红书图文'} · 手动上传
+            {uploadTypeLabel(uploadType)} · 手动上传
           </Typography.Text>
         </div>
         <Button icon={<ReloadOutlined />} loading={loadingDirectory} onClick={() => void loadDirectory()}>
@@ -264,6 +268,12 @@ export default function DistributionUploadPanel({
       {uploadResult ? <UploadResult result={uploadResult} /> : null}
     </section>
   )
+}
+
+function uploadTypeLabel(uploadType: DistributionUploadType): string {
+  if (uploadType === 'article') return '长文稿件'
+  if (uploadType === 'video') return '轮播视频'
+  return '小红书图文'
 }
 
 function ConfigItem({ label, value }: { label: string; value: string }) {

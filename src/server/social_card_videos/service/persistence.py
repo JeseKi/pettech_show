@@ -63,6 +63,7 @@ def write_manifest(workdir: Path, job: SocialCardVideoJob | None) -> None:
         "id": job.id,
         "owner_user_id": job.owner_user_id,
         "source_social_card_job_id": job.source_social_card_job_id,
+        "title": job.title,
         "status": job.status,
         "message": job.message,
         "workdir": job.workdir,
@@ -101,4 +102,3 @@ def json_string(value: Any) -> str:
     if isinstance(value, str):
         return value
     return json.dumps(value, ensure_ascii=False)
-

@@ -6,6 +6,7 @@ import {
   Empty,
   Flex,
   Image,
+  Input,
   InputNumber,
   List,
   Popconfirm,
@@ -18,6 +19,7 @@ import {
 import {
   DeleteOutlined,
   DownloadOutlined,
+  EditOutlined,
   PlayCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -37,6 +39,7 @@ import {
   getSocialCardJob,
   getSocialCardResult,
   listSocialCardJobs,
+  updateSocialCardJob,
   type SocialCardAsset,
   type SocialCardJob,
   type SocialCardJobSummary,
@@ -54,7 +57,7 @@ const SOCIAL_CARD_IMAGE_PREFIX = 'social-card-image:'
 type WorkflowRunJob = Pick<SocialCardJob, 'status' | 'queue_position' | 'message' | 'progress' | 'log_tail'>
 
 export default function SocialCardsPage() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const [writerJobs, setWriterJobs] = useState<DailyWriterJobSummary[]>([])
   const [cardJobs, setCardJobs] = useState<SocialCardJobSummary[]>([])
   const [selectedWriterJobId, setSelectedWriterJobId] = useState<string | null>(null)
@@ -211,6 +214,36 @@ export default function SocialCardsPage() {
     }
   }
 
+  const renameCardJob = (job: SocialCardJobSummary) => {
+    let nextTitle = socialCardTaskTitle(job)
+    modal.confirm({
+      title: '编辑任务名称',
+      content: (
+        <Input
+          autoFocus
+          defaultValue={nextTitle}
+          maxLength={255}
+          placeholder={String(job.summary.title || job.id)}
+          onChange={(event) => {
+            nextTitle = event.target.value
+          }}
+        />
+      ),
+      okText: '保存',
+      cancelText: '取消',
+      onOk: async () => {
+        const updated = await updateSocialCardJob(job.id, { title: nextTitle })
+        setCardJobs((items) => items.map((item) => (
+          item.id === updated.id ? { ...item, title: updated.title } : item
+        )))
+        if (activeJob?.id === updated.id) {
+          setActiveJob(updated)
+        }
+        message.success('任务名称已更新')
+      },
+    })
+  }
+
   return (
     <div className="growth-workflow">
       <SocialCardTaskRail
@@ -220,6 +253,7 @@ export default function SocialCardsPage() {
         onCreate={startCreate}
         onDelete={(jobId) => void deleteJob(jobId)}
         onRefresh={() => void loadCardJobs()}
+        onRename={renameCardJob}
         onSelect={(jobId) => void selectCardJob(jobId)}
       />
       <main className="growth-main-stage">
@@ -278,6 +312,7 @@ function SocialCardTaskRail({
   onCreate,
   onDelete,
   onRefresh,
+  onRename,
   onSelect,
 }: {
   activeJobId: string | null
@@ -286,6 +321,7 @@ function SocialCardTaskRail({
   onCreate: () => void
   onDelete: (jobId: string) => void
   onRefresh: () => void
+  onRename: (job: SocialCardJobSummary) => void
   onSelect: (jobId: string) => void
 }) {
   return (
@@ -310,7 +346,7 @@ function SocialCardTaskRail({
               className={job.id === activeJobId ? 'growth-task-card is-active' : 'growth-task-card'}
               onClick={() => onSelect(job.id)}
             >
-              <span className="growth-task-card-title">{String(job.summary.title || job.id)}</span>
+              <span className="growth-task-card-title">{socialCardTaskTitle(job)}</span>
               <span className="growth-task-card-meta">
                 {formatDateTime(job.created_at)} · {socialCardJobCountLabel(job)}
               </span>
@@ -342,6 +378,19 @@ function SocialCardTaskRail({
                   <DeleteOutlined />
                 </span>
               </Popconfirm>
+              <span
+                className="growth-task-card-edit"
+                role="button"
+                tabIndex={0}
+                aria-label="编辑图文任务名称"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onRename(job)
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <EditOutlined />
+              </span>
             </button>
           </List.Item>
         )}
@@ -407,7 +456,7 @@ function CreateSocialCardTask({
                   className={job.id === selectedWriterJobId ? 'growth-input-source is-active' : 'growth-input-source'}
                   onClick={() => onSelectWriterJob(job.id)}
                 >
-                  <span>{String(job.summary.title || job.row.topic || job.id)}</span>
+                  <span>{writerJobTitle(job)}</span>
                   <small>{dailyWriterModeLabel(job.params)} · {formatDateTime(job.created_at)}</small>
                 </button>
               </List.Item>
@@ -526,7 +575,7 @@ function SocialCardTaskDetail({
       <Flex align="flex-start" justify="space-between" wrap="wrap" gap={12}>
         <div className="growth-panel-heading">
           <Typography.Text className="growth-eyebrow">图文任务详情</Typography.Text>
-          <Typography.Title level={3}>{String(sourceJob?.summary.title || job.id)}</Typography.Title>
+          <Typography.Title level={3}>{socialCardTaskTitle(job, sourceJob)}</Typography.Title>
           <Typography.Paragraph>配置已锁定。你可以查看图文结果，或基于同一篇稿件重新生成。</Typography.Paragraph>
         </div>
         <Space wrap>
@@ -799,6 +848,17 @@ function socialCardJobCountLabel(job: SocialCardJob | SocialCardJobSummary): str
     return `${postCount} 篇 · ${cardsPerPost} 张/篇`
   }
   return `${cardsPerPost} 张`
+}
+
+function socialCardTaskTitle(
+  job: Pick<SocialCardJobSummary, 'id' | 'title' | 'summary'>,
+  sourceJob?: Pick<DailyWriterJobSummary, 'title' | 'summary' | 'row'> | null,
+): string {
+  return job.title || String(sourceJob?.title || sourceJob?.summary.title || sourceJob?.row.topic || job.summary.title || job.id)
+}
+
+function writerJobTitle(job: Pick<DailyWriterJobSummary, 'id' | 'title' | 'summary' | 'row'>): string {
+  return job.title || String(job.summary.title || job.row.topic || job.id)
 }
 
 function legacySocialCardPost(result: SocialCardResult): SocialCardPost {

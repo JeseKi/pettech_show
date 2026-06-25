@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -13,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from src.server.daily_writer.dao import DailyWriterJobDAO
 from src.server.daily_writer.parser import parse_daily_writer_result
+from src.server.social_card_videos.dao import SocialCardVideoJobDAO, parse_json_dict
+from src.server.social_card_videos.parser import parse_social_card_video_result
 from src.server.social_cards.dao import SocialCardJobDAO
 from src.server.social_cards.parser import parse_social_card_result
 
@@ -36,6 +39,8 @@ def upload_type_for_source(source_type: str) -> str:
         return "article"
     if source_type == "social_cards":
         return "image_text"
+    if source_type == "social_card_videos":
+        return "video"
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="source_type 无效")
 
 
@@ -49,6 +54,8 @@ def collect_upload_sources(
         return _daily_writer_sources(db, source_job_id)
     if source_type == "social_cards":
         return _social_card_sources(db, source_job_id)
+    if source_type == "social_card_videos":
+        return _social_card_video_sources(db, source_job_id)
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="source_type 无效")
 
 
@@ -58,8 +65,6 @@ def _daily_writer_sources(db: Session, job_id: str) -> list[UploadSource]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="长文任务不存在")
     if job.status not in {"completed", "partial_failed"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="长文任务尚未完成")
-
-    from pathlib import Path
 
     result = parse_daily_writer_result(
         job_id=job.id,
@@ -107,8 +112,6 @@ def _social_card_sources(db: Session, job_id: str) -> list[UploadSource]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="图文任务不存在")
     if job.status != "completed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="图文任务尚未完成")
-
-    from pathlib import Path
 
     result = parse_social_card_result(
         job_id=job.id,
@@ -161,6 +164,59 @@ def _social_card_sources(db: Session, job_id: str) -> list[UploadSource]:
     return sources
 
 
+def _social_card_video_sources(db: Session, job_id: str) -> list[UploadSource]:
+    job = SocialCardVideoJobDAO(db).get(job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="视频任务不存在")
+    if job.status != "completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="视频任务尚未完成")
+
+    result = parse_social_card_video_result(
+        job_id=job.id,
+        source_social_card_job_id=job.source_social_card_job_id,
+        workdir=Path(job.workdir),
+    )
+    params = parse_json_dict(job.params_json)
+    task_title = str(params.get("title") or "").strip()
+    sources: list[UploadSource] = []
+    for index, video in enumerate(result.videos, start=1):
+        video_url = asset_url("social-card-video", job.id, video.key)
+        title = _video_title(task_title, video.key, index, len(result.videos))
+        metadata = {
+            "output_id": f"{job.id}:{video.key}",
+            "topic": title,
+            "media_type": "video",
+            "video_url": video_url,
+            "article": {
+                "role": "video",
+                "title": title,
+                "summary": f"{title}，轮播短视频。",
+                "tags": ["小红书视频", "轮播视频"],
+            },
+            "social_card_video": {
+                "video_key": video.key,
+                "video_index": index,
+                "source_social_card_job_id": job.source_social_card_job_id,
+                "markdown_path": video.markdown_path,
+                "filename": video.filename,
+                "content_type": video.content_type,
+                "url": video_url,
+                "summary": video.summary,
+            },
+        }
+        sources.append(
+            _source_from_markdown(
+                source_key=f"social_card_videos:{job.id}:{video.key}",
+                source_label=f"video:{video.key}",
+                source_path=video.markdown_path,
+                markdown=_video_markdown(Path(job.workdir), video.markdown_path, video_url, title, video.key),
+                metadata=metadata,
+                default_title=title,
+            )
+        )
+    return sources
+
+
 def _source_from_markdown(
     *,
     source_key: str,
@@ -199,6 +255,31 @@ def _replace_social_card_assets(markdown: str, assets: dict[str, str]) -> str:
     for key, url in assets.items():
         output = output.replace(f"social-card-image:{key}", url)
     return output
+
+
+def _video_markdown(
+    workdir: Path,
+    markdown_path: str | None,
+    video_url: str,
+    title: str,
+    video_key: str,
+) -> str:
+    if markdown_path:
+        path = workdir / markdown_path
+        if path.is_file() and path.stat().st_size > 0:
+            text = path.read_text(encoding="utf-8").strip()
+            output = text.replace("](video/slideshow.mp4)", f"]({video_url})")
+            output = output.replace(f"(social-card-video:{video_key})", f"({video_url})")
+            return output if output else f"# {title}\n\n[轮播视频]({video_url})\n"
+    return f"# {title}\n\n[轮播视频]({video_url})\n"
+
+
+def _video_title(base_title: str, video_key: str, index: int, total: int) -> str:
+    if not base_title:
+        base_title = "小红书轮播视频"
+    if total <= 1:
+        return base_title
+    return f"{base_title} {index:02d}"
 
 
 def _copy_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -267,4 +348,3 @@ def _keyword_from_intents(raw: Any) -> str:
             if value:
                 return str(value).strip()
     return ""
-

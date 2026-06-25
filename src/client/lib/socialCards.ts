@@ -14,6 +14,7 @@ export interface SocialCardJob {
   owner_user_id: number | null
   owner_username: string | null
   source_daily_writer_job_id: string
+  title: string | null
   status: SocialCardJobStatus
   queue_position: number | null
   message: string | null
@@ -35,6 +36,7 @@ export interface SocialCardJobSummary {
   owner_user_id: number | null
   owner_username: string | null
   source_daily_writer_job_id: string
+  title: string | null
   status: SocialCardJobStatus
   message: string | null
   params: Record<string, unknown>
@@ -96,6 +98,11 @@ export async function listSocialCardJobs(params: { limit?: number; offset?: numb
 
 export async function getSocialCardJob(jobId: string): Promise<SocialCardJob> {
   const { data } = await api.get<SocialCardJob>(`/social-cards/jobs/${jobId}`)
+  return data
+}
+
+export async function updateSocialCardJob(jobId: string, payload: { title?: string | null }): Promise<SocialCardJob> {
+  const { data } = await api.patch<SocialCardJob>(`/social-cards/jobs/${jobId}`, payload)
   return data
 }
 

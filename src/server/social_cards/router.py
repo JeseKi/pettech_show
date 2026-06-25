@@ -18,7 +18,11 @@ from .schemas import (
     SocialCardCreate,
     SocialCardJobListOut,
     SocialCardJobOut,
+    SocialCardJobUpdate,
     SocialCardResultOut,
+)
+from src.server.social_cards.service.jobs.mutations import (
+    update_job_title as update_social_card_job_title,
 )
 
 router = APIRouter(prefix="/api/social-cards", tags=["小红书图文卡"])
@@ -70,6 +74,20 @@ async def get_social_card_job(
     current_user: User = Depends(get_current_user),
 ):
     return service.get_job(db, job_id, current_user)
+
+
+@router.patch(
+    "/jobs/{job_id}",
+    response_model=SocialCardJobOut,
+    summary="更新小红书图文卡任务",
+)
+async def update_social_card_job(
+    job_id: str,
+    payload: SocialCardJobUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return update_social_card_job_title(db, job_id, payload, current_user)
 
 
 @router.get(
@@ -124,4 +142,3 @@ async def delete_social_card_job(
 ):
     service.delete_job(db, job_id, current_user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-

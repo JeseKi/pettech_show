@@ -232,6 +232,17 @@ def test_create_social_card_job_and_download_result(
     assert created["source_daily_writer_job_id"] == source.id
     assert created["params"]["post_count"] == 2
     assert created["params"]["cards_per_post"] == 3
+    assert created["title"] is None
+    update_resp = test_client.patch(
+        f"/api/social-cards/jobs/{created['id']}",
+        headers=headers,
+        json={"title": "小红书图文任务"},
+    )
+    assert update_resp.status_code == HTTPStatus.OK, update_resp.text
+    assert update_resp.json()["title"] == "小红书图文任务"
+    list_resp = test_client.get("/api/social-cards/jobs", headers=headers)
+    assert list_resp.status_code == HTTPStatus.OK, list_resp.text
+    assert list_resp.json()["items"][0]["title"] == "小红书图文任务"
     assert (
         fake_social_card_runtime
         / "data"

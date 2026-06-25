@@ -23,6 +23,7 @@ import type { ColumnsType } from 'antd/es/table'
 import {
   DeleteOutlined,
   DownloadOutlined,
+  EditOutlined,
   PlayCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -44,6 +45,7 @@ import {
   getDailyWriterJob,
   getDailyWriterResult,
   listDailyWriterJobs,
+  updateDailyWriterJob,
   type DailyWriterArtworkAsset,
   type DailyWriterJob,
   type DailyWriterJobSummary,
@@ -67,7 +69,7 @@ export default function DailyWriterPage({
   sourceAiwikiJobId?: string | null
   embedded?: boolean
 }) {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const pendingSeedIdRef = useRef<string | null>(null)
   const [draftMode, setDraftMode] = useState<DailyWriterModeId>(mode)
   const draftModeConfig = DAILY_WRITER_MODES[draftMode]
@@ -297,6 +299,36 @@ export default function DailyWriterPage({
     }
   }
 
+  const renameWriterJob = (job: DailyWriterJobSummary) => {
+    let nextTitle = writerJobTitle(job)
+    modal.confirm({
+      title: '编辑任务名称',
+      content: (
+        <Input
+          autoFocus
+          defaultValue={nextTitle}
+          maxLength={255}
+          placeholder={String(job.summary.title || job.row.topic || `Seed ${job.seed_id}`)}
+          onChange={(event) => {
+            nextTitle = event.target.value
+          }}
+        />
+      ),
+      okText: '保存',
+      cancelText: '取消',
+      onOk: async () => {
+        const updated = await updateDailyWriterJob(job.id, { title: nextTitle })
+        setWriterJobs((items) => items.map((item) => (
+          item.id === updated.id ? { ...item, title: updated.title } : item
+        )))
+        if (activeJob?.id === updated.id) {
+          setActiveJob(updated)
+        }
+        message.success('任务名称已更新')
+      },
+    })
+  }
+
   const columns: ColumnsType<MatrixRow> = [
     { title: 'Seed', dataIndex: 'seed_id', width: 96, fixed: 'left' },
     { title: '选题', dataIndex: 'topic', width: 280, ellipsis: true },
@@ -323,6 +355,7 @@ export default function DailyWriterPage({
         onCreate={startCreate}
         onDelete={(jobId) => void deleteWriterJob(jobId)}
         onRefresh={() => void loadWriterJobs()}
+        onRename={renameWriterJob}
         onSelect={(jobId) => void selectWriterJob(jobId)}
       />
 
@@ -395,6 +428,7 @@ function WriterTaskRail({
   onCreate,
   onDelete,
   onRefresh,
+  onRename,
   onSelect,
 }: {
   activeJobId: string | null
@@ -403,6 +437,7 @@ function WriterTaskRail({
   onCreate: () => void
   onDelete: (jobId: string) => void
   onRefresh: () => void
+  onRename: (job: DailyWriterJobSummary) => void
   onSelect: (jobId: string) => void
 }) {
   return (
@@ -427,7 +462,7 @@ function WriterTaskRail({
               className={job.id === activeJobId ? 'growth-task-card is-active' : 'growth-task-card'}
               onClick={() => onSelect(job.id)}
             >
-              <span className="growth-task-card-title">{String(job.summary.title || job.row.topic || job.id)}</span>
+              <span className="growth-task-card-title">{writerJobTitle(job)}</span>
               <span className="growth-task-card-meta">
                 Seed {job.seed_id} · {formatDateTime(job.created_at)}
               </span>
@@ -461,6 +496,19 @@ function WriterTaskRail({
                   <DeleteOutlined />
                 </span>
               </Popconfirm>
+              <span
+                className="growth-task-card-edit"
+                role="button"
+                tabIndex={0}
+                aria-label="编辑稿件任务名称"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onRename(job)
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <EditOutlined />
+              </span>
             </button>
           </List.Item>
         )}
@@ -551,7 +599,7 @@ function CreateWriterTask({
                   className={job.id === selectedMatrixId ? 'growth-input-source is-active' : 'growth-input-source'}
                   onClick={() => onSelectMatrix(job.id)}
                 >
-                  <span>{seedMatrixModeLabel(job.params)}</span>
+                  <span>{seedMatrixTaskTitle(job)}</span>
                   <small>Seed {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)} · {formatDateTime(job.created_at)}</small>
                 </button>
               </List.Item>
@@ -560,7 +608,7 @@ function CreateWriterTask({
           {selectedMatrix && (
             <div className="growth-config-summary">
               <ConfigItem label="选题任务" value={shortId(selectedMatrix.id)} />
-              <ConfigItem label="策略类型" value={seedMatrixModeLabel(selectedMatrix.params)} />
+              <ConfigItem label="策略类型" value={seedMatrixTaskTitle(selectedMatrix)} />
               <ConfigItem label="Seed 数量" value={String(Number(selectedMatrix.summary.seed_count ?? selectedMatrix.params.expected_seed_count ?? 0))} />
             </div>
           )}
@@ -711,7 +759,7 @@ function WriterTaskDetail({
       <Flex align="flex-start" justify="space-between" wrap="wrap" gap={12}>
         <div className="growth-panel-heading">
           <Typography.Text className="growth-eyebrow">稿件任务详情</Typography.Text>
-          <Typography.Title level={3}>{String(job.summary.title || job.row.topic || `Seed ${job.seed_id}`)}</Typography.Title>
+          <Typography.Title level={3}>{writerJobTitle(job)}</Typography.Title>
           <Typography.Paragraph>配置已锁定。你可以查看生成结果，或基于同一个 seed 新建一轮稿件任务。</Typography.Paragraph>
         </div>
         <Space wrap>
@@ -811,6 +859,14 @@ function articleCountFromParams(params: Record<string, unknown>): number {
 
 function shortId(value: string): string {
   return value.length > 12 ? `${value.slice(0, 8)}...` : value
+}
+
+function writerJobTitle(job: Pick<DailyWriterJobSummary, 'id' | 'seed_id' | 'summary' | 'row' | 'title'>): string {
+  return job.title || String(job.summary.title || job.row.topic || `Seed ${job.seed_id}` || job.id)
+}
+
+function seedMatrixTaskTitle(job: Pick<SeedMatrixJobSummary, 'title' | 'params'>): string {
+  return job.title || seedMatrixModeLabel(job.params)
 }
 
 function statusColor(status: DailyWriterJob['status']) {

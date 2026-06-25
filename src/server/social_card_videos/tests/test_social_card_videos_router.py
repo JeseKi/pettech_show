@@ -193,8 +193,20 @@ def test_create_social_card_video_job_with_bgm_and_download_result(
     assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
     created = create_resp.json()
     assert created["source_social_card_job_id"] == source.id
+    assert created["title"] == "药食同源轻创业"
     assert created["params"]["has_bgm"] is True
     assert created["params"]["bgm_start"] == 12.5
+
+    update_resp = test_client.patch(
+        f"/api/social-card-videos/jobs/{created['id']}",
+        headers=headers,
+        json={"title": "轮播视频分发任务"},
+    )
+    assert update_resp.status_code == HTTPStatus.OK, update_resp.text
+    assert update_resp.json()["title"] == "轮播视频分发任务"
+    list_resp = test_client.get("/api/social-card-videos/jobs", headers=headers)
+    assert list_resp.status_code == HTTPStatus.OK, list_resp.text
+    assert list_resp.json()["items"][0]["title"] == "轮播视频分发任务"
 
     config = json.loads(
         (

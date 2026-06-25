@@ -18,8 +18,10 @@ from .schemas import (
     DailyWriterCreate,
     DailyWriterJobListOut,
     DailyWriterJobOut,
+    DailyWriterJobUpdate,
     DailyWriterResultOut,
 )
+from .service.jobs.mutations import update_job_title as update_daily_writer_job_title
 
 router = APIRouter(prefix="/api/daily-writer", tags=["生成长文"])
 
@@ -70,6 +72,20 @@ async def get_daily_writer_job(
     current_user: User = Depends(get_current_user),
 ):
     return service.get_job(db, job_id, current_user)
+
+
+@router.patch(
+    "/jobs/{job_id}",
+    response_model=DailyWriterJobOut,
+    summary="更新长文生成任务",
+)
+async def update_daily_writer_job(
+    job_id: str,
+    payload: DailyWriterJobUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return update_daily_writer_job_title(db, job_id, payload, current_user)
 
 
 @router.get(

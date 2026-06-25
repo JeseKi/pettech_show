@@ -68,6 +68,7 @@ def write_manifest(workdir: Path, job: DailyWriterJob | None) -> None:
         "source_seed_matrix_job_id": job.source_seed_matrix_job_id,
         "source_aiwiki_job_id": job.source_aiwiki_job_id,
         "seed_id": job.seed_id,
+        "title": job.title,
         "status": job.status,
         "message": job.message,
         "workdir": job.workdir,

@@ -11,6 +11,7 @@ from .jobs import (
     list_jobs,
     result_csv_file,
     sync_job_records,
+    update_job_title,
 )
 from .persistence import job_workdir, new_job_id
 from .serializers import job_out_from_model, job_summary_from_model
@@ -27,4 +28,5 @@ __all__ = [
     "new_job_id",
     "result_csv_file",
     "sync_job_records",
+    "update_job_title",
 ]

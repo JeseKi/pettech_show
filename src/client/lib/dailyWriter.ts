@@ -18,6 +18,7 @@ export interface DailyWriterJob {
   source_seed_matrix_job_id: string
   source_aiwiki_job_id: string
   seed_id: string
+  title: string | null
   status: DailyWriterJobStatus
   queue_position: number | null
   message: string | null
@@ -44,6 +45,7 @@ export interface DailyWriterJobSummary {
   source_seed_matrix_job_id: string
   source_aiwiki_job_id: string
   seed_id: string
+  title: string | null
   status: DailyWriterJobStatus
   message: string | null
   row: Record<string, string>
@@ -115,6 +117,11 @@ export async function listDailyWriterJobs(params: { limit?: number; offset?: num
 
 export async function getDailyWriterJob(jobId: string): Promise<DailyWriterJob> {
   const { data } = await api.get<DailyWriterJob>(`/daily-writer/jobs/${jobId}`)
+  return data
+}
+
+export async function updateDailyWriterJob(jobId: string, payload: { title?: string | null }): Promise<DailyWriterJob> {
+  const { data } = await api.patch<DailyWriterJob>(`/daily-writer/jobs/${jobId}`, payload)
   return data
 }
 

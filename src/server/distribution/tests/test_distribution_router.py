@@ -16,6 +16,7 @@ from src.server.config import global_config
 from src.server.daily_writer.models import DailyWriterJob
 from src.server.distribution import service as distribution_service
 from src.server.distribution.service import remote as distribution_remote
+from src.server.social_card_videos.models import SocialCardVideoJob
 from src.server.social_cards.models import SocialCardJob
 
 
@@ -61,6 +62,15 @@ def _remote_directory() -> tuple[list[dict], dict]:
                     "platform": "小红书",
                     "account_name": "图文号",
                     "publication_type": "image_text",
+                    "is_active": True,
+                },
+                {
+                    "id": 103,
+                    "project_ids": [1],
+                    "theme_id": 11,
+                    "platform": "视频号",
+                    "account_name": "视频号",
+                    "publication_type": "video",
                     "is_active": True,
                 },
             ],
@@ -199,6 +209,36 @@ def _create_social_card_job(test_db_session, root: Path, user: User) -> SocialCa
     return job
 
 
+def _create_social_card_video_job(test_db_session, root: Path, user: User) -> SocialCardVideoJob:
+    source_job = _create_social_card_job(test_db_session, root, user)
+    job_id = "20260625140000_00000001_social_card_videos"
+    workdir = root / "data" / job_id
+    video_dir = workdir / "source" / "xhs_guizang" / "video"
+    video_dir.mkdir(parents=True)
+    (video_dir / "slideshow.mp4").write_bytes(b"fake mp4 video")
+    (video_dir.parent / "video.md").write_text(
+        "# 轮播视频\n\n[本地视频：slideshow.mp4](video/slideshow.mp4)\n",
+        encoding="utf-8",
+    )
+    job = SocialCardVideoJob(
+        id=job_id,
+        owner_user_id=user.id,
+        source_social_card_job_id=source_job.id,
+        status="completed",
+        message="done",
+        workdir=workdir.as_posix(),
+        params_json=json.dumps({"title": "宠物增长轮播视频"}, ensure_ascii=False),
+        summary_json=json.dumps({"video_count": 1}, ensure_ascii=False),
+        created_at=datetime.now(timezone.utc),
+        finished_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    test_db_session.add(job)
+    test_db_session.commit()
+    test_db_session.refresh(job)
+    return job
+
+
 @pytest.fixture
 def distribution_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(global_config, "project_root", tmp_path)
@@ -324,6 +364,53 @@ def test_social_card_plan_replaces_image_urls(
     markdown = plan["batches"][0]["items"][0]["markdown_content"]
     assert "https://pettech.example.test/api/distribution/assets/social-card-image" in markdown
     assert "social-card-image:" not in markdown
+
+
+def test_social_card_video_plan_exposes_signed_video_url(
+    test_client, test_db_session, distribution_runtime: Path, monkeypatch: pytest.MonkeyPatch
+):
+    admin = _create_admin(test_db_session, "distribution_video_admin")
+    job = _create_social_card_video_job(test_db_session, distribution_runtime, admin)
+
+    async def fake_directory():
+        return _remote_directory()
+
+    monkeypatch.setattr(distribution_service, "fetch_remote_directory", fake_directory)
+
+    resp = test_client.post(
+        "/api/distribution/uploads/plan",
+        headers=_auth_headers(admin),
+        json={
+            "source_type": "social_card_videos",
+            "source_job_id": job.id,
+            "project_id": 1,
+            "theme_id": 11,
+            "scheduled_date": "2026-06-26",
+            "per_account_count": 1,
+        },
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    plan = resp.json()
+    assert plan["upload_type"] == "video"
+    assert plan["item_count"] == 1
+    item = plan["batches"][0]["items"][0]
+    markdown = item["markdown_content"]
+    assert "https://pettech.example.test/api/distribution/assets/social-card-video" in markdown
+    assert "video/slideshow.mp4" not in markdown
+    assert item["metadata"]["media_type"] == "video"
+    assert item["metadata"]["video_url"].startswith(
+        "https://pettech.example.test/api/distribution/assets/social-card-video"
+    )
+    assert item["metadata"]["upload_context"]["distribution_type"] == "video"
+
+    signature = distribution_service.sign_asset("social-card-video", job.id, "post_01")
+    video_resp = test_client.get(
+        f"/api/distribution/assets/social-card-video/{job.id}/post_01?sig={signature}"
+    )
+    assert video_resp.status_code == HTTPStatus.OK, video_resp.text
+    assert video_resp.headers["content-type"].startswith("video/mp4")
+    assert video_resp.content.startswith(b"fake mp4")
 
 
 def test_upload_history_skips_duplicates_and_ignore_history_reuploads(

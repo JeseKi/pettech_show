@@ -35,6 +35,7 @@ from ..schemas import (
     SeedMatrixCreate,
     SeedMatrixJobListOut,
     SeedMatrixJobOut,
+    SeedMatrixJobUpdate,
     SeedMatrixResultOut,
 )
 from .artifacts import copy_source_artifacts, material_count, prepare_skill
@@ -134,6 +135,18 @@ def get_job(db: Session, job_id: str, current_user: User) -> SeedMatrixJobOut:
     return job_out_from_model(job, SeedMatrixJobDAO(db).owner_username(job.owner_user_id))
 
 
+def update_job_title(
+    db: Session, job_id: str, payload: SeedMatrixJobUpdate, current_user: User
+) -> SeedMatrixJobOut:
+    job = get_accessible_job(db, job_id, current_user)
+    updated = SeedMatrixJobDAO(db).update(job.id, title=normalize_title(payload.title))
+    write_manifest(Path(updated.workdir), updated)
+    return job_out_from_model(
+        updated,
+        SeedMatrixJobDAO(db).owner_username(updated.owner_user_id),
+    )
+
+
 def get_result(
     db: Session, job_id: str, current_user: User
 ) -> SeedMatrixResultOut:
@@ -178,6 +191,13 @@ def result_csv_file(db: Session, job_id: str, current_user: User) -> Path:
     return path
 
 
+def normalize_title(value: object) -> str | None:
+    if value is None:
+        return None
+    stripped = str(value).strip()
+    return stripped or None
+
+
 def sync_job_records(db: Session) -> None:
     data_root = Path(global_config.project_root) / "data"
     if not data_root.exists():
@@ -196,6 +216,7 @@ def sync_job_records(db: Session) -> None:
             id=str(manifest["id"]),
             owner_user_id=coerce_int(manifest.get("owner_user_id")),
             source_aiwiki_job_id=str(manifest["source_aiwiki_job_id"]),
+            title=normalize_title(manifest.get("title")),
             status=str(manifest.get("status") or "failed"),
             message=manifest.get("message"),
             workdir=workdir.as_posix(),

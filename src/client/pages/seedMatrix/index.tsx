@@ -19,7 +19,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { FormInstance } from 'antd'
-import { DeleteOutlined, DownloadOutlined, PlusOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import { listAiwikiJobs, type AiwikiJobSummary } from '../../lib/aiwiki'
 import {
   createSeedMatrixJob,
@@ -28,6 +28,7 @@ import {
   getSeedMatrixJob,
   getSeedMatrixResult,
   listSeedMatrixJobs,
+  updateSeedMatrixJob,
   type SeedMatrixCreatePayload,
   type SeedMatrixJob,
   type SeedMatrixJobSummary,
@@ -53,7 +54,7 @@ export default function SeedMatrixPage({
   embedded?: boolean
   onOpenProductionStage?: () => void
 }) {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const [form] = Form.useForm<Omit<SeedMatrixCreatePayload, 'source_aiwiki_job_id'>>()
   const [draftMode, setDraftMode] = useState<SeedMatrixModeId>(mode)
   const draftModeConfig = SEED_MATRIX_MODES[draftMode]
@@ -274,6 +275,36 @@ export default function SeedMatrixPage({
     }
   }
 
+  const renameMatrixJob = (job: SeedMatrixJobSummary) => {
+    let nextTitle = matrixJobTitle(job)
+    modal.confirm({
+      title: '编辑任务名称',
+      content: (
+        <Input
+          autoFocus
+          defaultValue={nextTitle}
+          maxLength={255}
+          placeholder={seedMatrixModeLabel(job.params)}
+          onChange={(event) => {
+            nextTitle = event.target.value
+          }}
+        />
+      ),
+      okText: '保存',
+      cancelText: '取消',
+      onOk: async () => {
+        const updated = await updateSeedMatrixJob(job.id, { title: nextTitle })
+        setMatrixJobs((items) => items.map((item) => (
+          item.id === updated.id ? { ...item, title: updated.title } : item
+        )))
+        if (activeJob?.id === updated.id) {
+          setActiveJob(updated)
+        }
+        message.success('任务名称已更新')
+      },
+    })
+  }
+
   return (
     <div className="growth-workflow">
       <TaskRail
@@ -283,6 +314,7 @@ export default function SeedMatrixPage({
         onCreate={startCreate}
         onDelete={(jobId) => void deleteMatrixJob(jobId)}
         onRefresh={() => void loadMatrixJobs()}
+        onRename={renameMatrixJob}
         onSelect={(jobId) => void selectMatrixJob(jobId)}
       />
 
@@ -355,6 +387,7 @@ function TaskRail({
   onCreate,
   onDelete,
   onRefresh,
+  onRename,
   onSelect,
 }: {
   activeJobId: string | null
@@ -363,6 +396,7 @@ function TaskRail({
   onCreate: () => void
   onDelete: (jobId: string) => void
   onRefresh: () => void
+  onRename: (job: SeedMatrixJobSummary) => void
   onSelect: (jobId: string) => void
 }) {
   return (
@@ -387,7 +421,7 @@ function TaskRail({
               className={job.id === activeJobId ? 'growth-task-card is-active' : 'growth-task-card'}
               onClick={() => onSelect(job.id)}
             >
-              <span className="growth-task-card-title">{seedMatrixModeLabel(job.params)}</span>
+              <span className="growth-task-card-title">{matrixJobTitle(job)}</span>
               <span className="growth-task-card-meta">
                 输入 {shortId(job.source_aiwiki_job_id)} · {formatDateTime(job.created_at)}
               </span>
@@ -419,6 +453,19 @@ function TaskRail({
                   <DeleteOutlined />
                 </span>
               </Popconfirm>
+              <span
+                className="growth-task-card-edit"
+                role="button"
+                tabIndex={0}
+                aria-label="编辑选题任务名称"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onRename(job)
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <EditOutlined />
+              </span>
             </button>
           </List.Item>
         )}
@@ -603,7 +650,7 @@ function MatrixTaskDetail({
       <Flex align="flex-start" justify="space-between" wrap="wrap" gap={12}>
         <div className="growth-panel-heading">
           <Typography.Text className="growth-eyebrow">选题任务详情</Typography.Text>
-          <Typography.Title level={3}>{seedMatrixModeLabel(job.params)}</Typography.Title>
+          <Typography.Title level={3}>{matrixJobTitle(job)}</Typography.Title>
           <Typography.Paragraph>配置已锁定。你可以查看结果表，或基于这张策略表进入稿件生产。</Typography.Paragraph>
         </div>
         <Space wrap>
@@ -783,6 +830,10 @@ function latestProgressSummary(job: SeedMatrixJob): string {
 
 function shortId(value: string): string {
   return value.length > 12 ? `${value.slice(0, 8)}...` : value
+}
+
+function matrixJobTitle(job: Pick<SeedMatrixJobSummary, 'title' | 'params'>): string {
+  return job.title || seedMatrixModeLabel(job.params)
 }
 
 function statusColor(status: SeedMatrixJob['status']) {

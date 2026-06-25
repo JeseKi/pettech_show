@@ -10,6 +10,7 @@ from .jobs import (
     list_jobs,
     result_zip_file,
     sync_job_records,
+    update_job_title,
     video_file,
 )
 
@@ -22,6 +23,6 @@ __all__ = [
     "list_jobs",
     "result_zip_file",
     "sync_job_records",
+    "update_job_title",
     "video_file",
 ]
-

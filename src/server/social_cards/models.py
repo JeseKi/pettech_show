@@ -24,6 +24,7 @@ class SocialCardJob(Base):
         nullable=False,
         index=True,
     )
+    title: Mapped[str | None] = mapped_column(String(255), default=None)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
     message: Mapped[str | None] = mapped_column(Text, default=None)
     workdir: Mapped[str] = mapped_column(Text, nullable=False)
@@ -41,4 +42,3 @@ class SocialCardJob(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
-

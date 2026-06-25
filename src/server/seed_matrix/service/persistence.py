@@ -66,6 +66,7 @@ def write_manifest(workdir: Path, job: SeedMatrixJob | None) -> None:
         "id": job.id,
         "owner_user_id": job.owner_user_id,
         "source_aiwiki_job_id": job.source_aiwiki_job_id,
+        "title": job.title,
         "status": job.status,
         "message": job.message,
         "workdir": job.workdir,

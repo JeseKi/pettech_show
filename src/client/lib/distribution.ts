@@ -1,7 +1,7 @@
 import api from './api'
 
-export type DistributionSourceType = 'daily_writer' | 'social_cards'
-export type DistributionUploadType = 'article' | 'image_text'
+export type DistributionSourceType = 'daily_writer' | 'social_cards' | 'social_card_videos'
+export type DistributionUploadType = 'article' | 'image_text' | 'video'
 
 export interface DistributionProject {
   id: number

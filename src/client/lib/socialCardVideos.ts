@@ -15,6 +15,7 @@ export interface SocialCardVideoJob {
   owner_user_id: number | null
   owner_username: string | null
   source_social_card_job_id: string
+  title: string | null
   status: SocialCardVideoJobStatus
   queue_position: number | null
   message: string | null
@@ -36,6 +37,7 @@ export interface SocialCardVideoJobSummary {
   owner_user_id: number | null
   owner_username: string | null
   source_social_card_job_id: string
+  title: string | null
   status: SocialCardVideoJobStatus
   message: string | null
   params: Record<string, unknown>
@@ -93,6 +95,11 @@ export async function getSocialCardVideoJob(jobId: string): Promise<SocialCardVi
   return data
 }
 
+export async function updateSocialCardVideoJob(jobId: string, payload: { title?: string | null }): Promise<SocialCardVideoJob> {
+  const { data } = await api.patch<SocialCardVideoJob>(`/social-card-videos/jobs/${jobId}`, payload)
+  return data
+}
+
 export async function getSocialCardVideoResult(jobId: string): Promise<SocialCardVideoResult> {
   const { data } = await api.get<SocialCardVideoResult>(`/social-card-videos/jobs/${jobId}/result`)
   return data
@@ -119,3 +126,6 @@ export async function downloadSocialCardVideoResult(jobId: string): Promise<void
   URL.revokeObjectURL(url)
 }
 
+export async function deleteSocialCardVideoJob(jobId: string): Promise<void> {
+  await api.delete(`/social-card-videos/jobs/${jobId}`)
+}

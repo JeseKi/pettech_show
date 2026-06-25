@@ -8,8 +8,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-DistributionSourceType = Literal["daily_writer", "social_cards"]
-DistributionUploadType = Literal["article", "image_text"]
+DistributionSourceType = Literal["daily_writer", "social_cards", "social_card_videos"]
+DistributionUploadType = Literal["article", "image_text", "video"]
 DistributionUploadStatus = Literal["running", "completed", "failed"]
 
 
@@ -104,4 +104,3 @@ class DistributionUploadResultOut(BaseModel):
     job: DistributionUploadJobSummaryOut
     plan: DistributionUploadPlanOut
     results: list[DistributionUploadResultBatchOut]
-
