@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
+  Alert,
   App,
   Button,
   Empty,
@@ -60,6 +61,8 @@ import {
   type DailyWriterModeId,
   type SeedMatrixModeId,
 } from '../../lib/workflowModes'
+import { listSeedMatrixJobs } from '../../lib/seedMatrix'
+import { listDailyWriterJobs } from '../../lib/dailyWriter'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import KeywordModal from './KeywordModal'
 import ResultView from './ResultView'
@@ -94,6 +97,16 @@ type DisplayTask = {
   files: DisplayFile[]
   isDraft?: boolean
   summary?: AiwikiJobSummary
+}
+type WorkflowReadiness = {
+  completedSeedMatrices: number
+  completedDailyWriters: number
+}
+type StagePrerequisite = {
+  type: 'info' | 'warning'
+  message: string
+  actionText: string
+  targetStage: WorkbenchStage
 }
 
 const ACCEPTED_TYPES = '.md,.markdown,.txt,.xlsx,.csv,.pdf'
@@ -149,6 +162,10 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const [activeEntrySlug, setActiveEntrySlug] = useState<string | null>(null)
   const [keywordModalOpen, setKeywordModalOpen] = useState(false)
   const [keywordSearch, setKeywordSearch] = useState('')
+  const [workflowReadiness, setWorkflowReadiness] = useState<WorkflowReadiness>({
+    completedSeedMatrices: 0,
+    completedDailyWriters: 0,
+  })
 
   const meta = statusMeta(job?.status)
   const workspaceSubtitle = mode === 'full'
@@ -167,6 +184,22 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     }
   }, [message])
 
+  const loadWorkflowReadiness = useCallback(async () => {
+    if (!isContentGrowthWorkbench) return
+    try {
+      const [seedMatrices, dailyWriters] = await Promise.all([
+        listSeedMatrixJobs({ limit: 100, offset: 0 }),
+        listDailyWriterJobs({ limit: 100, offset: 0 }),
+      ])
+      setWorkflowReadiness({
+        completedSeedMatrices: seedMatrices.items.filter((item) => item.status === 'completed').length,
+        completedDailyWriters: dailyWriters.items.filter((item) => item.status === 'completed' || item.status === 'partial_failed').length,
+      })
+    } catch (err) {
+      message.error(resolveErrorMessage(err))
+    }
+  }, [isContentGrowthWorkbench, message])
+
   const loadJob = useCallback(async (jobId: string, silent = false) => {
     try {
       const latest = await getAiwikiJob(jobId)
@@ -183,6 +216,10 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   useEffect(() => {
     void loadHistory()
   }, [loadHistory])
+
+  useEffect(() => {
+    void loadWorkflowReadiness()
+  }, [loadWorkflowReadiness])
 
   useEffect(() => {
     localFilesRef.current = localFiles
@@ -299,6 +336,65 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
       fileCount,
     }
   }, [history])
+
+  const stagePrerequisite = useMemo<StagePrerequisite | null>(() => {
+    if (!isContentGrowthWorkbench) return null
+    if (activeStage === 'strategy') {
+      if (stats.completedCount > 0) {
+        return {
+          type: 'info',
+          message: `已找到 ${stats.completedCount} 个已完成知识库，可以选择其中一个生成选题矩阵。`,
+          actionText: '查看知识库',
+          targetStage: 'assets',
+        }
+      }
+      return {
+        type: 'warning',
+        message: '生成选题矩阵前，至少需要 1 个已完成知识库。',
+        actionText: '去创建知识库',
+        targetStage: 'assets',
+      }
+    }
+    if (activeStage === 'production') {
+      if (workflowReadiness.completedSeedMatrices > 0) {
+        return {
+          type: 'info',
+          message: `已找到 ${workflowReadiness.completedSeedMatrices} 个已完成选题矩阵，可以选择 seed 生产稿件。`,
+          actionText: '查看选题矩阵',
+          targetStage: 'strategy',
+        }
+      }
+      return {
+        type: 'warning',
+        message: '生产稿件前，至少需要 1 个已完成选题矩阵。',
+        actionText: '去生成选题矩阵',
+        targetStage: 'strategy',
+      }
+    }
+    if (activeStage === 'social') {
+      if (workflowReadiness.completedDailyWriters > 0) {
+        return {
+          type: 'info',
+          message: `已找到 ${workflowReadiness.completedDailyWriters} 个已完成稿件，可以继续生成小红书图文卡。`,
+          actionText: '查看稿件',
+          targetStage: 'production',
+        }
+      }
+      return {
+        type: 'warning',
+        message: '生成图文前，至少需要 1 个已完成稿件。',
+        actionText: '去生产稿件',
+        targetStage: 'production',
+      }
+    }
+    return null
+  }, [
+    activeStage,
+    isContentGrowthWorkbench,
+    stats.completedCount,
+    workflowReadiness.completedDailyWriters,
+    workflowReadiness.completedSeedMatrices,
+  ])
 
   const entriesBySlug = useMemo(() => (
     new Map((result?.wiki_entries ?? []).map((entry) => [entry.slug, entry]))
@@ -619,6 +715,27 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
             </Space>
           )}
         </header>
+
+        {stagePrerequisite && (
+          <Alert
+            className="aiwiki-stage-prerequisite"
+            type={stagePrerequisite.type}
+            showIcon
+            message={(
+              <span>
+                {stagePrerequisite.message}
+                <Button
+                  className="aiwiki-stage-prerequisite-link"
+                  type="link"
+                  size="small"
+                  onClick={() => updateWorkbenchParams({ stage: stagePrerequisite.targetStage })}
+                >
+                  {stagePrerequisite.actionText}
+                </Button>
+              </span>
+            )}
+          />
+        )}
 
         <section className={activeStage === 'assets' ? 'aiwiki-canvas' : 'aiwiki-canvas aiwiki-canvas-stage-flow'}>
           {activeStage === 'assets' && (
