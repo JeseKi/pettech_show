@@ -1,3 +1,8 @@
+.course-modal-open {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 .course-modal {
   position: fixed;
   inset: 0;
@@ -33,6 +38,9 @@
   padding: 48px;
   overflow-x: hidden;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   scrollbar-color: color-mix(in srgb, var(--course-accent), var(--app-accent-teal) 28%) rgba(255, 255, 255, 0.08);
   scrollbar-gutter: stable;
   scrollbar-width: thin;

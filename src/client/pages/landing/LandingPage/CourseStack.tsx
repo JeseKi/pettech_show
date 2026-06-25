@@ -27,6 +27,9 @@ type CourseStackProps = {
 }
 
 const MOBILE_CASSETTE_SPEED_PX_PER_MS = -0.05
+const MOBILE_CASSETTE_DRAG_RESPONSE = 1.18
+const MOBILE_CASSETTE_INERTIA_FRICTION = 0.93
+const MOBILE_CASSETTE_MIN_VELOCITY = 0.015
 
 const renderCourseCardContent = (course: Course) => (
   <>
@@ -66,7 +69,9 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
     hasDragged: false,
     isDragging: false,
     lastX: 0,
+    lastTime: 0,
     offset: 0,
+    velocity: 0,
   })
   const orbitPointerStateRef = useRef<CourseOrbitPointerState>({
     isDragging: false,
@@ -241,16 +246,22 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
     cassetteState.isDragging = true
     cassetteState.hasDragged = false
     cassetteState.lastX = event.clientX
+    cassetteState.lastTime = window.performance.now()
+    cassetteState.velocity = 0
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
   const handleMobileCassettePointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const cassetteState = mobileCassetteStateRef.current
     if (!cassetteState.isDragging) return
+    const now = window.performance.now()
     const deltaX = event.clientX - cassetteState.lastX
+    const deltaTime = Math.max(now - cassetteState.lastTime, 1)
     cassetteState.lastX = event.clientX
+    cassetteState.lastTime = now
+    cassetteState.velocity = deltaX / deltaTime
     cassetteState.hasDragged = cassetteState.hasDragged || Math.abs(deltaX) > 4
-    applyMobileCassetteOffset(cassetteState.offset + deltaX)
+    applyMobileCassetteOffset(cassetteState.offset + deltaX * MOBILE_CASSETTE_DRAG_RESPONSE)
   }
 
   const releaseMobileCassettePointer = (event: PointerEvent<HTMLDivElement>) => {
@@ -346,10 +357,17 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
       const deltaTime = Math.min(timestamp - previousTimestamp, 48)
       mobileCassetteLastTimeRef.current = timestamp
 
-      if (!mobileCassetteStateRef.current.isDragging) {
-        applyMobileCassetteOffset(
-          mobileCassetteStateRef.current.offset + deltaTime * MOBILE_CASSETTE_SPEED_PX_PER_MS,
-        )
+      const cassetteState = mobileCassetteStateRef.current
+      if (!cassetteState.isDragging) {
+        if (Math.abs(cassetteState.velocity) > MOBILE_CASSETTE_MIN_VELOCITY) {
+          applyMobileCassetteOffset(cassetteState.offset + deltaTime * cassetteState.velocity)
+          cassetteState.velocity *= MOBILE_CASSETTE_INERTIA_FRICTION ** (deltaTime / 16)
+        } else {
+          cassetteState.velocity = 0
+          applyMobileCassetteOffset(
+            cassetteState.offset + deltaTime * MOBILE_CASSETTE_SPEED_PX_PER_MS,
+          )
+        }
       }
 
       mobileCassetteFrameRef.current = window.requestAnimationFrame(animateMobileCassette)
