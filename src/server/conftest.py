@@ -109,6 +109,7 @@ def test_db_engine() -> Iterator[Connection]:
     import src.server.aiwiki.models  # noqa: F401
     import src.server.seed_matrix.models  # noqa: F401
     import src.server.daily_writer.models  # noqa: F401
+    import src.server.social_cards.models  # noqa: F401
     import src.server.capability_jobs.models  # noqa: F401
     import src.server.interactive_movie.models  # noqa: F401
     import src.server.chat.models  # noqa: F401

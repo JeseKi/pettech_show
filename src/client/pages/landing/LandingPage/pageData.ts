@@ -114,6 +114,12 @@ export const landingNavGroups: LandingNavGroup[] = [
         description: '选择策略 seed，生产主稿、变体和后续内容包。',
         icon: FileText,
       },
+      {
+        label: '生成图文',
+        path: '/content-growth?stage=social',
+        description: '选择已完成稿件，生成小红书图文卡和图文正文。',
+        icon: Layers3,
+      },
     ],
   },
   {

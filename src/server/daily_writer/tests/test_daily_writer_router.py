@@ -588,6 +588,52 @@ def test_completed_progress_reconciles_orphaned_running_artwork_job(
     assert reconciled_manifest["summary"]["artwork_status"] == "completed"
 
 
+def test_completed_progress_reconciles_running_main_job(
+    test_client, test_db_session, fake_daily_writer_runtime: Path
+):
+    user = _create_user(test_db_session, "daily_writer_main_orphan")
+    _, matrix = _create_source_jobs(test_db_session, fake_daily_writer_runtime, user)
+    headers = _auth_headers(user)
+
+    create_resp = test_client.post(
+        "/api/daily-writer/jobs",
+        headers=headers,
+        json={"source_seed_matrix_job_id": matrix.id, "seed_id": "S001"},
+    )
+    assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
+    job_id = create_resp.json()["id"]
+    finished = _wait_for_terminal_status(test_client, job_id, headers)
+    assert finished["status"] == "completed", finished
+
+    job = test_db_session.get(DailyWriterJob, job_id)
+    assert job is not None
+    job.status = "running"
+    job.message = "OpenCode 正在生成长文"
+    job.finished_at = None
+    test_db_session.commit()
+
+    manifest_path = fake_daily_writer_runtime / "data" / job_id / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.update(
+        {
+            "status": "running",
+            "message": "OpenCode 正在生成长文",
+            "finished_at": None,
+        }
+    )
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+    detail_resp = test_client.get(f"/api/daily-writer/jobs/{job_id}", headers=headers)
+    assert detail_resp.status_code == HTTPStatus.OK, detail_resp.text
+    detail = detail_resp.json()
+    assert detail["status"] == "completed"
+    assert detail["summary"]["output_id"] == "260620_1"
+    assert detail["finished_at"] is not None
+
+    reconciled_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert reconciled_manifest["status"] == "completed"
+
+
 def test_rejects_variant_count_above_api_limit(
     test_client, test_db_session, fake_daily_writer_runtime: Path
 ):
@@ -603,6 +649,27 @@ def test_rejects_variant_count_above_api_limit(
             "seed_id": "S001",
             "generate_variants": True,
             "variant_count": 6,
+        },
+    )
+
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+def test_rejects_social_card_fields_on_daily_writer_endpoint(
+    test_client, test_db_session, fake_daily_writer_runtime: Path
+):
+    user = _create_user(test_db_session, "daily_writer_social_card_fields")
+    _, matrix = _create_source_jobs(test_db_session, fake_daily_writer_runtime, user)
+    headers = _auth_headers(user)
+
+    resp = test_client.post(
+        "/api/daily-writer/jobs",
+        headers=headers,
+        json={
+            "source_seed_matrix_job_id": matrix.id,
+            "seed_id": "S001",
+            "generate_social_cards": True,
+            "social_card_count": 3,
         },
     )
 

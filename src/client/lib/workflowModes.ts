@@ -37,7 +37,7 @@ export const CONTENT_GROWTH_TOOL = {
   path: '/content-growth',
   navLabel: '内容增长工作台',
   title: '内容增长工作台',
-  description: '把内容资产库、选题策略和稿件生产串成一条可复盘的运营生产流程。',
+  description: '把内容资产库、选题策略、稿件生产和图文生成串成一条可复盘的运营生产流程。',
   buttonText: '进入工作台',
 }
 

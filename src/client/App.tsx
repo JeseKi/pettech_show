@@ -122,6 +122,7 @@ export default function App() {
                   <Route path="/daily-writer/single" element={<Navigate to="/content-growth?stage=production&writerMode=single" replace />} />
                   <Route path="/daily-writer/batch" element={<Navigate to="/content-growth?stage=production&writerMode=batch" replace />} />
                   <Route path="/daily-writer/five-pack" element={<Navigate to="/content-growth?stage=production&writerMode=five-pack" replace />} />
+                  <Route path="/social-cards" element={<Navigate to="/content-growth?stage=social" replace />} />
                   {VISIBLE_CAPABILITY_ENTRIES.map((entry) => (
                     <Route
                       key={entry.key}

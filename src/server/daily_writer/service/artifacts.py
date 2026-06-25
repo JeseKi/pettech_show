@@ -26,10 +26,12 @@ def prepare_skill(workdir: Path, *, include_artwork: bool = False) -> None:
     source_root = Path(global_config.project_root) / ".agents" / "skills"
     target_root = workdir / ".agents" / "skills"
     target_root.mkdir(parents=True, exist_ok=True)
-    skill_names = [
-        *DAILY_WRITER_SKILL_NAMES,
-        *(ARTWORK_SKILL_NAMES if include_artwork else []),
-    ]
+    skill_names = _dedupe_skill_names(
+        [
+            *DAILY_WRITER_SKILL_NAMES,
+            *(ARTWORK_SKILL_NAMES if include_artwork else []),
+        ]
+    )
     for skill_name in skill_names:
         source = source_root / skill_name
         if not source.exists():
@@ -38,3 +40,14 @@ def prepare_skill(workdir: Path, *, include_artwork: bool = False) -> None:
         if target.exists():
             shutil.rmtree(target)
         shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
+
+
+def _dedupe_skill_names(skill_names: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for skill_name in skill_names:
+        if skill_name in seen:
+            continue
+        seen.add(skill_name)
+        deduped.append(skill_name)
+    return deduped

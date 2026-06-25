@@ -319,9 +319,9 @@
 
 .aiwiki-growth-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  width: min(720px, 100%);
+  width: min(900px, 100%);
 }
 
 .aiwiki-growth-tab {
@@ -440,13 +440,40 @@
   padding: 14px;
 }
 
-.aiwiki-growth-empty {
-  min-height: 420px;
+.aiwiki-assets-workflow {
   display: grid;
-  place-items: center;
-  align-content: center;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
   gap: 14px;
-  padding: 24px;
+  height: 100%;
+  min-height: 0;
+  padding: 14px;
+}
+
+.aiwiki-asset-task-rail {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+  padding: 14px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.aiwiki-assets-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.aiwiki-assets-main > .aiwiki-result-scroll,
+.aiwiki-assets-main > .aiwiki-task-overview {
+  height: 100%;
 }
 
 .aiwiki-task-empty {
@@ -916,6 +943,14 @@ button.aiwiki-graph-node {
     grid-row: auto;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: minmax(420px, auto);
+  }
+
+  .aiwiki-assets-workflow {
+    grid-template-columns: 1fr;
+  }
+
+  .aiwiki-asset-task-rail {
+    max-height: 340px;
   }
 
   .aiwiki-upload-progress {

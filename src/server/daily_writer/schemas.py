@@ -13,6 +13,8 @@ DailyWriterJobStatus = Literal["queued", "running", "completed", "failed", "part
 
 
 class DailyWriterCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     source_seed_matrix_job_id: str = Field(..., min_length=1, max_length=80)
     seed_id: str = Field(..., min_length=1, max_length=128)
     output_date: str | None = Field(default=None, pattern=r"^\d{6}$")
@@ -21,7 +23,7 @@ class DailyWriterCreate(BaseModel):
     generate_artwork: bool = False
 
     @model_validator(mode="after")
-    def validate_variant_count(self) -> "DailyWriterCreate":
+    def validate_counts(self) -> "DailyWriterCreate":
         if self.generate_variants and not 1 <= self.variant_count <= MAX_VARIANT_COUNT:
             raise ValueError(f"variant_count 必须在 1 到 {MAX_VARIANT_COUNT} 之间")
         return self

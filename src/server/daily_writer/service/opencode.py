@@ -4,16 +4,10 @@
 from __future__ import annotations
 
 import json
-import os
-import shlex
-import subprocess
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from src.server.aiwiki.service.logs import append_log
-from src.server.aiwiki.service.progress import progress_marked_complete
-from src.server.config import global_config
+from src.server.aiwiki.service.opencode_tmux import run_opencode_in_tmux
 
 
 def run_opencode(workdir: Path, params: dict[str, Any], row: dict[str, str]) -> None:
@@ -62,68 +56,7 @@ def run_repair_opencode(workdir: Path, *, error: str, article_dir: str | None = 
 
 
 def _run_opencode_with_prompt(workdir: Path, *, title: str, prompt: str) -> None:
-    command = shlex.split(global_config.aiwiki_opencode_command)
-    if not command:
-        raise RuntimeError("AIWIKI_OPENCODE_COMMAND 不能为空")
-    args = [
-        *command,
-        "run",
-        "--dir",
-        workdir.as_posix(),
-        "--title",
-        title,
-    ]
-    if global_config.aiwiki_opencode_model:
-        args.extend(["--model", global_config.aiwiki_opencode_model])
-    if global_config.aiwiki_opencode_agent:
-        args.extend(["--agent", global_config.aiwiki_opencode_agent])
-    if global_config.aiwiki_opencode_extra_args:
-        args.extend(shlex.split(global_config.aiwiki_opencode_extra_args))
-    args.append(prompt)
-
-    log_path = workdir / "logs" / "opencode.log"
-    append_log(workdir, "$ " + " ".join(shlex.quote(arg) for arg in args[:-1]) + " <prompt>")
-    env = os.environ.copy()
-    config_path = workdir / "config.json"
-    if config_path.exists():
-        env["OPENCODE_CONFIG"] = config_path.as_posix()
-    with log_path.open("ab") as log_file:
-        process = subprocess.Popen(
-            args,
-            cwd=workdir,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            env=env,
-        )
-        deadline = datetime.now(timezone.utc).timestamp() + global_config.aiwiki_task_timeout_seconds
-        while process.poll() is None:
-            if datetime.now(timezone.utc).timestamp() > deadline:
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=10)
-                raise RuntimeError("OpenCode 执行超时")
-
-            if progress_marked_complete(workdir):
-                append_log(workdir, "progress.json 已标记任务完成，后端结束 OpenCode 并解析结果。")
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=10)
-                return
-
-            try:
-                process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                pass
-
-        return_code = process.returncode
-    if return_code != 0:
-        raise RuntimeError(f"OpenCode 执行失败，退出码 {return_code}")
+    run_opencode_in_tmux(workdir, title=title, prompt=prompt)
 
 
 def build_prompt(workdir: Path, params: dict[str, Any], row: dict[str, str]) -> str:

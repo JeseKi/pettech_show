@@ -287,7 +287,14 @@
 
 .growth-writer-config-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: minmax(150px, 0.8fr) max-content repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
+}
+
+.growth-social-config-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
   gap: 8px;
 }
 
@@ -317,6 +324,14 @@
 
 .growth-number-field .ant-input-number {
   width: 100%;
+}
+
+.growth-switch-field {
+  width: 156px;
+}
+
+.growth-switch-field .ant-switch {
+  flex: 0 0 auto;
 }
 
 .growth-primary-action {
@@ -442,7 +457,8 @@
 
   .growth-readonly-summary,
   .growth-readonly-summary.is-compact,
-  .growth-writer-config-row {
+  .growth-writer-config-row,
+  .growth-social-config-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -452,6 +468,7 @@
   .growth-readonly-summary,
   .growth-readonly-summary.is-compact,
   .growth-writer-config-row,
+  .growth-social-config-row,
   .growth-artwork-grid {
     grid-template-columns: 1fr;
   }

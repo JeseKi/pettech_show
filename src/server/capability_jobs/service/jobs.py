@@ -277,7 +277,10 @@ def _run_validator_with_repair(
             step="修复 result JSON",
             summary="result JSON 校验失败，正在下发 OpenCode 修复任务",
         )
-        run_repair_opencode(workdir, config, inputs, error=str(first_error))
+        try:
+            run_repair_opencode(workdir, config, inputs, error=str(first_error))
+        except Exception:
+            raise first_error
         if not progress_marked_complete(workdir):
             raise RuntimeError("修复后 progress.json 未写入任务完成标记")
         run_validator(workdir, config, json_only=True)

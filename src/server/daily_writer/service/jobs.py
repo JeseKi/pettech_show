@@ -47,7 +47,11 @@ from ..schemas import (
     DailyWriterResultOut,
 )
 from .artifacts import copy_source_artifacts, prepare_skill
-from .constants import MAX_VARIANT_COUNT, RESULT_ZIP_NAME, SELECTED_SEED_ROW_PATH
+from .constants import (
+    MAX_VARIANT_COUNT,
+    RESULT_ZIP_NAME,
+    SELECTED_SEED_ROW_PATH,
+)
 from .opencode import (
     run_artwork_opencode,
     run_opencode,
@@ -210,6 +214,9 @@ def delete_job(db: Session, job_id: str, current_user: User) -> None:
             detail="任务正在执行，完成或失败后才能删除",
         )
     workdir = Path(job.workdir)
+    from src.server.social_cards.service import delete_child_jobs_for_daily_writer
+
+    delete_child_jobs_for_daily_writer(db, job.id)
     DailyWriterJobDAO(db).delete(job)
     shutil.rmtree(workdir, ignore_errors=True)
 
@@ -602,13 +609,17 @@ def _reconcile_orphaned_finished_job(
 ) -> DailyWriterJob:
     if job.status not in {"queued", "running"}:
         return job
-    if get_queue().queue_position(job.id) is not None:
-        return job
     workdir = Path(job.workdir)
     if not progress_marked_complete(workdir):
         return job
 
     params = parse_json_dict(job.params_json)
+    queue_position = get_queue().queue_position(job.id)
+    has_followup_steps = bool(params.get("generate_variants")) or bool(
+        params.get("generate_artwork")
+    )
+    if queue_position is not None and has_followup_steps:
+        return job
     try:
         result = parse_daily_writer_result(
             job_id=job.id,

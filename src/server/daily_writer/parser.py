@@ -403,3 +403,14 @@ def _artwork_asset_outputs(
             )
         )
     return assets
+
+
+def _unique_sorted_paths(paths: list[Path]) -> list[Path]:
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for path in sorted(paths):
+        if path in seen:
+            continue
+        seen.add(path)
+        unique.append(path)
+    return unique

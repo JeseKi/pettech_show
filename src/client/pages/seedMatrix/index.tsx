@@ -46,7 +46,6 @@ const STRATEGY_MODE_IDS = Object.keys(SEED_MATRIX_MODES) as SeedMatrixModeId[]
 export default function SeedMatrixPage({
   mode = 'standard',
   sourceAiwikiJobId,
-  embedded = false,
   onOpenProductionStage,
 }: {
   mode?: SeedMatrixModeId
@@ -75,7 +74,6 @@ export default function SeedMatrixPage({
   const [accountFilter, setAccountFilter] = useState<string>('全部')
 
   const loadAiwikiJobs = useCallback(async () => {
-    if (embedded) return
     setLoadingInputs(true)
     try {
       const data = await listAiwikiJobs({ limit: 100, offset: 0, status: 'completed' })
@@ -86,19 +84,15 @@ export default function SeedMatrixPage({
     } finally {
       setLoadingInputs(false)
     }
-  }, [embedded])
+  }, [])
 
   const loadMatrixJobs = useCallback(async () => {
-    if (embedded && !sourceAiwikiJobId) {
-      setMatrixJobs([])
-      return
-    }
     setLoadingHistory(true)
     try {
       const data = await listSeedMatrixJobs({
         limit: 50,
         offset: 0,
-        source_aiwiki_job_id: embedded ? sourceAiwikiJobId ?? undefined : undefined,
+        source_aiwiki_job_id: sourceAiwikiJobId ?? undefined,
       })
       setMatrixJobs(data.items)
     } catch (err) {
@@ -106,7 +100,7 @@ export default function SeedMatrixPage({
     } finally {
       setLoadingHistory(false)
     }
-  }, [embedded, sourceAiwikiJobId])
+  }, [sourceAiwikiJobId])
 
   const refreshJob = useCallback(async (jobId: string, silent = false) => {
     if (!silent) setRefreshing(true)
@@ -139,17 +133,12 @@ export default function SeedMatrixPage({
   }, [draftModeConfig.defaults, form])
 
   useEffect(() => {
-    if (embedded) {
-      setSelectedAiwikiJobId(sourceAiwikiJobId ?? null)
-      setCreating(true)
-      setActiveJob(null)
-      setResult(null)
-      setActiveRow(null)
-    } else {
-      void loadAiwikiJobs()
+    if (sourceAiwikiJobId) {
+      setSelectedAiwikiJobId(sourceAiwikiJobId)
     }
+    void loadAiwikiJobs()
     void loadMatrixJobs()
-  }, [embedded, loadAiwikiJobs, loadMatrixJobs, sourceAiwikiJobId])
+  }, [loadAiwikiJobs, loadMatrixJobs, sourceAiwikiJobId])
 
   useEffect(() => {
     if (!activeJob?.id || !ACTIVE_STATUSES.has(activeJob.status)) return
@@ -300,7 +289,6 @@ export default function SeedMatrixPage({
       <main className="growth-main-stage">
         {creating ? (
           <CreateMatrixTask
-            embedded={embedded}
             form={form}
             aiwikiJobs={aiwikiJobs}
             loadingInputs={loadingInputs}
@@ -440,7 +428,6 @@ function TaskRail({
 }
 
 function CreateMatrixTask({
-  embedded,
   form,
   aiwikiJobs,
   loadingInputs,
@@ -454,7 +441,6 @@ function CreateMatrixTask({
   onSelectAiwikiJob,
   onSubmit,
 }: {
-  embedded: boolean
   form: FormInstance<Omit<SeedMatrixCreatePayload, 'source_aiwiki_job_id'>>
   aiwikiJobs: AiwikiJobSummary[]
   loadingInputs: boolean
@@ -483,33 +469,26 @@ function CreateMatrixTask({
         <section className="growth-config-section">
           <Flex align="center" justify="space-between" gap={12}>
             <Typography.Title level={5}>输入知识库</Typography.Title>
-            {!embedded && <Button size="small" icon={<ReloadOutlined />} loading={loadingInputs} onClick={onRefreshInputs} />}
+            <Button size="small" icon={<ReloadOutlined />} loading={loadingInputs} onClick={onRefreshInputs} />
           </Flex>
-          {embedded ? (
-            <div className="growth-locked-input">
-              <Tag color="cyan">已选知识库</Tag>
-              <Typography.Text>{selectedAiwikiJobId ? shortId(selectedAiwikiJobId) : '未选择'}</Typography.Text>
-            </div>
-          ) : (
-            <List
-              className="growth-input-source-list"
-              loading={loadingInputs}
-              dataSource={aiwikiJobs}
-              locale={{ emptyText: '暂无已完成知识库' }}
-              renderItem={(job) => (
-                <List.Item>
-                  <button
-                    type="button"
-                    className={job.id === selectedAiwikiJobId ? 'growth-input-source is-active' : 'growth-input-source'}
-                    onClick={() => onSelectAiwikiJob(job.id)}
-                  >
-                    <span>{job.title || job.files[0]?.filename || shortId(job.id)}</span>
-                    <small>{job.files.length} 文件 · 素材 {Number(job.summary.material_count ?? 0)}</small>
-                  </button>
-                </List.Item>
-              )}
-            />
-          )}
+          <List
+            className="growth-input-source-list"
+            loading={loadingInputs}
+            dataSource={aiwikiJobs}
+            locale={{ emptyText: '暂无已完成知识库' }}
+            renderItem={(job) => (
+              <List.Item>
+                <button
+                  type="button"
+                  className={job.id === selectedAiwikiJobId ? 'growth-input-source is-active' : 'growth-input-source'}
+                  onClick={() => onSelectAiwikiJob(job.id)}
+                >
+                  <span>{job.title || job.files[0]?.filename || shortId(job.id)}</span>
+                  <small>{job.files.length} 文件 · 素材 {Number(job.summary.material_count ?? 0)}</small>
+                </button>
+              </List.Item>
+            )}
+          />
           {selectedAiwikiJob && (
             <div className="growth-config-summary">
               <ConfigItem label="知识库" value={selectedAiwikiJob.title || selectedAiwikiJob.files[0]?.filename || selectedAiwikiJob.id} />

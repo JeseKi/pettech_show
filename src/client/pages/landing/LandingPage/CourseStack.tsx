@@ -208,6 +208,7 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
               <strong>内容资产库</strong>
               <strong>选题策略</strong>
               <strong>稿件生产</strong>
+              <strong>图文生成</strong>
             </div>
             <div className="course-stack-mobile__flow" aria-label="课程流程">
               <span>对标入库</span>
