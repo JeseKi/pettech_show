@@ -26,7 +26,236 @@
 }
 
 .course-stack-mobile {
-  display: none;
+  position: absolute;
+  top: calc(50% + 28px);
+  left: 0;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  opacity: 0;
+  translate: 0 -50%;
+  animation: landingSupportIn 720ms cubic-bezier(0.16, 1, 0.3, 1) 420ms forwards;
+}
+
+.course-stack-mobile__summary {
+  width: min(1080px, calc(100% - 48px));
+  margin: 0 auto 10px;
+  padding: clamp(18px, 2.2vw, 26px);
+  color: var(--app-text-primary);
+  background:
+    linear-gradient(135deg, rgba(184, 255, 103, 0.1), transparent 54%),
+    rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.26);
+}
+
+.course-stack-mobile__summary > span {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 8px;
+  color: var(--app-text-inverse);
+  background: var(--app-accent);
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.course-stack-mobile__summary h1 {
+  display: grid;
+  max-width: 100%;
+  margin: 12px 0 0;
+  font-size: clamp(40px, 5.6vw, 72px);
+  line-height: 0.98;
+  letter-spacing: 0;
+}
+
+.course-stack-mobile__summary h1 span {
+  display: block;
+}
+
+.course-stack-mobile__summary p {
+  max-width: 44em;
+  margin: 12px 0 0;
+  color: var(--app-text-secondary);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.course-stack-mobile__stats,
+.course-stack-mobile__flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.course-stack-mobile__stats strong,
+.course-stack-mobile__flow span {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 9px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.course-stack-mobile__stats strong {
+  color: var(--app-text-primary);
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 12px;
+}
+
+.course-stack-mobile__flow span {
+  color: var(--app-accent);
+  background: rgba(184, 255, 103, 0.1);
+  border: 1px solid rgba(184, 255, 103, 0.18);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.course-stack-mobile__viewport {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  padding: 28px 0 36px;
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.course-stack-mobile__viewport:active,
+.course-stack-mobile__viewport.is-dragging {
+  cursor: grabbing;
+}
+
+.course-stack-mobile__viewport::before,
+.course-stack-mobile__viewport::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: min(15vw, 210px);
+  pointer-events: none;
+  content: "";
+}
+
+.course-stack-mobile__viewport::before {
+  left: 0;
+  background: linear-gradient(90deg, var(--app-bg), transparent);
+}
+
+.course-stack-mobile__viewport::after {
+  right: 0;
+  background: linear-gradient(270deg, var(--app-bg), transparent);
+}
+
+.course-stack-mobile__track {
+  display: flex;
+  width: max-content;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+}
+
+.course-stack-mobile__group {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 18px;
+  padding-right: 18px;
+}
+
+.mobile-course-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
+  width: clamp(310px, 26vw, 390px);
+  min-height: 288px;
+  padding: clamp(15px, 1.4vw, 20px);
+  overflow: hidden;
+  color: #f8faf3;
+  cursor: pointer;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.035) 36%, rgba(0, 0, 0, 0.24)),
+    radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--course-accent), transparent 44%), transparent 38%),
+    rgb(30, 25, 30);
+  border: 1px solid color-mix(in srgb, var(--course-accent), white 10%);
+  border-radius: 10px;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.52),
+    0 0 28px color-mix(in srgb, var(--course-accent), transparent 84%);
+  outline: 0;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.mobile-course-card::before,
+.mobile-course-card::after {
+  position: absolute;
+  pointer-events: none;
+  content: "";
+}
+
+.mobile-course-card::before {
+  inset: 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 22px),
+    linear-gradient(115deg, var(--course-accent), transparent 38%),
+    linear-gradient(315deg, rgba(255, 255, 255, 0.1), transparent 42%);
+  opacity: 0.16;
+}
+
+.mobile-course-card::after {
+  inset: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+}
+
+.mobile-course-card:hover,
+.mobile-course-card:focus-visible {
+  border-color: var(--course-accent);
+  box-shadow:
+    0 20px 54px rgba(0, 0, 0, 0.6),
+    0 0 0 2px var(--course-accent);
+  transform: translateY(-2px);
+}
+
+.mobile-course-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.mobile-course-card h2 {
+  margin: 18px 0 0;
+  font-size: clamp(26px, 2.1vw, 34px);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+.mobile-course-card > p {
+  display: -webkit-box;
+  margin: 10px 0 0;
+  overflow: hidden;
+  color: rgba(245, 247, 241, 0.72);
+  font-size: 12px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.mobile-course-card footer {
+  display: block;
+  align-self: end;
+  margin-top: 10px;
+  padding-top: 9px;
+  overflow: hidden;
+  color: rgba(245, 247, 241, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .course-stack-scene {
