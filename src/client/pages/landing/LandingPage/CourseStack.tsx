@@ -3,6 +3,7 @@ import {
   GLOBAL_GESTURE_SWIPE_EVENT,
   type GlobalGestureSwipeDetail,
 } from '../../../components/gesture/events'
+import { BRAND_NAME } from '../../../lib/brand'
 import { courses } from './courseData'
 import {
   COURSE_ORBIT_ANGLE_STEP,
@@ -436,6 +437,22 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
           </div>
         </div>
         <div className="course-stack-mobile" aria-label="课程卡片">
+          <div className="course-stack-mobile__summary" aria-label="课程路径概览">
+            <span>{BRAND_NAME}</span>
+            <h1>宠物行业 AI 内容增长工作台</h1>
+            <p>把竞品素材、用户问题和业务目标整理成内容资产，再生成选题策略、稿件和多平台内容包。</p>
+            <div className="course-stack-mobile__stats">
+              <strong>内容资产库</strong>
+              <strong>选题策略</strong>
+              <strong>稿件生产</strong>
+            </div>
+            <div className="course-stack-mobile__flow" aria-label="课程流程">
+              <span>对标入库</span>
+              <span>知识沉淀</span>
+              <span>选题规划</span>
+              <span>内容分发</span>
+            </div>
+          </div>
           <div
             className="course-stack-mobile__viewport"
             onPointerCancel={releaseMobileCassettePointer}

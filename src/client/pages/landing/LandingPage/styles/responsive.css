@@ -134,7 +134,7 @@
 
   .course-stack-mobile {
     position: absolute;
-    top: 50%;
+    top: calc(50% + 28px);
     left: 0;
     display: grid;
     width: 100%;
@@ -142,6 +142,78 @@
     opacity: 0;
     translate: 0 -50%;
     animation: landingSupportIn 720ms cubic-bezier(0.16, 1, 0.3, 1) 420ms forwards;
+  }
+
+  .course-stack-mobile__summary {
+    width: calc(100% - 28px);
+    margin: 0 auto 4px;
+    padding: 14px;
+    color: var(--app-text-primary);
+    background:
+      linear-gradient(135deg, rgba(184, 255, 103, 0.1), transparent 54%),
+      rgba(255, 255, 255, 0.045);
+    border: 1px solid var(--app-border-subtle);
+    border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.26);
+  }
+
+  .course-stack-mobile__summary > span {
+    display: inline-flex;
+    min-height: 24px;
+    align-items: center;
+    padding: 0 8px;
+    color: var(--app-text-inverse);
+    background: var(--app-accent);
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 900;
+  }
+
+  .course-stack-mobile__summary h1 {
+    margin: 12px 0 0;
+    font-size: clamp(28px, 8vw, 36px);
+    line-height: 1.04;
+    letter-spacing: 0;
+  }
+
+  .course-stack-mobile__summary p {
+    margin: 8px 0 0;
+    max-width: 32em;
+    color: var(--app-text-secondary);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .course-stack-mobile__stats,
+  .course-stack-mobile__flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .course-stack-mobile__stats strong,
+  .course-stack-mobile__flow span {
+    display: inline-flex;
+    min-height: 26px;
+    align-items: center;
+    padding: 0 8px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+
+  .course-stack-mobile__stats strong {
+    color: var(--app-text-primary);
+    background: rgba(255, 255, 255, 0.07);
+    font-size: 11px;
+  }
+
+  .course-stack-mobile__flow span {
+    color: var(--app-accent);
+    background: rgba(184, 255, 103, 0.1);
+    border: 1px solid rgba(184, 255, 103, 0.18);
+    font-size: 11px;
+    font-weight: 800;
   }
 
   .course-stack-mobile__viewport {
