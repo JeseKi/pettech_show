@@ -14,6 +14,7 @@ from fastapi import HTTPException, status
 from loguru import logger
 from sqlalchemy.orm import Session, sessionmaker
 
+from src.server.aiwiki.service.opencode import prepare_opencode_config
 from src.server.aiwiki.service.logs import append_log
 from src.server.aiwiki.service.progress import (
     initial_progress,
@@ -212,6 +213,7 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
         write_manifest(Path(job.workdir), CapabilityJobDAO(session).get(job_id))
         append_log(Path(job.workdir), "开始执行能力任务")
         inputs = parse_json_dict(job.input_json)
+        prepare_opencode_config(Path(job.workdir))
         run_opencode(Path(job.workdir), config, inputs)
         if not progress_marked_complete(Path(job.workdir)):
             raise RuntimeError("progress.json 未写入任务完成标记")

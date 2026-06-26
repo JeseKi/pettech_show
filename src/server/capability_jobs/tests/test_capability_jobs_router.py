@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import json
 import sys
 import time
 import zipfile
@@ -24,11 +25,15 @@ def fake_capability_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 root = Path.cwd()
 prompt = sys.argv[-1]
+config_path = Path(os.environ["OPENCODE_CONFIG"])
+assert config_path == root / "config.json"
+assert json.loads(config_path.read_text(encoding="utf-8"))["provider"]["killm"]["models"]["gpt-5.5"]["name"] == "GPT 5.5"
 assert "output/result.md" in prompt
 assert "output/result.json" in prompt
 assert "Demo" in prompt
@@ -136,6 +141,25 @@ write_progress("completed", "任务完成")
         f"{sys.executable} {fake_opencode}",
     )
     monkeypatch.setattr(global_config, "aiwiki_task_timeout_seconds", 30)
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "provider": {
+                    "killm": {
+                        "models": {
+                            "gpt-5.5": {
+                                "name": "GPT 5.5",
+                            }
+                        }
+                    }
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     reset_queue_for_tests()
     yield tmp_path
     reset_queue_for_tests()
