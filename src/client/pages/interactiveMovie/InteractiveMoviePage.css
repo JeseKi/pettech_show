@@ -1427,6 +1427,216 @@
   color: var(--app-text-primary) !important;
 }
 
+.movie-public-route-control {
+  position: absolute;
+  top: 28px;
+  right: 32px;
+  z-index: 4;
+}
+
+.movie-public-route-control .ant-btn {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(6, 8, 12, 0.74);
+  color: var(--app-text-primary);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34);
+}
+
+.movie-route-tree-panel {
+  position: absolute;
+  top: 78px;
+  right: 28px;
+  z-index: 4;
+  display: flex;
+  width: min(440px, calc(100vw - 56px));
+  max-height: min(620px, calc(100vh - 116px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(6, 8, 12, 0.88);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(18px);
+}
+
+.movie-route-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.movie-route-tree-header .ant-typography {
+  margin: 0 !important;
+  color: var(--app-text-primary) !important;
+}
+
+.movie-route-tree-header .ant-btn {
+  flex: none;
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(248, 250, 252, 0.08);
+  color: var(--app-text-primary);
+}
+
+.movie-route-tree-scroll {
+  min-height: 220px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.movie-route-tree-canvas {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+.movie-route-tree-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.movie-route-tree-edge path {
+  fill: none;
+  stroke: rgba(148, 163, 184, 0.24);
+  stroke-width: 2;
+}
+
+.movie-route-tree-edge.is-available path {
+  stroke: rgba(125, 211, 252, 0.42);
+  stroke-dasharray: 6 5;
+}
+
+.movie-route-tree-edge.is-chosen path {
+  stroke: #7dd3fc;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px rgba(125, 211, 252, 0.36));
+}
+
+.movie-route-tree-node {
+  position: absolute;
+  left: var(--route-node-x);
+  top: var(--route-node-y);
+  z-index: 2;
+  display: flex;
+  width: 152px;
+  height: 58px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  color: var(--app-text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+}
+
+.movie-route-tree-node:disabled {
+  cursor: not-allowed;
+}
+
+.movie-route-tree-node.is-current {
+  border-color: #bef264;
+  background: rgba(63, 98, 18, 0.9);
+  box-shadow: 0 0 0 2px rgba(190, 242, 100, 0.18), 0 12px 30px rgba(0, 0, 0, 0.26);
+}
+
+.movie-route-tree-node.is-unlocked {
+  border-color: rgba(125, 211, 252, 0.58);
+  background: rgba(8, 47, 73, 0.88);
+}
+
+.movie-route-tree-node.is-locked {
+  opacity: 0.48;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.movie-route-tree-node:hover:not(:disabled) {
+  border-color: rgba(248, 250, 252, 0.74);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
+}
+
+.movie-route-node-role {
+  color: rgba(226, 232, 240, 0.62);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.movie-route-node-title {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movie-route-tree-choice {
+  position: absolute;
+  left: var(--route-choice-x);
+  top: var(--route-choice-y);
+  z-index: 3;
+  display: flex;
+  width: 132px;
+  height: 38px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 5px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 999px;
+  background: rgba(6, 8, 12, 0.96);
+  color: var(--app-text-primary);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+.movie-route-tree-choice.is-available {
+  border-color: rgba(125, 211, 252, 0.48);
+  background: rgba(8, 47, 73, 0.94);
+}
+
+.movie-route-tree-choice.is-chosen {
+  border-color: #7dd3fc;
+  background: rgba(14, 116, 144, 0.95);
+  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.16), 0 12px 28px rgba(0, 0, 0, 0.3);
+}
+
+.movie-route-tree-choice.is-locked {
+  opacity: 0.5;
+}
+
+.movie-route-choice-kicker {
+  color: rgba(226, 232, 240, 0.56);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.movie-route-choice-title {
+  display: block;
+  overflow: hidden;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .movie-public-loader {
   position: relative;
   z-index: 2;
@@ -1636,6 +1846,25 @@
     top: 18px;
     left: 20px;
     right: 20px;
+    padding-right: 112px;
+  }
+
+  .movie-public-route-control {
+    top: 18px;
+    right: 16px;
+  }
+
+  .movie-route-tree-panel {
+    top: auto;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+    max-height: min(54vh, 430px);
+  }
+
+  .movie-route-tree-scroll {
+    min-height: 190px;
   }
 
   .movie-public-dialogue {
