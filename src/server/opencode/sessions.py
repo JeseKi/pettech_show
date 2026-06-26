@@ -24,13 +24,13 @@ def read_session_id(workdir: Path) -> str | None:
 
 
 def persist_session_id(
-    workdir: Path, *, title: str, started_after_ms: int
+    workdir: Path, *, title: str, started_after_ms: int, session_dir: Path | None = None
 ) -> str | None:
     existing = read_session_id(workdir)
     if existing:
         return existing
     session = _find_latest_opencode_session(
-        workdir,
+        session_dir or workdir,
         title=title,
         started_after_ms=started_after_ms,
     )

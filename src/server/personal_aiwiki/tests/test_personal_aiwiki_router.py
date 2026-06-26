@@ -29,6 +29,7 @@ from pathlib import Path
 root = Path.cwd()
 manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
 prompt = sys.argv[-1]
+assert sys.argv[sys.argv.index("--dir") + 1] == str(root.parent.parent)
 assert "$llm-wiki" in prompt
 assert "WIKI_PATH" in prompt
 workspace = Path(manifest["workspace_dir"])

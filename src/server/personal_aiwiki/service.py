@@ -367,7 +367,12 @@ def run_personal_aiwiki_opencode(workdir: Path) -> None:
         input_text=manifest.get("input_text"),
         files=parse_json_list(manifest.get("files")),
     )
-    run_opencode_in_tmux(workdir, title="Personal AI Wiki", prompt=prompt)
+    run_opencode_in_tmux(
+        workdir,
+        title="Personal AI Wiki",
+        prompt=prompt,
+        opencode_dir=workdir.parent.parent,
+    )
 
 
 def build_prompt(
