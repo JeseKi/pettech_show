@@ -144,7 +144,13 @@ def _run_opencode_attempt(
                     started_after_ms=started_after_ms,
                     prompt_path=prompt_path,
                 )
-            raise RuntimeError("OpenCode tmux session 已结束，但未写入退出状态")
+            persist_session_id(workdir, title=title, started_after_ms=started_after_ms)
+            append_log(
+                workdir,
+                "RECOVERY: OpenCode tmux session 已结束但未写入退出状态，"
+                "将按未完成任务处理并尝试恢复。",
+            )
+            return "exited", prompt_path
 
         time.sleep(POLL_INTERVAL_SECONDS)
 
