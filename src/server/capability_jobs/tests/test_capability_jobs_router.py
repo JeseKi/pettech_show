@@ -227,10 +227,20 @@ def test_create_capability_job_and_get_result(
     created = create_resp.json()
     assert created["status"] == "queued"
     assert created["owner_user_id"] == user.id
+    assert created["title"] is None
     assert created["inputs"]["identity"] == "宠物医院"
+
+    update_resp = test_client.patch(
+        f"/api/capability-jobs/{created['id']}",
+        headers=headers,
+        json={"title": "门店竞品诊断"},
+    )
+    assert update_resp.status_code == HTTPStatus.OK, update_resp.text
+    assert update_resp.json()["title"] == "门店竞品诊断"
 
     finished = _wait_for_terminal_status(test_client, created["id"], headers)
     assert finished["status"] == "completed", finished
+    assert finished["title"] == "门店竞品诊断"
     assert finished["summary"]["title"] == "竞品链接诊断"
     assert finished["progress"]["status"] == "completed"
 
@@ -250,6 +260,7 @@ def test_create_capability_job_and_get_result(
     )
     assert list_resp.status_code == HTTPStatus.OK, list_resp.text
     assert list_resp.json()["items"][0]["id"] == created["id"]
+    assert list_resp.json()["items"][0]["title"] == "门店竞品诊断"
 
     zip_resp = test_client.get(
         f"/api/capability-jobs/{created['id']}/download",

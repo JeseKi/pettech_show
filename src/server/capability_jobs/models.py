@@ -19,6 +19,7 @@ class CapabilityJob(Base):
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     capability_key: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    title: Mapped[str | None] = mapped_column(String(255), default=None)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
     message: Mapped[str | None] = mapped_column(Text, default=None)
     workdir: Mapped[str] = mapped_column(Text, nullable=False)

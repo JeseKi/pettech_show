@@ -37,6 +37,7 @@ from ..schemas import (
     CapabilityInputOut,
     CapabilityJobListOut,
     CapabilityJobOut,
+    CapabilityJobUpdate,
     CapabilityResultOut,
 )
 from .opencode import run_opencode, run_repair_opencode, run_validator
@@ -127,6 +128,18 @@ def get_job(db: Session, job_id: str, current_user: User) -> CapabilityJobOut:
     return job_out_from_model(job, CapabilityJobDAO(db).owner_username(job.owner_user_id))
 
 
+def update_job_title(
+    db: Session, job_id: str, payload: CapabilityJobUpdate, current_user: User
+) -> CapabilityJobOut:
+    job = get_accessible_job(db, job_id, current_user)
+    updated = CapabilityJobDAO(db).update(job.id, title=normalize_title(payload.title))
+    write_manifest(Path(updated.workdir), updated)
+    return job_out_from_model(
+        updated,
+        CapabilityJobDAO(db).owner_username(updated.owner_user_id),
+    )
+
+
 def get_result(db: Session, job_id: str, current_user: User) -> CapabilityResultOut:
     job = get_accessible_job(db, job_id, current_user)
     if job.status != "completed":
@@ -183,6 +196,7 @@ def sync_job_records(db: Session) -> None:
             id=str(manifest["id"]),
             owner_user_id=coerce_int(manifest.get("owner_user_id")),
             capability_key=str(manifest["capability_key"]),
+            title=normalize_title(manifest.get("title")),
             status=str(manifest.get("status") or "failed"),
             message=manifest.get("message"),
             workdir=workdir.as_posix(),
@@ -197,6 +211,13 @@ def sync_job_records(db: Session) -> None:
         )
         db.add(job)
         db.commit()
+
+
+def normalize_title(value: object) -> str | None:
+    if value is None:
+        return None
+    stripped = str(value).strip()
+    return stripped or None
 
 
 def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:

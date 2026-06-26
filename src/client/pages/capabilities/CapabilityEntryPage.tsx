@@ -19,7 +19,7 @@ import {
   Typography,
   theme,
 } from 'antd'
-import { DeleteOutlined, DownloadOutlined, FileTextOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, EditOutlined, FileTextOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -32,6 +32,7 @@ import {
   type CapabilityJob,
   type CapabilityJobSummary,
   type CapabilityResult,
+  updateCapabilityJob,
 } from '../../lib/capabilityJobs'
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import { formatDateTime, progressEventColor, statusMeta } from '../aiwiki/helpers'
@@ -41,7 +42,7 @@ const ACTIVE_STATUSES = new Set(['queued', 'running'])
 
 export default function CapabilityEntryPage({ entry }: { entry: CapabilityEntryConfig }) {
   const { token } = theme.useToken()
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const [form] = Form.useForm<Record<string, string>>()
   const [jobs, setJobs] = useState<CapabilityJobSummary[]>([])
   const [activeJob, setActiveJob] = useState<CapabilityJob | null>(null)
@@ -202,6 +203,36 @@ export default function CapabilityEntryPage({ entry }: { entry: CapabilityEntryC
     }
   }
 
+  const renameJob = (job: CapabilityJobSummary) => {
+    let nextTitle = capabilityJobTitle(job, entry.title)
+    modal.confirm({
+      title: '编辑任务名称',
+      content: (
+        <Input
+          autoFocus
+          defaultValue={nextTitle}
+          maxLength={255}
+          placeholder={entry.title}
+          onChange={(event) => {
+            nextTitle = event.target.value
+          }}
+        />
+      ),
+      okText: '保存',
+      cancelText: '取消',
+      onOk: async () => {
+        const updated = await updateCapabilityJob(job.id, { title: nextTitle })
+        setJobs((items) => items.map((item) => (
+          item.id === updated.id ? { ...item, title: updated.title } : item
+        )))
+        if (activeJob?.id === updated.id) {
+          setActiveJob(updated)
+        }
+        message.success('任务名称已更新')
+      },
+    })
+  }
+
   const fillExample = () => {
     if (!entry.example) return
     form.setFieldsValue(entry.example.values)
@@ -310,6 +341,8 @@ export default function CapabilityEntryPage({ entry }: { entry: CapabilityEntryC
           onRefreshActive={() => activeJob && void refreshJob(activeJob.id)}
           onSelectJob={(jobId) => void selectJob(jobId)}
           onDeleteJob={(jobId) => void deleteJob(jobId)}
+          onRenameJob={renameJob}
+          fallbackTitle={entry.title}
         />
       </Col>
       {entry.example && (
@@ -369,6 +402,8 @@ function TaskPanel({
   onRefreshActive,
   onSelectJob,
   onDeleteJob,
+  onRenameJob,
+  fallbackTitle,
 }: {
   activeJob: CapabilityJob | null
   jobs: CapabilityJobSummary[]
@@ -378,6 +413,8 @@ function TaskPanel({
   onRefreshActive: () => void
   onSelectJob: (jobId: string) => void
   onDeleteJob: (jobId: string) => void
+  onRenameJob: (job: CapabilityJobSummary) => void
+  fallbackTitle: string
 }) {
   const { token } = theme.useToken()
   const meta = statusMeta(activeJob?.status)
@@ -428,8 +465,18 @@ function TaskPanel({
                       onClick={(event) => event.stopPropagation()}
                     />
                   </Popconfirm>
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<EditOutlined />}
+                    aria-label="编辑任务名称"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onRenameJob(item)
+                    }}
+                  />
                 </Space>
-                <Typography.Text strong ellipsis>{String(item.summary.title || item.id)}</Typography.Text>
+                <Typography.Text strong ellipsis>{capabilityJobTitle(item, fallbackTitle)}</Typography.Text>
                 <Typography.Text type="secondary">{formatDateTime(item.created_at)}</Typography.Text>
               </Flex>
             </List.Item>
@@ -460,4 +507,9 @@ function TaskPanel({
       </Flex>
     </aside>
   )
+}
+
+function capabilityJobTitle(job: CapabilityJob | CapabilityJobSummary, fallback: string): string {
+  const summaryTitle = typeof job.summary.title === 'string' ? job.summary.title : ''
+  return job.title || summaryTitle || fallback || job.id
 }

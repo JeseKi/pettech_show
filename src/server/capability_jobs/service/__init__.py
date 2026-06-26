@@ -10,6 +10,7 @@ from .jobs import (
     list_jobs,
     result_zip_file,
     sync_job_records,
+    update_job_title,
 )
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "list_jobs",
     "result_zip_file",
     "sync_job_records",
+    "update_job_title",
 ]

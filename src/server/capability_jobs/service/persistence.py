@@ -63,6 +63,7 @@ def write_manifest(workdir: Path, job: CapabilityJob | None) -> None:
         "id": job.id,
         "owner_user_id": job.owner_user_id,
         "capability_key": job.capability_key,
+        "title": job.title,
         "status": job.status,
         "message": job.message,
         "workdir": job.workdir,

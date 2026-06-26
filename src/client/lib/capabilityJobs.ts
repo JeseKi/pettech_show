@@ -7,6 +7,7 @@ export interface CapabilityJob {
   owner_user_id: number | null
   owner_username: string | null
   capability_key: string
+  title: string | null
   status: CapabilityJobStatus
   queue_position: number | null
   message: string | null
@@ -30,6 +31,7 @@ export interface CapabilityJobSummary {
   owner_user_id: number | null
   owner_username: string | null
   capability_key: string
+  title: string | null
   status: CapabilityJobStatus
   message: string | null
   inputs: Record<string, unknown>
@@ -68,6 +70,11 @@ export async function listCapabilityJobs(params: { limit?: number; offset?: numb
 
 export async function getCapabilityJob(jobId: string): Promise<CapabilityJob> {
   const { data } = await api.get<CapabilityJob>(`/capability-jobs/${jobId}`)
+  return data
+}
+
+export async function updateCapabilityJob(jobId: string, payload: { title?: string | null }): Promise<CapabilityJob> {
+  const { data } = await api.patch<CapabilityJob>(`/capability-jobs/${jobId}`, payload)
   return data
 }
 

@@ -19,8 +19,10 @@ from .schemas import (
     CapabilityCreate,
     CapabilityJobListOut,
     CapabilityJobOut,
+    CapabilityJobUpdate,
     CapabilityResultOut,
 )
+from .service.jobs import update_job_title as update_capability_job_title
 
 router = APIRouter(prefix="/api/capability-jobs", tags=["内容能力"])
 
@@ -63,6 +65,16 @@ async def get_capability_job(
     current_user: User = Depends(get_current_user),
 ):
     return service.get_job(db, job_id, current_user)
+
+
+@router.patch("/{job_id}", response_model=CapabilityJobOut, summary="更新内容能力任务")
+async def update_capability_job(
+    job_id: str,
+    payload: CapabilityJobUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return update_capability_job_title(db, job_id, payload, current_user)
 
 
 @router.get("/{job_id}/result", response_model=CapabilityResultOut, summary="获取内容能力任务结果")

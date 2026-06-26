@@ -37,11 +37,16 @@ class CapabilityCreate(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
 
 
+class CapabilityJobUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+
+
 class CapabilityJobOut(BaseModel):
     id: str
     owner_user_id: int | None = None
     owner_username: str | None = None
     capability_key: str
+    title: str | None = None
     status: CapabilityJobStatus
     queue_position: int | None = None
     message: str | None = None
@@ -63,6 +68,7 @@ class CapabilityJobSummaryOut(BaseModel):
     owner_user_id: int | None = None
     owner_username: str | None = None
     capability_key: str
+    title: str | None = None
     status: CapabilityJobStatus
     message: str | None = None
     inputs: dict[str, Any] = Field(default_factory=dict)
