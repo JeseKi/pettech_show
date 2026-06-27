@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
+import type {
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  WheelEvent as ReactWheelEvent,
+} from 'react'
 import { isAxiosError } from 'axios'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   App,
   Button,
+  Collapse,
   Empty,
   Flex,
   Input,
@@ -26,14 +33,19 @@ import {
   DoubleRightOutlined,
   DownOutlined,
   EditOutlined,
+  FileTextOutlined,
   FullscreenOutlined,
   GlobalOutlined,
+  ItalicOutlined,
   LinkOutlined,
+  OrderedListOutlined,
+  PictureOutlined,
   PlusOutlined,
   PoweroffOutlined,
   PlayCircleOutlined,
   SaveOutlined,
   UploadOutlined,
+  UnorderedListOutlined,
   UpOutlined,
   VideoCameraOutlined,
   ZoomInOutlined,
@@ -52,6 +64,7 @@ import {
   publishInteractiveMovieProject,
   renameInteractiveMovieProject,
   setInteractiveMoviePublishedRelease,
+  uploadInteractiveMovieImage,
   uploadInteractiveMovieVideo,
 } from '../../lib/interactiveMovie'
 import type {
@@ -66,7 +79,10 @@ import WorkbenchHomeButton from '../../components/brand/WorkbenchHomeButton'
 import './InteractiveMoviePage.css'
 
 type SceneRole = 'start' | 'middle' | 'ending'
-type SelectedObject = { type: 'scene' | 'choice'; id: string }
+type AssetNodeType = 'text' | 'image' | 'video'
+type ConnectableNodeType = 'scene' | AssetNodeType
+type NodeHandleSide = 'top' | 'right' | 'bottom' | 'left'
+type SelectedObject = { type: 'scene' | 'choice' | AssetNodeType | 'nodeLink'; id: string }
 
 type ScriptLine = {
   id: string
@@ -94,7 +110,25 @@ type SceneNode = {
     objectKey?: string
     storageUri?: string
     posterUrl?: string
+    videoNodeId?: string
+    coverImageNodeId?: string
     status: 'empty' | 'mock' | 'ready'
+  }
+}
+
+type AssetNode = {
+  id: string
+  type: AssetNodeType
+  title: string
+  position: { x: number; y: number }
+  text?: string
+  media: {
+    url?: string
+    objectKey?: string
+    storageUri?: string
+    contentType?: string
+    size?: number
+    status: 'empty' | 'ready'
   }
 }
 
@@ -104,6 +138,21 @@ type ChoiceEdge = {
   toSceneId: string
   label: string
   trigger: 'after_scene'
+  offsetX?: number
+  offsetY?: number
+}
+
+type NodeLinkEndpoint = {
+  type: ConnectableNodeType
+  id: string
+  handle: NodeHandleSide
+}
+
+type NodeLink = {
+  id: string
+  from: NodeLinkEndpoint
+  to: NodeLinkEndpoint
+  offsetX?: number
   offsetY?: number
 }
 
@@ -123,7 +172,7 @@ type VideoPromptParts = {
   constraints: string
 }
 
-type SceneUploadState = {
+type AssetUploadState = {
   status: 'idle' | 'uploading' | 'ready' | 'failed'
   message?: string
 }
@@ -142,6 +191,8 @@ type InteractiveMovieProject = {
   publicPath?: string | null
   scenes: SceneNode[]
   choices: ChoiceEdge[]
+  assetNodes: AssetNode[]
+  nodeLinks: NodeLink[]
   selectedObject: SelectedObject
   viewport: CanvasViewport
 }
@@ -161,7 +212,8 @@ type InteractionState =
   | {
     type: 'node'
     pointerId: number
-    sceneId: string
+    nodeType: 'scene' | AssetNodeType
+    nodeId: string
     startClient: { x: number; y: number }
     startPosition: { x: number; y: number }
   }
@@ -170,17 +222,62 @@ type InteractionState =
     pointerId: number
     choiceId: string
     startClient: { x: number; y: number }
+    startOffsetX: number
     startOffsetY: number
   }
+  | {
+    type: 'link'
+    pointerId: number
+    source: NodeLinkEndpoint
+  }
+  | {
+    type: 'nodeLink'
+    pointerId: number
+    linkId: string
+    startClient: { x: number; y: number }
+    startOffsetX: number
+    startOffsetY: number
+  }
+  | {
+    type: 'nodeLinkEndpoint'
+    pointerId: number
+    linkId: string
+    activeEnd: 'from' | 'to'
+  }
+
+type CanvasContextMenuState = {
+  screenX: number
+  screenY: number
+  canvasPosition: { x: number; y: number }
+}
+
+type LinkDraftState = {
+  mode: 'create'
+  source: NodeLinkEndpoint
+  current: { x: number; y: number }
+  target?: NodeLinkEndpoint
+} | {
+  mode: 'reconnect'
+  linkId: string
+  activeEnd: 'from' | 'to'
+  fixedEndpoint: NodeLinkEndpoint
+  current: { x: number; y: number }
+  target?: NodeLinkEndpoint
+}
 
 const STORAGE_KEY = 'pettech.interactiveMovie.workspace.v1'
 const CLOUD_REPLICA_PREFIX = 'pettech.interactiveMovie.cloudReplica.'
 const DRAFT_REPLICA_PREFIX = 'pettech.interactiveMovie.draftReplica.'
+const SCENE_PANEL_STATE_KEY = 'pettech.interactiveMovie.scenePanelState.v1'
 const MISSING_PROJECT_DETAIL = '互动电影项目不存在'
 const NODE_WIDTH = 292
 const NODE_HEIGHT = 236
+const ASSET_NODE_WIDTH = 244
+const ASSET_NODE_TEXT_HEIGHT = 142
+const ASSET_NODE_MEDIA_HEIGHT = 190
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2
+const LINK_SNAP_RADIUS = 44
 const CREATE_SCENE_SELECT_VALUE = '__create_scene__'
 
 const roleLabels: Record<SceneRole, string> = {
@@ -220,43 +317,6 @@ const buildVideoPrompt = (scene: SceneNode): string => {
     .join('\n')
 }
 
-const captureVideoPoster = (file: File): Promise<string> => new Promise((resolve, reject) => {
-  const objectUrl = URL.createObjectURL(file)
-  const video = document.createElement('video')
-  const cleanup = () => {
-    URL.revokeObjectURL(objectUrl)
-    video.removeAttribute('src')
-    video.load()
-  }
-  video.preload = 'metadata'
-  video.muted = true
-  video.playsInline = true
-  video.src = objectUrl
-
-  video.onloadeddata = () => {
-    try {
-      const canvas = document.createElement('canvas')
-      canvas.width = video.videoWidth || 1280
-      canvas.height = video.videoHeight || 720
-      const context = canvas.getContext('2d')
-      if (!context) {
-        throw new Error('无法创建视频封面')
-      }
-      context.drawImage(video, 0, 0, canvas.width, canvas.height)
-      const posterUrl = canvas.toDataURL('image/jpeg', 0.82)
-      cleanup()
-      resolve(posterUrl)
-    } catch (error) {
-      cleanup()
-      reject(error)
-    }
-  }
-  video.onerror = () => {
-    cleanup()
-    reject(new Error('无法读取视频第一帧'))
-  }
-})
-
 const createDefaultProject = (title = '互动电影草稿'): InteractiveMovieProject => {
   const startSceneId = uniqueId('scene-start')
   const nextSceneId = uniqueId('scene-next')
@@ -267,6 +327,8 @@ const createDefaultProject = (title = '互动电影草稿'): InteractiveMoviePro
     updatedAt: new Date().toISOString(),
     selectedObject: { type: 'scene', id: startSceneId },
     viewport: { x: 360, y: 160, zoom: 1 },
+    assetNodes: [],
+    nodeLinks: [],
     scenes: [
       {
         id: startSceneId,
@@ -344,6 +406,38 @@ const createDraftScene = (title: string, position: { x: number; y: number }): Sc
   },
 })
 
+const createDraftAssetNode = (
+  type: AssetNodeType,
+  title: string,
+  position: { x: number; y: number },
+): AssetNode => ({
+  id: uniqueId(type),
+  type,
+  title,
+  position,
+  text: type === 'text' ? '## 新文本\n\n输入 Markdown 内容。' : '',
+  media: { status: 'empty' },
+})
+
+const normalizeProjectShape = (project: InteractiveMovieProject): InteractiveMovieProject => ({
+  ...project,
+  assetNodes: Array.isArray(project.assetNodes) ? project.assetNodes : [],
+  nodeLinks: Array.isArray(project.nodeLinks)
+    ? project.nodeLinks.map((link) => ({ ...link, offsetX: link.offsetX ?? 0, offsetY: link.offsetY ?? 0 }))
+    : [],
+  choices: Array.isArray(project.choices)
+    ? project.choices.map((choice) => ({ ...choice, offsetX: choice.offsetX ?? 0, offsetY: choice.offsetY ?? 0 }))
+    : [],
+  scenes: project.scenes.map((scene) => ({
+    ...scene,
+    media: {
+      ...scene.media,
+      videoNodeId: scene.media.videoNodeId ?? '',
+      coverImageNodeId: scene.media.coverImageNodeId ?? '',
+    },
+  })),
+})
+
 const loadWorkspace = (): StoredWorkspace => {
   if (typeof window === 'undefined') {
     const project = createDefaultProject()
@@ -354,8 +448,9 @@ const loadWorkspace = (): StoredWorkspace => {
     if (raw) {
       const parsed = JSON.parse(raw) as StoredWorkspace
       if (Array.isArray(parsed.projects) && parsed.projects.length > 0) {
-        const activeProject = parsed.projects.find((project) => project.id === parsed.activeProjectId) ?? parsed.projects[0]
-        return { activeProjectId: activeProject.id, projects: parsed.projects }
+        const projects = parsed.projects.map(normalizeProjectShape)
+        const activeProject = projects.find((project) => project.id === parsed.activeProjectId) ?? projects[0]
+        return { activeProjectId: activeProject.id, projects }
       }
     }
   } catch {
@@ -363,6 +458,29 @@ const loadWorkspace = (): StoredWorkspace => {
   }
   const project = createDefaultProject()
   return { activeProjectId: project.id, projects: [project] }
+}
+
+const loadScenePanelState = (): Record<string, string[]> => {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = window.localStorage.getItem(SCENE_PANEL_STATE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    return Object.fromEntries(
+      Object.entries(parsed).map(([sceneId, keys]) => [
+        sceneId,
+        Array.isArray(keys) ? keys.filter((key): key is string => typeof key === 'string') : [],
+      ]),
+    )
+  } catch {
+    window.localStorage.removeItem(SCENE_PANEL_STATE_KEY)
+    return {}
+  }
+}
+
+const persistScenePanelState = (state: Record<string, string[]>) => {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(SCENE_PANEL_STATE_KEY, JSON.stringify(state))
 }
 
 const normalizeProjectChoices = (project: InteractiveMovieProject): InteractiveMovieProject => {
@@ -391,7 +509,7 @@ const readProjectReplica = (key: string): InteractiveMovieProject | null => {
   if (typeof window === 'undefined') return null
   try {
     const raw = window.localStorage.getItem(key)
-    return raw ? JSON.parse(raw) as InteractiveMovieProject : null
+    return raw ? normalizeProjectShape(JSON.parse(raw) as InteractiveMovieProject) : null
   } catch {
     window.localStorage.removeItem(key)
     return null
@@ -437,7 +555,7 @@ const persistWorkspaceLocally = (workspace: StoredWorkspace) => {
 
 const withCloudMeta = (
   detail: InteractiveMovieProjectDetail<InteractiveMovieProject>,
-): InteractiveMovieProject => ({
+): InteractiveMovieProject => normalizeProjectShape({
   ...detail.document,
   version: detail.version,
   contentHash: detail.content_hash,
@@ -471,7 +589,25 @@ const flattenScene = (scene: SceneNode, sortOrder: number): Record<string, unkno
   mediaObjectKey: scene.media.objectKey ?? '',
   mediaStorageUri: scene.media.storageUri ?? '',
   posterUrl: scene.media.posterUrl ?? '',
+  videoNodeId: scene.media.videoNodeId ?? '',
+  coverImageNodeId: scene.media.coverImageNodeId ?? '',
   mediaStatus: scene.media.status,
+  sortOrder,
+})
+
+const flattenAssetNode = (asset: AssetNode, sortOrder: number): Record<string, unknown> => ({
+  id: asset.id,
+  type: asset.type,
+  title: asset.title,
+  positionX: asset.position.x,
+  positionY: asset.position.y,
+  text: asset.text ?? '',
+  mediaUrl: asset.media.url ?? '',
+  mediaObjectKey: asset.media.objectKey ?? '',
+  mediaStorageUri: asset.media.storageUri ?? '',
+  mediaContentType: asset.media.contentType ?? '',
+  mediaSize: asset.media.size ?? 0,
+  mediaStatus: asset.media.status,
   sortOrder,
 })
 
@@ -481,7 +617,21 @@ const flattenChoice = (choice: ChoiceEdge, sortOrder: number): Record<string, un
   toSceneId: choice.toSceneId,
   label: choice.label,
   trigger: choice.trigger,
+  offsetX: choice.offsetX ?? 0,
   offsetY: choice.offsetY ?? 0,
+  sortOrder,
+})
+
+const flattenNodeLink = (link: NodeLink, sortOrder: number): Record<string, unknown> => ({
+  id: link.id,
+  fromNodeType: link.from.type,
+  fromNodeId: link.from.id,
+  fromHandle: link.from.handle,
+  toNodeType: link.to.type,
+  toNodeId: link.to.id,
+  toHandle: link.to.handle,
+  offsetX: link.offsetX ?? 0,
+  offsetY: link.offsetY ?? 0,
   sortOrder,
 })
 
@@ -502,6 +652,10 @@ const buildProjectPatch = (base: InteractiveMovieProject, draft: InteractiveMovi
   const draftScenes = new Map(draft.scenes.map((scene, index) => [scene.id, flattenScene(scene, index)]))
   const baseChoices = new Map(base.choices.map((choice, index) => [choice.id, flattenChoice(choice, index)]))
   const draftChoices = new Map(draft.choices.map((choice, index) => [choice.id, flattenChoice(choice, index)]))
+  const baseAssets = new Map(base.assetNodes.map((asset, index) => [asset.id, flattenAssetNode(asset, index)]))
+  const draftAssets = new Map(draft.assetNodes.map((asset, index) => [asset.id, flattenAssetNode(asset, index)]))
+  const baseNodeLinks = new Map(base.nodeLinks.map((link, index) => [link.id, flattenNodeLink(link, index)]))
+  const draftNodeLinks = new Map(draft.nodeLinks.map((link, index) => [link.id, flattenNodeLink(link, index)]))
   const baseLines = new Map<string, Record<string, unknown>>()
   const draftLines = new Map<string, Record<string, unknown>>()
   base.scenes.forEach((scene) => scene.script.lines.forEach((line, index) => baseLines.set(line.id, flattenLine(scene.id, line, index))))
@@ -518,6 +672,14 @@ const buildProjectPatch = (base: InteractiveMovieProject, draft: InteractiveMovi
     choices: {
       upsert: [...draftChoices.values()].filter((choice) => shallowChanged(baseChoices.get(String(choice.id)), choice)),
       delete: [...baseChoices.keys()].filter((id) => !draftChoices.has(id)),
+    },
+    asset_nodes: {
+      upsert: [...draftAssets.values()].filter((asset) => shallowChanged(baseAssets.get(String(asset.id)), asset)),
+      delete: [...baseAssets.keys()].filter((id) => !draftAssets.has(id)),
+    },
+    node_links: {
+      upsert: [...draftNodeLinks.values()].filter((link) => shallowChanged(baseNodeLinks.get(String(link.id)), link)),
+      delete: [...baseNodeLinks.keys()].filter((id) => !draftNodeLinks.has(id)),
     },
     script_lines: {
       upsert: [...draftLines.values()].filter((line) => shallowChanged(baseLines.get(String(line.id)), line)),
@@ -544,6 +706,10 @@ const patchHasChanges = (patch: InteractiveMovieProjectPatch) => (
   || patch.scenes.delete.length > 0
   || patch.choices.upsert.length > 0
   || patch.choices.delete.length > 0
+  || patch.asset_nodes.upsert.length > 0
+  || patch.asset_nodes.delete.length > 0
+  || patch.node_links.upsert.length > 0
+  || patch.node_links.delete.length > 0
   || patch.script_lines.upsert.length > 0
   || patch.script_lines.delete.length > 0
 )
@@ -564,9 +730,10 @@ const mergeDraftWithCloudMeta = (
   cloudUpdatedAt: cloud.cloudUpdatedAt,
 })
 
-const firstSelectableObject = (scenes: SceneNode[], choices: ChoiceEdge[]): SelectedObject => {
+const firstSelectableObject = (scenes: SceneNode[], choices: ChoiceEdge[], assetNodes: AssetNode[] = []): SelectedObject => {
   if (scenes[0]) return { type: 'scene', id: scenes[0].id }
   if (choices[0]) return { type: 'choice', id: choices[0].id }
+  if (assetNodes[0]) return { type: assetNodes[0].type, id: assetNodes[0].id }
   return { type: 'scene', id: '' }
 }
 
@@ -580,6 +747,159 @@ const formatDateTime = (value: string | null | undefined) => {
   }).format(new Date(timestamp))
 }
 
+const assetTypeLabel = (type: AssetNodeType) => {
+  if (type === 'text') return 'Text'
+  if (type === 'image') return 'Image'
+  return 'Video'
+}
+
+const getSceneVideoUrl = (scene: SceneNode | null | undefined, assetMap: Map<string, AssetNode>) => {
+  if (!scene) return undefined
+  const videoNode = scene.media.videoNodeId ? assetMap.get(scene.media.videoNodeId) : undefined
+  const referencedUrl = videoNode?.type === 'video' ? videoNode.media.url?.trim() : ''
+  if (referencedUrl) return referencedUrl
+  if (scene.media.kind !== 'video') return undefined
+  const legacyUrl = scene.media.url?.trim()
+  return legacyUrl || undefined
+}
+
+const getScenePosterUrl = (scene: SceneNode | null | undefined, assetMap: Map<string, AssetNode>) => {
+  if (!scene) return undefined
+  const imageNode = scene.media.coverImageNodeId ? assetMap.get(scene.media.coverImageNodeId) : undefined
+  const referencedUrl = imageNode?.type === 'image' ? imageNode.media.url?.trim() : ''
+  return referencedUrl || scene.media.posterUrl?.trim() || undefined
+}
+
+const nodeDimensions = (type: ConnectableNodeType) => {
+  if (type === 'scene') return { width: NODE_WIDTH, height: NODE_HEIGHT }
+  if (type === 'text') return { width: ASSET_NODE_WIDTH, height: ASSET_NODE_TEXT_HEIGHT }
+  return { width: ASSET_NODE_WIDTH, height: ASSET_NODE_MEDIA_HEIGHT }
+}
+
+const nodePosition = (
+  endpoint: Pick<NodeLinkEndpoint, 'type' | 'id'>,
+  sceneMap: Map<string, SceneNode>,
+  assetMap: Map<string, AssetNode>,
+) => {
+  if (endpoint.type === 'scene') return sceneMap.get(endpoint.id)?.position ?? null
+  return assetMap.get(endpoint.id)?.position ?? null
+}
+
+const nodeBounds = (
+  endpoint: Pick<NodeLinkEndpoint, 'type' | 'id'>,
+  sceneMap: Map<string, SceneNode>,
+  assetMap: Map<string, AssetNode>,
+) => {
+  const position = nodePosition(endpoint, sceneMap, assetMap)
+  if (!position) return null
+  const dimensions = nodeDimensions(endpoint.type)
+  return {
+    x: position.x,
+    y: position.y,
+    width: dimensions.width,
+    height: dimensions.height,
+    centerX: position.x + dimensions.width / 2,
+    centerY: position.y + dimensions.height / 2,
+  }
+}
+
+const floatingHandle = (
+  endpoint: Pick<NodeLinkEndpoint, 'type' | 'id'>,
+  other: Pick<NodeLinkEndpoint, 'type' | 'id'>,
+  sceneMap: Map<string, SceneNode>,
+  assetMap: Map<string, AssetNode>,
+): NodeHandleSide => {
+  const bounds = nodeBounds(endpoint, sceneMap, assetMap)
+  const otherBounds = nodeBounds(other, sceneMap, assetMap)
+  if (!bounds || !otherBounds) return 'right'
+  const dx = otherBounds.centerX - bounds.centerX
+  const dy = otherBounds.centerY - bounds.centerY
+  const xWeight = Math.abs(dx) / Math.max(bounds.width, 1)
+  const yWeight = Math.abs(dy) / Math.max(bounds.height, 1)
+  if (xWeight >= yWeight) return dx >= 0 ? 'right' : 'left'
+  return dy >= 0 ? 'bottom' : 'top'
+}
+
+const resolveFloatingEndpoint = (
+  endpoint: NodeLinkEndpoint,
+  other: NodeLinkEndpoint,
+  sceneMap: Map<string, SceneNode>,
+  assetMap: Map<string, AssetNode>,
+): NodeLinkEndpoint => ({
+  ...endpoint,
+  handle: floatingHandle(endpoint, other, sceneMap, assetMap),
+})
+
+const handleAnchor = (
+  endpoint: NodeLinkEndpoint,
+  sceneMap: Map<string, SceneNode>,
+  assetMap: Map<string, AssetNode>,
+) => {
+  const position = nodePosition(endpoint, sceneMap, assetMap)
+  if (!position) return null
+  const dimensions = nodeDimensions(endpoint.type)
+  if (endpoint.handle === 'top') return { x: position.x + dimensions.width / 2, y: position.y }
+  if (endpoint.handle === 'right') return { x: position.x + dimensions.width, y: position.y + dimensions.height / 2 }
+  if (endpoint.handle === 'bottom') return { x: position.x + dimensions.width / 2, y: position.y + dimensions.height }
+  return { x: position.x, y: position.y + dimensions.height / 2 }
+}
+
+const linkPath = (
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  startHandle: NodeHandleSide = 'right',
+  endHandle: NodeHandleSide = 'left',
+  offset: { x: number; y: number } = { x: 0, y: 0 },
+) => {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const control = Math.max(80, Math.min(260, Math.hypot(dx, dy) * 0.38))
+  const vector = (handle: NodeHandleSide) => {
+    if (handle === 'left') return { x: -1, y: 0 }
+    if (handle === 'right') return { x: 1, y: 0 }
+    if (handle === 'top') return { x: 0, y: -1 }
+    return { x: 0, y: 1 }
+  }
+  const startVector = vector(startHandle)
+  const endVector = vector(endHandle)
+  if (Math.abs(offset.x) > 0.1 || Math.abs(offset.y) > 0.1) {
+    const mid = {
+      x: (start.x + end.x) / 2 + offset.x,
+      y: (start.y + end.y) / 2 + offset.y,
+    }
+    const firstControl = Math.max(50, Math.min(180, Math.hypot(mid.x - start.x, mid.y - start.y) * 0.32))
+    const secondControl = Math.max(50, Math.min(180, Math.hypot(end.x - mid.x, end.y - mid.y) * 0.32))
+    return [
+      `M ${start.x} ${start.y}`,
+      `C ${start.x + startVector.x * firstControl} ${start.y + startVector.y * firstControl}, ${mid.x} ${mid.y}, ${mid.x} ${mid.y}`,
+      `C ${mid.x} ${mid.y}, ${end.x + endVector.x * secondControl} ${end.y + endVector.y * secondControl}, ${end.x} ${end.y}`,
+    ].join(' ')
+  }
+  return [
+    `M ${start.x} ${start.y}`,
+    `C ${start.x + startVector.x * control} ${start.y + startVector.y * control},`,
+    `${end.x + endVector.x * control} ${end.y + endVector.y * control},`,
+    `${end.x} ${end.y}`,
+  ].join(' ')
+}
+
+const sameNodeEndpoint = (a: Pick<NodeLinkEndpoint, 'type' | 'id'>, b: Pick<NodeLinkEndpoint, 'type' | 'id'>) => (
+  a.type === b.type && a.id === b.id
+)
+
+const nodePairKey = (a: Pick<NodeLinkEndpoint, 'type' | 'id'>, b: Pick<NodeLinkEndpoint, 'type' | 'id'>) => (
+  [`${a.type}:${a.id}`, `${b.type}:${b.id}`].sort().join('|')
+)
+
+const projectHasNodePairLink = (
+  project: InteractiveMovieProject,
+  from: NodeLinkEndpoint,
+  to: NodeLinkEndpoint,
+  exceptLinkId = '',
+) => project.nodeLinks.some((link) => (
+  link.id !== exceptLinkId && nodePairKey(link.from, link.to) === nodePairKey(from, to)
+))
+
 export default function InteractiveMoviePage() {
   const { message, modal } = App.useApp()
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -591,7 +911,7 @@ export default function InteractiveMoviePage() {
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
   const [bottomToolbarCollapsed, setBottomToolbarCollapsed] = useState(false)
   const [promptTemplate, setPromptTemplate] = useState<PromptTemplate | null>(null)
-  const [uploadBySceneId, setUploadBySceneId] = useState<Record<string, SceneUploadState>>({})
+  const [uploadByAssetId, setUploadByAssetId] = useState<Record<string, AssetUploadState>>({})
   const [cloudReady, setCloudReady] = useState(false)
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -604,10 +924,16 @@ export default function InteractiveMoviePage() {
   const [previewSceneId, setPreviewSceneId] = useState('')
   const [previewLineIndex, setPreviewLineIndex] = useState(0)
   const [previewChoicesVisible, setPreviewChoicesVisible] = useState(false)
+  const [canvasContextMenu, setCanvasContextMenu] = useState<CanvasContextMenuState | null>(null)
+  const [linkDraft, setLinkDraft] = useState<LinkDraftState | null>(null)
+  const linkDraftRef = useRef<LinkDraftState | null>(null)
+  const [scenePanelState, setScenePanelState] = useState<Record<string, string[]>>(() => loadScenePanelState())
 
   const activeProject = workspace.projects.find((project) => project.id === workspace.activeProjectId) ?? workspace.projects[0]
   const scenes = activeProject.scenes
   const choices = activeProject.choices
+  const assetNodes = activeProject.assetNodes
+  const nodeLinks = activeProject.nodeLinks
   const selectedObject = activeProject.selectedObject
   const viewport = activeProject.viewport
 
@@ -617,13 +943,24 @@ export default function InteractiveMoviePage() {
   const selectedChoice = selectedObject.type === 'choice'
     ? choices.find((choice) => choice.id === selectedObject.id) ?? null
     : null
+  const selectedAsset = selectedObject.type !== 'scene' && selectedObject.type !== 'choice'
+    && selectedObject.type !== 'nodeLink'
+    ? assetNodes.find((asset) => asset.id === selectedObject.id) ?? null
+    : null
+  const selectedNodeLink = selectedObject.type === 'nodeLink'
+    ? nodeLinks.find((link) => link.id === selectedObject.id) ?? null
+    : null
   const sceneMap = useMemo(() => new Map(scenes.map((scene) => [scene.id, scene])), [scenes])
+  const assetMap = useMemo(() => new Map(assetNodes.map((asset) => [asset.id, asset])), [assetNodes])
+  const videoNodes = useMemo(() => assetNodes.filter((asset) => asset.type === 'video'), [assetNodes])
+  const imageNodes = useMemo(() => assetNodes.filter((asset) => asset.type === 'image'), [assetNodes])
   const startScene = scenes.find((scene) => scene.role === 'start') ?? scenes[0]
   const previewScene = scenes.find((scene) => scene.id === previewSceneId) ?? startScene
   const outgoingPreviewChoices = choices.filter((choice) => (
     choice.fromSceneId === previewScene?.id && sceneMap.has(choice.toSceneId)
   ))
-  const previewVideoUrl = previewScene?.media.kind === 'video' ? previewScene.media.url : undefined
+  const previewVideoUrl = getSceneVideoUrl(previewScene, assetMap)
+  const previewPosterUrl = getScenePosterUrl(previewScene, assetMap)
   const previewHasVideo = Boolean(previewVideoUrl)
   const currentPreviewLine = previewScene?.script.lines[previewLineIndex]
   const activeProjectCloudBase = hasCloudCopy(activeProject) ? readProjectReplica(cloudReplicaKey(activeProject.id)) : null
@@ -634,9 +971,18 @@ export default function InteractiveMoviePage() {
     ? activeProjectPublicPath
     : `${window.location.origin}${activeProjectPublicPath}`
 
+  const updateLinkDraftState = (draft: LinkDraftState | null) => {
+    linkDraftRef.current = draft
+    setLinkDraft(draft)
+  }
+
   useEffect(() => {
     persistWorkspaceLocally(workspace)
   }, [workspace])
+
+  useEffect(() => {
+    persistScenePanelState(scenePanelState)
+  }, [scenePanelState])
 
   useEffect(() => {
     let cancelled = false
@@ -751,6 +1097,13 @@ export default function InteractiveMoviePage() {
     updateActiveProject((project) => ({
       ...project,
       scenes: project.scenes.map((scene) => (scene.id === sceneId ? updater(scene) : scene)),
+    }))
+  }
+
+  const updateAsset = (assetId: string, updater: (asset: AssetNode) => AssetNode) => {
+    updateActiveProject((project) => ({
+      ...project,
+      assetNodes: project.assetNodes.map((asset) => (asset.id === assetId ? updater(asset) : asset)),
     }))
   }
 
@@ -919,6 +1272,7 @@ export default function InteractiveMoviePage() {
 
   const beginPan = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
+    setCanvasContextMenu(null)
     event.currentTarget.setPointerCapture(event.pointerId)
     interactionRef.current = {
       type: 'pan',
@@ -928,20 +1282,23 @@ export default function InteractiveMoviePage() {
     }
   }
 
-  const beginNodeDrag = (event: ReactPointerEvent<HTMLDivElement>, sceneId: string) => {
+  const beginNodeDrag = (event: ReactPointerEvent<HTMLDivElement>, nodeType: 'scene' | AssetNodeType, nodeId: string) => {
     if (event.button !== 0) return
     event.stopPropagation()
-    const scene = scenes.find((item) => item.id === sceneId)
-    if (!scene) return
+    const node = nodeType === 'scene'
+      ? scenes.find((item) => item.id === nodeId)
+      : assetNodes.find((item) => item.id === nodeId)
+    if (!node) return
     event.currentTarget.setPointerCapture(event.pointerId)
     interactionRef.current = {
       type: 'node',
       pointerId: event.pointerId,
-      sceneId,
+      nodeType,
+      nodeId,
       startClient: { x: event.clientX, y: event.clientY },
-      startPosition: scene.position,
+      startPosition: node.position,
     }
-    setSelectedObject({ type: 'scene', id: sceneId })
+    setSelectedObject({ type: nodeType, id: nodeId })
   }
 
   const beginChoiceDrag = (event: ReactPointerEvent<HTMLButtonElement>, choiceId: string) => {
@@ -955,9 +1312,200 @@ export default function InteractiveMoviePage() {
       pointerId: event.pointerId,
       choiceId,
       startClient: { x: event.clientX, y: event.clientY },
+      startOffsetX: choice.offsetX ?? 0,
       startOffsetY: choice.offsetY ?? 0,
     }
     setSelectedObject({ type: 'choice', id: choiceId })
+  }
+
+  const canvasPointFromEvent = (event: { clientX: number; clientY: number }) => {
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 0, y: 0 }
+    return {
+      x: (event.clientX - rect.left - viewport.x) / viewport.zoom,
+      y: (event.clientY - rect.top - viewport.y) / viewport.zoom,
+    }
+  }
+
+  const snapEndpointFromCanvasPoint = (
+    point: { x: number; y: number },
+    exclude?: Pick<NodeLinkEndpoint, 'type' | 'id'>,
+  ): NodeLinkEndpoint | null => {
+    const radius = LINK_SNAP_RADIUS / viewport.zoom
+    const candidates: Array<Pick<NodeLinkEndpoint, 'type' | 'id'>> = [
+      ...scenes.map((scene) => ({ type: 'scene' as const, id: scene.id })),
+      ...assetNodes.map((asset) => ({ type: asset.type, id: asset.id })),
+    ]
+    let bestEndpoint: NodeLinkEndpoint | null = null
+    let bestDistance = Number.POSITIVE_INFINITY
+    for (const candidate of candidates) {
+      if (exclude && sameNodeEndpoint(candidate, exclude)) continue
+      const bounds = nodeBounds(candidate, sceneMap, assetMap)
+      if (!bounds) continue
+      const insideExpandedBounds = (
+        point.x >= bounds.x - radius
+        && point.x <= bounds.x + bounds.width + radius
+        && point.y >= bounds.y - radius
+        && point.y <= bounds.y + bounds.height + radius
+      )
+      const dx = point.x - bounds.centerX
+      const dy = point.y - bounds.centerY
+      const side: NodeHandleSide = Math.abs(dx) / bounds.width >= Math.abs(dy) / bounds.height
+        ? (dx >= 0 ? 'right' : 'left')
+        : (dy >= 0 ? 'bottom' : 'top')
+      const endpoint = { ...candidate, handle: side }
+      const anchor = handleAnchor(endpoint, sceneMap, assetMap)
+      if (!anchor) continue
+      const distance = Math.hypot(point.x - anchor.x, point.y - anchor.y)
+      if (!insideExpandedBounds && distance > radius) continue
+      if (distance < bestDistance) {
+        bestEndpoint = endpoint
+        bestDistance = distance
+      }
+    }
+    return bestEndpoint
+  }
+
+  const draftPoint = (
+    point: { x: number; y: number },
+    exclude?: Pick<NodeLinkEndpoint, 'type' | 'id'>,
+  ) => {
+    const target = snapEndpointFromCanvasPoint(point, exclude)
+    if (!target) return { current: point, target: undefined }
+    return {
+      current: handleAnchor(target, sceneMap, assetMap) ?? point,
+      target,
+    }
+  }
+
+  const beginLinkDrag = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    endpoint: NodeLinkEndpoint,
+  ) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    interactionRef.current = {
+      type: 'link',
+      pointerId: event.pointerId,
+      source: endpoint,
+    }
+    const point = canvasPointFromEvent(event)
+    const snap = draftPoint(point, endpoint)
+    updateLinkDraftState({ mode: 'create', source: endpoint, current: snap.current, target: snap.target })
+    setSelectedObject({ type: endpoint.type, id: endpoint.id })
+  }
+
+  const beginNodeLinkRouteDrag = (
+    event: ReactPointerEvent<SVGPathElement>,
+    link: NodeLink,
+  ) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    interactionRef.current = {
+      type: 'nodeLink',
+      pointerId: event.pointerId,
+      linkId: link.id,
+      startClient: { x: event.clientX, y: event.clientY },
+      startOffsetX: link.offsetX ?? 0,
+      startOffsetY: link.offsetY ?? 0,
+    }
+    setSelectedObject({ type: 'nodeLink', id: link.id })
+  }
+
+  const beginNodeLinkEndpointDrag = (
+    event: ReactPointerEvent<SVGPathElement | SVGCircleElement | HTMLButtonElement>,
+    link: NodeLink,
+    activeEnd: 'from' | 'to',
+  ) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const point = canvasPointFromEvent(event)
+    interactionRef.current = {
+      type: 'nodeLinkEndpoint',
+      pointerId: event.pointerId,
+      linkId: link.id,
+      activeEnd,
+    }
+    setSelectedObject({ type: 'nodeLink', id: link.id })
+    const fixedEndpoint = activeEnd === 'from' ? link.to : link.from
+    const snap = draftPoint(point, fixedEndpoint)
+    updateLinkDraftState({
+      mode: 'reconnect',
+      linkId: link.id,
+      activeEnd,
+      fixedEndpoint,
+      current: snap.current,
+      target: snap.target,
+    })
+  }
+
+  const completeLinkDrag = (target: NodeLinkEndpoint) => {
+    const draft = linkDraftRef.current
+    if (!draft) return
+    const rawFrom = draft.mode === 'create'
+      ? draft.source
+      : draft.activeEnd === 'from'
+        ? target
+        : draft.fixedEndpoint
+    const rawTo = draft.mode === 'create'
+      ? target
+      : draft.activeEnd === 'to'
+        ? target
+        : draft.fixedEndpoint
+    if (sameNodeEndpoint(rawFrom, rawTo)) {
+      interactionRef.current = null
+      updateLinkDraftState(null)
+      return
+    }
+    const nextFrom = resolveFloatingEndpoint(rawFrom, rawTo, sceneMap, assetMap)
+    const nextTo = resolveFloatingEndpoint(rawTo, rawFrom, sceneMap, assetMap)
+    const linkId = draft.mode === 'create' ? uniqueId('link') : draft.linkId
+    let rejectedDuplicate = false
+    updateActiveProject((project) => {
+      if (projectHasNodePairLink(project, nextFrom, nextTo, draft.mode === 'reconnect' ? draft.linkId : '')) {
+        rejectedDuplicate = true
+        return project
+      }
+      if (draft.mode === 'reconnect') {
+        return {
+          ...project,
+          nodeLinks: project.nodeLinks.map((link) => (
+            link.id === draft.linkId ? { ...link, from: nextFrom, to: nextTo } : link
+          )),
+          selectedObject: { type: 'nodeLink', id: draft.linkId },
+        }
+      }
+      return {
+        ...project,
+        nodeLinks: [...project.nodeLinks, { id: linkId, from: nextFrom, to: nextTo }],
+        selectedObject: { type: 'nodeLink', id: linkId },
+      }
+    })
+    if (rejectedDuplicate) message.warning('这两个节点之间已经存在连接')
+    interactionRef.current = null
+    updateLinkDraftState(null)
+  }
+
+  const linkEndpointFromPoint = (event: ReactPointerEvent<HTMLElement>): NodeLinkEndpoint | null => {
+    const element = document.elementFromPoint(event.clientX, event.clientY)
+    const handle = element?.closest<HTMLButtonElement>('.movie-node-handle')
+    const type = handle?.dataset.nodeType as ConnectableNodeType | undefined
+    const id = handle?.dataset.nodeId
+    const side = handle?.dataset.handle as NodeHandleSide | undefined
+    if (type && id && side) return { type, id, handle: side }
+    const interaction = interactionRef.current
+    const exclude = interaction?.type === 'link'
+      ? interaction.source
+      : linkDraft?.mode === 'reconnect'
+        ? linkDraft.fixedEndpoint
+        : undefined
+    return snapEndpointFromCanvasPoint(canvasPointFromEvent(event), exclude)
   }
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -974,32 +1522,91 @@ export default function InteractiveMoviePage() {
     if (interaction.type === 'node') {
       const dx = (event.clientX - interaction.startClient.x) / viewport.zoom
       const dy = (event.clientY - interaction.startClient.y) / viewport.zoom
-      updateScene(interaction.sceneId, (scene) => ({
-        ...scene,
-        position: {
-          x: interaction.startPosition.x + dx,
-          y: interaction.startPosition.y + dy,
-        },
+      const nextPosition = {
+        x: interaction.startPosition.x + dx,
+        y: interaction.startPosition.y + dy,
+      }
+      if (interaction.nodeType === 'scene') {
+        updateScene(interaction.nodeId, (scene) => ({ ...scene, position: nextPosition }))
+      } else {
+        updateAsset(interaction.nodeId, (asset) => ({ ...asset, position: nextPosition }))
+      }
+      return
+    }
+    if (interaction.type === 'link') {
+      const point = canvasPointFromEvent(event)
+      const snap = draftPoint(point, interaction.source)
+      const current = linkDraftRef.current
+      updateLinkDraftState(current && current.mode === 'create'
+        ? { ...current, current: snap.current, target: snap.target }
+        : current)
+      return
+    }
+    if (interaction.type === 'nodeLink') {
+      const dx = (event.clientX - interaction.startClient.x) / viewport.zoom
+      const dy = (event.clientY - interaction.startClient.y) / viewport.zoom
+      updateActiveProject((project) => ({
+        ...project,
+        nodeLinks: project.nodeLinks.map((link) => (
+          link.id === interaction.linkId
+            ? { ...link, offsetX: interaction.startOffsetX + dx, offsetY: interaction.startOffsetY + dy }
+            : link
+        )),
       }))
       return
     }
+    if (interaction.type === 'nodeLinkEndpoint') {
+      const point = canvasPointFromEvent(event)
+      const link = activeProject.nodeLinks.find((item) => item.id === interaction.linkId)
+      if (!link) return
+      const fixedEndpoint = interaction.activeEnd === 'from' ? link.to : link.from
+      const snap = draftPoint(point, fixedEndpoint)
+      updateLinkDraftState({
+        mode: 'reconnect',
+        linkId: link.id,
+        activeEnd: interaction.activeEnd,
+        fixedEndpoint,
+        current: snap.current,
+        target: snap.target,
+      })
+      return
+    }
     if (interaction.type === 'choice') {
+      const dx = (event.clientX - interaction.startClient.x) / viewport.zoom
       const dy = (event.clientY - interaction.startClient.y) / viewport.zoom
       updateChoice(interaction.choiceId, (choice) => ({
         ...choice,
+        offsetX: interaction.startOffsetX + dx,
         offsetY: interaction.startOffsetY + dy,
       }))
     }
   }
 
   const endPointerInteraction = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (interactionRef.current?.pointerId === event.pointerId) {
+    const interaction = interactionRef.current
+    if (interaction?.pointerId === event.pointerId) {
+      if (interaction.type === 'link') {
+        const target = linkEndpointFromPoint(event)
+        if (target) {
+          completeLinkDrag(target)
+          return
+        }
+      }
+      if (interaction.type === 'nodeLinkEndpoint') {
+        const target = linkEndpointFromPoint(event)
+        if (target) {
+          completeLinkDrag(target)
+          return
+        }
+      }
       interactionRef.current = null
+      updateLinkDraftState(null)
     }
   }
 
   const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     event.preventDefault()
+    setCanvasContextMenu(null)
     const rect = canvasRef.current?.getBoundingClientRect()
     if (!rect) return
     const nextZoom = clamp(viewport.zoom - event.deltaY * 0.0012, MIN_ZOOM, MAX_ZOOM)
@@ -1017,12 +1624,19 @@ export default function InteractiveMoviePage() {
   }
 
   const fitView = () => {
-    if (!canvasRef.current || scenes.length === 0) return
+    const positionedNodes = [...scenes, ...assetNodes]
+    if (!canvasRef.current || positionedNodes.length === 0) return
     const rect = canvasRef.current.getBoundingClientRect()
-    const minX = Math.min(...scenes.map((scene) => scene.position.x))
-    const minY = Math.min(...scenes.map((scene) => scene.position.y))
-    const maxX = Math.max(...scenes.map((scene) => scene.position.x + NODE_WIDTH))
-    const maxY = Math.max(...scenes.map((scene) => scene.position.y + NODE_HEIGHT))
+    const minX = Math.min(...positionedNodes.map((node) => node.position.x))
+    const minY = Math.min(...positionedNodes.map((node) => node.position.y))
+    const maxX = Math.max(...positionedNodes.map((node) => {
+      const type = 'role' in node ? 'scene' : node.type
+      return node.position.x + nodeDimensions(type).width
+    }))
+    const maxY = Math.max(...positionedNodes.map((node) => {
+      const type = 'role' in node ? 'scene' : node.type
+      return node.position.y + nodeDimensions(type).height
+    }))
     const contentWidth = maxX - minX
     const contentHeight = maxY - minY
     const zoom = clamp(Math.min((rect.width - 160) / contentWidth, (rect.height - 160) / contentHeight), MIN_ZOOM, 1.2)
@@ -1038,13 +1652,112 @@ export default function InteractiveMoviePage() {
     y: (-viewport.y + 180) / viewport.zoom,
   })
 
-  const addScene = () => {
-    const scene = createDraftScene(`新场景 ${scenes.length + 1}`, defaultNewScenePosition())
+  const addScene = (position = defaultNewScenePosition()) => {
+    const scene = createDraftScene(`新场景 ${scenes.length + 1}`, position)
     updateActiveProject((project) => ({
       ...project,
       scenes: [...project.scenes, scene],
       selectedObject: { type: 'scene', id: scene.id },
     }))
+  }
+
+  const addAssetNode = (type: AssetNodeType, position = defaultNewScenePosition()) => {
+    const titlePrefix = type === 'text' ? '文本' : type === 'image' ? '图片' : '视频'
+    const count = assetNodes.filter((asset) => asset.type === type).length + 1
+    const asset = createDraftAssetNode(type, `${titlePrefix} ${count}`, position)
+    updateActiveProject((project) => ({
+      ...project,
+      assetNodes: [...project.assetNodes, asset],
+      selectedObject: { type, id: asset.id },
+    }))
+  }
+
+  const openCanvasContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const menuWidth = 178
+    const menuHeight = 210
+    setCanvasContextMenu({
+      screenX: clamp(event.clientX - rect.left, 8, Math.max(8, rect.width - menuWidth - 8)),
+      screenY: clamp(event.clientY - rect.top, 8, Math.max(8, rect.height - menuHeight - 8)),
+      canvasPosition: {
+        x: (event.clientX - rect.left - viewport.x) / viewport.zoom,
+        y: (event.clientY - rect.top - viewport.y) / viewport.zoom,
+      },
+    })
+  }
+
+  const runContextMenuAction = (action: () => void) => {
+    action()
+    setCanvasContextMenu(null)
+  }
+
+  const deleteNodeLink = (linkId: string) => {
+    updateActiveProject((project) => {
+      const nextNodeLinks = project.nodeLinks.filter((link) => link.id !== linkId)
+      const selectedObjectWasDeleted = project.selectedObject.type === 'nodeLink' && project.selectedObject.id === linkId
+      return {
+        ...project,
+        nodeLinks: nextNodeLinks,
+        selectedObject: selectedObjectWasDeleted
+          ? firstSelectableObject(project.scenes, project.choices, project.assetNodes)
+          : project.selectedObject,
+      }
+    })
+  }
+
+  const deleteAssetNode = (assetId: string) => {
+    updateActiveProject((project) => {
+      const deleted = project.assetNodes.find((asset) => asset.id === assetId)
+      if (!deleted) return project
+      const nextAssets = project.assetNodes.filter((asset) => asset.id !== assetId)
+      const removedNodeLinkIds = new Set(
+        project.nodeLinks
+          .filter((link) => (
+            (link.from.id === assetId && link.from.type === deleted.type)
+            || (link.to.id === assetId && link.to.type === deleted.type)
+          ))
+          .map((link) => link.id),
+      )
+      const nextNodeLinks = project.nodeLinks.filter((link) => !removedNodeLinkIds.has(link.id))
+      const selectedObjectWasDeleted = (
+        (project.selectedObject.id === assetId && project.selectedObject.type === deleted.type)
+        || (project.selectedObject.type === 'nodeLink' && removedNodeLinkIds.has(project.selectedObject.id))
+      )
+      return {
+        ...project,
+        assetNodes: nextAssets,
+        nodeLinks: nextNodeLinks,
+        scenes: project.scenes.map((scene) => ({
+          ...scene,
+          media: {
+            ...scene.media,
+            videoNodeId: scene.media.videoNodeId === assetId ? '' : scene.media.videoNodeId,
+            coverImageNodeId: scene.media.coverImageNodeId === assetId ? '' : scene.media.coverImageNodeId,
+          },
+        })),
+        selectedObject: selectedObjectWasDeleted
+          ? firstSelectableObject(project.scenes, project.choices, nextAssets)
+          : project.selectedObject,
+      }
+    })
+  }
+
+  const confirmDeleteAssetNode = (assetId: string) => {
+    const asset = assetNodes.find((item) => item.id === assetId)
+    if (!asset) return
+    modal.confirm({
+      title: `删除素材「${asset.title}」？`,
+      content: '删除后会从画布中移除这个素材，并清空场景中的关联引用。',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk() {
+        deleteAssetNode(assetId)
+        message.success('素材已删除')
+      },
+    })
   }
 
   const createSceneForChoice = (choiceId: string, endpoint: 'from' | 'to') => {
@@ -1114,7 +1827,7 @@ export default function InteractiveMoviePage() {
         ...project,
         choices: nextChoices,
         selectedObject: selectedObjectWasDeleted
-          ? firstSelectableObject(project.scenes, nextChoices)
+          ? firstSelectableObject(project.scenes, nextChoices, project.assetNodes)
           : project.selectedObject,
       }
     })
@@ -1145,12 +1858,18 @@ export default function InteractiveMoviePage() {
       )
       const nextScenes = project.scenes.filter((scene) => scene.id !== sceneId)
       const nextChoices = project.choices.filter((choice) => !deletedChoiceIds.has(choice.id))
+      const nextNodeLinks = project.nodeLinks.filter((link) => (
+        !(link.from.type === 'scene' && link.from.id === sceneId)
+        && !(link.to.type === 'scene' && link.to.id === sceneId)
+      ))
+      const removedNodeLinkIds = new Set(project.nodeLinks.filter((link) => !nextNodeLinks.includes(link)).map((link) => link.id))
       const selectedObjectWasDeleted = (
         (project.selectedObject.type === 'scene' && project.selectedObject.id === sceneId)
         || (project.selectedObject.type === 'choice' && deletedChoiceIds.has(project.selectedObject.id))
+        || (project.selectedObject.type === 'nodeLink' && removedNodeLinkIds.has(project.selectedObject.id))
       )
       const nextSelectedObject = selectedObjectWasDeleted
-        ? firstSelectableObject(nextScenes, nextChoices)
+        ? firstSelectableObject(nextScenes, nextChoices, project.assetNodes)
         : project.selectedObject
       if (lastCanvasSceneIdByProjectRef.current[project.id] === sceneId) {
         lastCanvasSceneIdByProjectRef.current[project.id] = nextSelectedObject.type === 'scene' ? nextSelectedObject.id : ''
@@ -1159,6 +1878,7 @@ export default function InteractiveMoviePage() {
         ...project,
         scenes: nextScenes,
         choices: nextChoices,
+        nodeLinks: nextNodeLinks,
         selectedObject: nextSelectedObject,
       }
     })
@@ -1406,10 +2126,17 @@ export default function InteractiveMoviePage() {
         if (event.repeat) return
         void saveDraft()
       }
+      const target = event.target as HTMLElement | null
+      const isEditingText = target?.closest('input, textarea, [contenteditable="true"]')
+      if (!isEditingText && selectedObject.type === 'nodeLink' && (event.key === 'Delete' || event.key === 'Backspace')) {
+        event.preventDefault()
+        event.stopPropagation()
+        deleteNodeLink(selectedObject.id)
+      }
     }
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [saveDraft])
+  }, [deleteNodeLink, saveDraft, selectedObject])
 
   useEffect(() => {
     if (!cloudReady || !activeProject?.contentHash) return undefined
@@ -1454,58 +2181,110 @@ export default function InteractiveMoviePage() {
     return () => window.clearInterval(timer)
   }, [activeProject, cleanupMissingCloudProject, cloudReady, saving, syncing])
 
-  const uploadSceneVideo = async (scene: SceneNode, file: File) => {
-    setUploadBySceneId((current) => ({
+  const uploadAssetFile = async (asset: AssetNode, file: File) => {
+    setUploadByAssetId((current) => ({
       ...current,
-      [scene.id]: { status: 'uploading', message: '正在截取第一帧' },
+      [asset.id]: { status: 'uploading', message: asset.type === 'image' ? '图片上传中' : '视频上传中' },
     }))
     try {
-      let posterUrl: string | undefined
-      try {
-        posterUrl = await captureVideoPoster(file)
-      } catch {
-        setUploadBySceneId((current) => ({
-          ...current,
-          [scene.id]: { status: 'uploading', message: '封面截取失败，继续上传视频' },
-        }))
-      }
-      setUploadBySceneId((current) => ({
-        ...current,
-        [scene.id]: { status: 'uploading', message: '视频上传中' },
-      }))
-      const uploaded = await uploadInteractiveMovieVideo(file)
+      const uploaded = asset.type === 'image'
+        ? await uploadInteractiveMovieImage(file)
+        : await uploadInteractiveMovieVideo(file)
       if (!uploaded.url) {
-        setUploadBySceneId((current) => ({
+        setUploadByAssetId((current) => ({
           ...current,
-          [scene.id]: { status: 'failed', message: '上传成功，但没有返回可播放的视频 URL' },
+          [asset.id]: { status: 'failed', message: '上传成功，但没有返回可访问 URL' },
         }))
-        message.warning('上传成功，但没有返回可播放的视频 URL')
+        message.warning('上传成功，但没有返回可访问 URL')
         return
       }
-      updateScene(scene.id, (current) => ({
+      updateAsset(asset.id, (current) => ({
         ...current,
         media: {
-          ...current.media,
-          kind: 'video',
-          status: 'ready',
           url: uploaded.url ?? undefined,
           objectKey: uploaded.object_key,
           storageUri: uploaded.storage_uri,
-          posterUrl,
+          contentType: uploaded.content_type,
+          size: uploaded.size,
+          status: 'ready',
         },
       }))
-      setUploadBySceneId((current) => ({
+      setUploadByAssetId((current) => ({
         ...current,
-        [scene.id]: { status: 'ready', message: `已上传：${uploaded.filename}` },
+        [asset.id]: { status: 'ready', message: `已上传：${uploaded.filename}` },
       }))
-      message.success('视频已上传')
+      message.success(asset.type === 'image' ? '图片已上传' : '视频已上传')
     } catch (error) {
       const text = resolveErrorMessage(error)
-      setUploadBySceneId((current) => ({
+      setUploadByAssetId((current) => ({
         ...current,
-        [scene.id]: { status: 'failed', message: text },
+        [asset.id]: { status: 'failed', message: text },
       }))
       message.error(text)
+    }
+  }
+
+  const uploadSceneAsset = async (scene: SceneNode, type: 'image' | 'video', file: File) => {
+    try {
+      const uploaded = type === 'image'
+        ? await uploadInteractiveMovieImage(file)
+        : await uploadInteractiveMovieVideo(file)
+      if (!uploaded.url) {
+        message.warning('上传成功，但没有返回可访问 URL')
+        return
+      }
+      if (type === 'image') {
+        updateScene(scene.id, (current) => ({
+          ...current,
+          media: {
+            ...current.media,
+            posterUrl: uploaded.url ?? undefined,
+            coverImageNodeId: '',
+            status: 'ready',
+          },
+        }))
+        message.success('封面图片已上传')
+        return
+      }
+      const asset = createDraftAssetNode(
+        type,
+        uploaded.filename,
+        {
+          x: scene.position.x + NODE_WIDTH + 80,
+          y: scene.position.y,
+        },
+      )
+      const uploadedAsset: AssetNode = {
+        ...asset,
+        media: {
+          url: uploaded.url ?? undefined,
+          objectKey: uploaded.object_key,
+          storageUri: uploaded.storage_uri,
+          contentType: uploaded.content_type,
+          size: uploaded.size,
+          status: 'ready',
+        },
+      }
+      updateActiveProject((project) => ({
+        ...project,
+        assetNodes: [...project.assetNodes, uploadedAsset],
+        scenes: project.scenes.map((item) => (
+          item.id === scene.id
+            ? {
+              ...item,
+              media: {
+                ...item.media,
+                kind: 'video',
+                videoNodeId: uploadedAsset.id,
+              },
+            }
+            : item
+        )),
+        selectedObject: { type: uploadedAsset.type, id: uploadedAsset.id },
+      }))
+      message.success('视频已上传并关联')
+    } catch (error) {
+      message.error(resolveErrorMessage(error))
     }
   }
 
@@ -1571,7 +2350,7 @@ export default function InteractiveMoviePage() {
                 <DeleteOutlined />
               </button>
               <span className="movie-project-name">{project.title}</span>
-              <span className="movie-project-meta">{project.scenes.length} 场景 · {project.choices.length} 选择</span>
+              <span className="movie-project-meta">{project.scenes.length} 场景 · {project.choices.length} 选择 · {project.assetNodes.length} 素材</span>
             </div>
           ))}
         </div>
@@ -1620,14 +2399,101 @@ export default function InteractiveMoviePage() {
           onPointerUp={endPointerInteraction}
           onPointerCancel={endPointerInteraction}
           onWheel={handleWheel}
+          onContextMenu={openCanvasContextMenu}
         >
           <div
-            className="movie-canvas-stage"
+            className={linkDraft ? 'movie-canvas-stage is-linking' : 'movie-canvas-stage'}
             style={{
               transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
             }}
           >
             <svg className="movie-edge-layer">
+              {nodeLinks.map((link) => {
+                const fromEndpoint = resolveFloatingEndpoint(link.from, link.to, sceneMap, assetMap)
+                const toEndpoint = resolveFloatingEndpoint(link.to, link.from, sceneMap, assetMap)
+                const start = handleAnchor(fromEndpoint, sceneMap, assetMap)
+                const end = handleAnchor(toEndpoint, sceneMap, assetMap)
+                if (!start || !end) return null
+                const selected = selectedObject.type === 'nodeLink' && selectedObject.id === link.id
+                const routeOffset = { x: link.offsetX ?? 0, y: link.offsetY ?? 0 }
+                const path = linkPath(start, end, fromEndpoint.handle, toEndpoint.handle, routeOffset)
+                const midX = (start.x + end.x) / 2 + routeOffset.x
+                const midY = (start.y + end.y) / 2 + routeOffset.y
+                return (
+                  <g key={link.id} className={selected ? 'movie-node-link is-selected' : 'movie-node-link'}>
+                    <path
+                      className="movie-node-link-hit"
+                      d={path}
+                      onPointerDown={(event) => beginNodeLinkRouteDrag(event, link)}
+                    />
+                    <path className="movie-node-link-line" d={path} />
+                    {selected && (
+                      <>
+                        <circle
+                          className="movie-node-link-endpoint"
+                          cx={start.x}
+                          cy={start.y}
+                          r={8}
+                          onPointerDown={(event) => beginNodeLinkEndpointDrag(event, link, 'from')}
+                        />
+                        <circle
+                          className="movie-node-link-endpoint"
+                          cx={end.x}
+                          cy={end.y}
+                          r={8}
+                          onPointerDown={(event) => beginNodeLinkEndpointDrag(event, link, 'to')}
+                        />
+                        <foreignObject x={midX - 17} y={midY - 17} width="34" height="34">
+                          <button
+                            type="button"
+                            className="movie-node-link-delete"
+                            title="删除连接"
+                            aria-label="删除连接"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              deleteNodeLink(link.id)
+                            }}
+                          >
+                            <DeleteOutlined />
+                          </button>
+                        </foreignObject>
+                      </>
+                    )}
+                  </g>
+                )
+              })}
+              {linkDraft && (() => {
+                if (linkDraft.mode === 'create') {
+                  const source = linkDraft.target
+                    ? resolveFloatingEndpoint(linkDraft.source, linkDraft.target, sceneMap, assetMap)
+                    : linkDraft.source
+                  const start = handleAnchor(source, sceneMap, assetMap)
+                  if (!start) return null
+                  const endHandle = linkDraft.target?.handle ?? 'left'
+                  return (
+                    <g className="movie-node-link is-draft">
+                      <path className="movie-node-link-line" d={linkPath(start, linkDraft.current, source.handle, endHandle)} />
+                    </g>
+                  )
+                }
+                const movingTarget = linkDraft.target
+                const fixed = movingTarget
+                  ? resolveFloatingEndpoint(linkDraft.fixedEndpoint, movingTarget, sceneMap, assetMap)
+                  : linkDraft.fixedEndpoint
+                const fixedAnchor = handleAnchor(fixed, sceneMap, assetMap)
+                if (!fixedAnchor) return null
+                const movingHandle = movingTarget?.handle ?? (linkDraft.activeEnd === 'from' ? 'right' : 'left')
+                const start = linkDraft.activeEnd === 'from' ? linkDraft.current : fixedAnchor
+                const end = linkDraft.activeEnd === 'from' ? fixedAnchor : linkDraft.current
+                const startHandle = linkDraft.activeEnd === 'from' ? movingHandle : fixed.handle
+                const endHandle = linkDraft.activeEnd === 'from' ? fixed.handle : movingHandle
+                return (
+                  <g className="movie-node-link is-draft">
+                    <path className="movie-node-link-line" d={linkPath(start, end, startHandle, endHandle)} />
+                  </g>
+                )
+              })()}
               {choices.map((choice) => {
                 const fromScene = sceneMap.get(choice.fromSceneId)
                 const toScene = sceneMap.get(choice.toSceneId)
@@ -1637,7 +2503,8 @@ export default function InteractiveMoviePage() {
                 ))
                 const siblingIndex = siblingChoices.findIndex((item) => item.id === choice.id)
                 const siblingOffset = (siblingIndex - (siblingChoices.length - 1) / 2) * 46
-                const choiceOffset = siblingOffset + (choice.offsetY ?? 0)
+                const choiceOffsetX = choice.offsetX ?? 0
+                const choiceOffsetY = siblingOffset + (choice.offsetY ?? 0)
                 const start = {
                   x: fromScene.position.x + NODE_WIDTH,
                   y: fromScene.position.y + NODE_HEIGHT * 0.5 + siblingOffset * 0.28,
@@ -1646,8 +2513,8 @@ export default function InteractiveMoviePage() {
                   x: toScene.position.x,
                   y: toScene.position.y + NODE_HEIGHT * 0.5 + siblingOffset * 0.28,
                 }
-                const midX = (start.x + end.x) / 2
-                const midY = (start.y + end.y) / 2 + choiceOffset
+                const midX = (start.x + end.x) / 2 + choiceOffsetX
+                const midY = (start.y + end.y) / 2 + choiceOffsetY
                 const controlOffset = Math.max(150, Math.abs(end.x - start.x) * 0.34)
                 const direction = end.x >= start.x ? 1 : -1
                 const selected = selectedObject.type === 'choice' && selectedObject.id === choice.id
@@ -1696,12 +2563,13 @@ export default function InteractiveMoviePage() {
 
             {scenes.map((scene) => {
               const selected = selectedObject.type === 'scene' && selectedObject.id === scene.id
+              const posterUrl = getScenePosterUrl(scene, assetMap)
               return (
                 <div
                   key={scene.id}
                   className={selected ? 'movie-scene-node is-selected' : 'movie-scene-node'}
                   style={{ left: scene.position.x, top: scene.position.y }}
-                  onPointerDown={(event) => beginNodeDrag(event, scene.id)}
+                  onPointerDown={(event) => beginNodeDrag(event, 'scene', scene.id)}
                   onClick={(event) => {
                     event.stopPropagation()
                     selectCanvasScene(scene.id)
@@ -1730,8 +2598,8 @@ export default function InteractiveMoviePage() {
                     </div>
                   </Flex>
                   <div className="movie-node-preview">
-                    {scene.media.posterUrl ? (
-                      <img src={scene.media.posterUrl} alt="" className="movie-node-preview-poster" />
+                    {posterUrl ? (
+                      <img src={posterUrl} alt="" className="movie-node-preview-poster" draggable={false} />
                     ) : (
                       <>
                         <div className="movie-node-preview-grid" />
@@ -1746,12 +2614,127 @@ export default function InteractiveMoviePage() {
                     <span className="movie-node-meta">{scene.script.lines.length} 句对白 · {scene.media.url ? '视频已上传' : '视频待上传'}</span>
                     <span className="movie-node-dot" />
                   </Flex>
+                  <NodeHandles
+                    node={{ type: 'scene', id: scene.id }}
+                    highlightedSide={linkDraft?.target?.type === 'scene' && linkDraft.target.id === scene.id ? linkDraft.target.handle : undefined}
+                    onBegin={beginLinkDrag}
+                  />
+                </div>
+              )
+            })}
+
+            {assetNodes.map((asset) => {
+              const selected = selectedObject.type === asset.type && selectedObject.id === asset.id
+              const icon = asset.type === 'text'
+                ? <FileTextOutlined />
+                : asset.type === 'image'
+                  ? <PictureOutlined />
+                  : <VideoCameraOutlined />
+              return (
+                <div
+                  key={asset.id}
+                  className={[
+                    'movie-asset-node',
+                    `is-${asset.type}`,
+                    selected ? 'is-selected' : '',
+                  ].filter(Boolean).join(' ')}
+                  style={{ left: asset.position.x, top: asset.position.y }}
+                  onPointerDown={(event) => beginNodeDrag(event, asset.type, asset.id)}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setSelectedObject({ type: asset.type, id: asset.id })
+                  }}
+                >
+                  <Flex align="center" justify="space-between" className="movie-asset-header">
+                    <div className="movie-asset-heading">
+                      <span className="movie-asset-icon">{icon}</span>
+                      <div>
+                        <Typography.Text className="movie-node-eyebrow">{assetTypeLabel(asset.type)}</Typography.Text>
+                        <Typography.Text className="movie-asset-title">{asset.title}</Typography.Text>
+                      </div>
+                    </div>
+                    <div className="movie-node-actions">
+                      <button
+                        type="button"
+                        className="movie-node-delete"
+                        title="删除素材"
+                        aria-label={`删除素材 ${asset.title}`}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          confirmDeleteAssetNode(asset.id)
+                        }}
+                      >
+                        <DeleteOutlined />
+                      </button>
+                    </div>
+                  </Flex>
+                  {asset.type === 'text' ? (
+                    <div className="movie-asset-text-body">
+                      {asset.text?.trim() ? (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {asset.text}
+                        </ReactMarkdown>
+                      ) : (
+                        '空文本'
+                      )}
+                    </div>
+                  ) : (
+                    <div className="movie-asset-media-preview">
+                      {asset.type === 'image' && asset.media.url ? (
+                        <img src={asset.media.url} alt="" draggable={false} />
+                      ) : asset.type === 'video' && asset.media.url ? (
+                        <video src={asset.media.url} muted preload="metadata" draggable={false} />
+                      ) : (
+                        <div className="movie-asset-media-empty">{icon}</div>
+                      )}
+                    </div>
+                  )}
+                  <Flex align="center" justify="space-between">
+                    <span className="movie-node-meta">{asset.media.status === 'ready' ? '已上传' : asset.type === 'text' ? 'Markdown' : '待上传'}</span>
+                    <span className="movie-node-dot" />
+                  </Flex>
+                  <NodeHandles
+                    node={{ type: asset.type, id: asset.id }}
+                    highlightedSide={linkDraft?.target?.type === asset.type && linkDraft.target.id === asset.id ? linkDraft.target.handle : undefined}
+                    onBegin={beginLinkDrag}
+                  />
                 </div>
               )
             })}
           </div>
 
-          <div className="movie-canvas-hint">无限画布 · 拖拽空白移动 · 拖拽 Scene/Choice 调整结构 · 滚轮缩放</div>
+          <div className="movie-canvas-hint">无限画布 · 拖拽空白移动 · 拖拽节点/Choice 调整结构 · 滚轮缩放</div>
+
+          {canvasContextMenu && (
+            <div
+              className="movie-canvas-context-menu"
+              style={{ left: canvasContextMenu.screenX, top: canvasContextMenu.screenY }}
+              onPointerDown={(event) => event.stopPropagation()}
+              onWheel={(event) => event.stopPropagation()}
+            >
+              <button type="button" onClick={() => runContextMenuAction(() => addScene(canvasContextMenu.canvasPosition))}>
+                <BorderOuterOutlined />
+                <span>创建场景</span>
+              </button>
+              <button type="button" onClick={() => runContextMenuAction(() => addAssetNode('text', canvasContextMenu.canvasPosition))}>
+                <FileTextOutlined />
+                <span>创建文本</span>
+              </button>
+              <button type="button" onClick={() => runContextMenuAction(() => addAssetNode('image', canvasContextMenu.canvasPosition))}>
+                <PictureOutlined />
+                <span>创建图片</span>
+              </button>
+              <button type="button" onClick={() => runContextMenuAction(() => addAssetNode('video', canvasContextMenu.canvasPosition))}>
+                <VideoCameraOutlined />
+                <span>创建视频</span>
+              </button>
+              <button type="button" onClick={() => runContextMenuAction(addChoice)}>
+                <BranchesOutlined />
+                <span>创建选择</span>
+              </button>
+            </div>
+          )}
 
           <div className={rightPanelCollapsed ? 'movie-floating-panel is-collapsed' : 'movie-floating-panel'}>
             <button
@@ -1772,14 +2755,21 @@ export default function InteractiveMoviePage() {
                   <SceneEditor
                     scene={selectedScene}
                     outgoingChoices={choices.filter((choice) => choice.fromSceneId === selectedScene.id)}
+                    videoNodes={videoNodes}
+                    imageNodes={imageNodes}
+                    assetMap={assetMap}
                     promptTemplate={promptTemplate}
-                    uploadState={uploadBySceneId[selectedScene.id] ?? { status: 'idle' }}
+                    activePanelKeys={scenePanelState[selectedScene.id] ?? []}
+                    onActivePanelKeysChange={(keys) => setScenePanelState((current) => ({
+                      ...current,
+                      [selectedScene.id]: keys,
+                    }))}
                     onChange={(updater) => updateScene(selectedScene.id, updater)}
                     onAddLine={() => addLine(selectedScene.id)}
                     onDeleteLine={(lineId) => deleteLine(selectedScene.id, lineId)}
                     onSelectChoice={(choiceId) => setSelectedObject({ type: 'choice', id: choiceId })}
                     onDeleteChoice={confirmDeleteChoice}
-                    onUploadVideo={(file) => void uploadSceneVideo(selectedScene, file)}
+                    onUploadSceneAsset={(type, file) => uploadSceneAsset(selectedScene, type, file)}
                     onPreview={() => startPreview(selectedScene.id)}
                     onDeleteScene={() => confirmDeleteScene(selectedScene.id)}
                   />
@@ -1793,7 +2783,24 @@ export default function InteractiveMoviePage() {
                   onDeleteChoice={() => confirmDeleteChoice(selectedChoice.id)}
                 />
               )}
-              {!selectedScene && !selectedChoice && (
+              {selectedAsset && (
+                <AssetEditor
+                  asset={selectedAsset}
+                  uploadState={uploadByAssetId[selectedAsset.id] ?? { status: 'idle' }}
+                  onChange={(updater) => updateAsset(selectedAsset.id, updater)}
+                  onUpload={(file) => void uploadAssetFile(selectedAsset, file)}
+                  onDelete={() => confirmDeleteAssetNode(selectedAsset.id)}
+                />
+              )}
+              {selectedNodeLink && (
+                <NodeLinkEditor
+                  link={selectedNodeLink}
+                  sceneMap={sceneMap}
+                  assetMap={assetMap}
+                  onDelete={() => deleteNodeLink(selectedNodeLink.id)}
+                />
+              )}
+              {!selectedScene && !selectedChoice && !selectedAsset && !selectedNodeLink && (
                 <Empty description="选择一个场景或选择连线开始编辑" />
               )}
             </aside>
@@ -1817,10 +2824,19 @@ export default function InteractiveMoviePage() {
                 <Button shape="circle" icon={<EditOutlined />} />
               </Tooltip>
               <Tooltip title="添加场景">
-                <Button shape="circle" icon={<PlusOutlined />} onClick={addScene} />
+                <Button shape="circle" icon={<PlusOutlined />} onClick={() => addScene()} />
               </Tooltip>
               <Tooltip title="添加选择">
                 <Button shape="circle" icon={<BranchesOutlined />} onClick={addChoice} />
+              </Tooltip>
+              <Tooltip title="添加文本">
+                <Button shape="circle" icon={<FileTextOutlined />} onClick={() => addAssetNode('text')} />
+              </Tooltip>
+              <Tooltip title="添加图片">
+                <Button shape="circle" icon={<PictureOutlined />} onClick={() => addAssetNode('image')} />
+              </Tooltip>
+              <Tooltip title="添加视频">
+                <Button shape="circle" icon={<VideoCameraOutlined />} onClick={() => addAssetNode('video')} />
               </Tooltip>
               <span className="movie-bottom-divider" />
               <Tooltip title="缩小">
@@ -1854,11 +2870,12 @@ export default function InteractiveMoviePage() {
                 <video
                   key={previewScene.id}
                   src={previewVideoUrl}
-                  poster={previewScene.media.posterUrl}
+                  poster={previewPosterUrl}
                   className="movie-preview-video"
                   controls
                   autoPlay
                   playsInline
+                  draggable={false}
                   onEnded={finishPreviewScene}
                 />
               )}
@@ -1974,34 +2991,47 @@ export default function InteractiveMoviePage() {
 function SceneEditor({
   scene,
   outgoingChoices,
+  videoNodes,
+  imageNodes,
+  assetMap,
   promptTemplate,
-  uploadState,
+  activePanelKeys,
+  onActivePanelKeysChange,
   onChange,
   onAddLine,
   onDeleteLine,
   onSelectChoice,
   onDeleteChoice,
-  onUploadVideo,
+  onUploadSceneAsset,
   onPreview,
   onDeleteScene,
 }: {
   scene: SceneNode
   outgoingChoices: ChoiceEdge[]
+  videoNodes: AssetNode[]
+  imageNodes: AssetNode[]
+  assetMap: Map<string, AssetNode>
   promptTemplate: PromptTemplate | null
-  uploadState: SceneUploadState
+  activePanelKeys: string[]
+  onActivePanelKeysChange: (keys: string[]) => void
   onChange: (updater: (scene: SceneNode) => SceneNode) => void
   onAddLine: () => void
   onDeleteLine: (lineId: string) => void
   onSelectChoice: (choiceId: string) => void
   onDeleteChoice: (choiceId: string) => void
-  onUploadVideo: (file: File) => void
+  onUploadSceneAsset: (type: 'image' | 'video', file: File) => Promise<void>
   onPreview: () => void
   onDeleteScene: () => void
 }) {
   const promptParts = scene.script.promptParts ?? defaultPromptParts(scene.title)
   const generatedPrompt = buildVideoPrompt(scene)
-  const isUploading = uploadState.status === 'uploading'
   const [videoPreviewOpen, setVideoPreviewOpen] = useState(false)
+  const [assetPickerType, setAssetPickerType] = useState<'image' | 'video' | null>(null)
+  const [sceneUploadingType, setSceneUploadingType] = useState<'image' | 'video' | null>(null)
+  const sceneVideoUrl = getSceneVideoUrl(scene, assetMap)
+  const scenePosterUrl = getScenePosterUrl(scene, assetMap)
+  const selectedVideoNode = scene.media.videoNodeId ? assetMap.get(scene.media.videoNodeId) : null
+  const selectedImageNode = scene.media.coverImageNodeId ? assetMap.get(scene.media.coverImageNodeId) : null
 
   const updateScript = (script: Partial<SceneScript>) => {
     onChange((current) => ({
@@ -2033,8 +3063,8 @@ function SceneEditor({
     }))
   }
 
-  return (
-    <Flex vertical gap={16}>
+  const configPanel = (
+    <Flex vertical gap={14}>
       <Flex align="flex-start" justify="space-between" gap={12}>
         <div className="movie-panel-title-block">
           <Typography.Text className="movie-panel-kicker">当前场景</Typography.Text>
@@ -2046,7 +3076,6 @@ function SceneEditor({
         </div>
         <Button danger type="text" icon={<DeleteOutlined />} onClick={onDeleteScene} aria-label={`删除场景 ${scene.title}`} />
       </Flex>
-
       <Flex gap={8}>
         <Select
           value={scene.role}
@@ -2060,60 +3089,6 @@ function SceneEditor({
         />
         <Button icon={<PlayCircleOutlined />} onClick={onPreview}>从这里预览</Button>
       </Flex>
-
-      <section className="movie-panel-section">
-        <Typography.Text className="movie-panel-label">画面占位</Typography.Text>
-        <div className="movie-panel-media" tabIndex={0}>
-          {scene.media.posterUrl ? (
-            <img src={scene.media.posterUrl} alt={`${scene.title} 视频封面`} className="movie-panel-poster" />
-          ) : scene.media.url ? (
-            <video src={scene.media.url} muted preload="metadata" className="movie-panel-video" />
-          ) : (
-            <div className="movie-panel-media-empty">
-              <VideoCameraOutlined />
-              <span>视频 / 图片待生成</span>
-            </div>
-          )}
-          <div className="movie-panel-media-overlay">
-            <Upload
-              accept="video/*"
-              showUploadList={false}
-              beforeUpload={(file) => {
-                onUploadVideo(file)
-                return Upload.LIST_IGNORE
-              }}
-            >
-              <Button icon={<UploadOutlined />} loading={isUploading}>
-                上传
-              </Button>
-            </Upload>
-            {scene.media.url && (
-              <Button icon={<PlayCircleOutlined />} onClick={() => setVideoPreviewOpen(true)}>
-                预览
-              </Button>
-            )}
-          </div>
-        </div>
-        {uploadState.message && (
-          <div className={uploadState.status === 'failed' ? 'movie-generation-message is-error' : 'movie-generation-message'}>
-            {uploadState.message}
-          </div>
-        )}
-        <Modal
-          title={scene.title}
-          open={videoPreviewOpen}
-          footer={null}
-          centered
-          width={860}
-          onCancel={() => setVideoPreviewOpen(false)}
-          className="movie-video-preview-modal"
-        >
-          {scene.media.url && (
-            <video src={scene.media.url} controls autoPlay className="movie-video-preview-player" />
-          )}
-        </Modal>
-      </section>
-
       <section className="movie-panel-section">
         <Flex align="center" justify="space-between">
           <Typography.Text className="movie-panel-label">场景结束后的选择</Typography.Text>
@@ -2123,11 +3098,7 @@ function SceneEditor({
           <Flex vertical gap={8}>
             {outgoingChoices.map((choice) => (
               <div key={choice.id} className="movie-choice-row">
-                <button
-                  type="button"
-                  className="movie-choice-row-main"
-                  onClick={() => onSelectChoice(choice.id)}
-                >
+                <button type="button" className="movie-choice-row-main" onClick={() => onSelectChoice(choice.id)}>
                   <BranchesOutlined />
                   <span>{choice.label}</span>
                 </button>
@@ -2147,7 +3118,6 @@ function SceneEditor({
           <div className="movie-choice-note">这个场景还没有后续选择，可以用底部工具栏添加。</div>
         )}
       </section>
-
       <section className="movie-panel-section">
         <Typography.Text className="movie-panel-label">剧情摘要</Typography.Text>
         <Input.TextArea
@@ -2156,7 +3126,6 @@ function SceneEditor({
           onChange={(event) => updateScript({ synopsis: event.target.value })}
         />
       </section>
-
       <section className="movie-panel-section">
         <Flex align="center" justify="space-between">
           <Typography.Text className="movie-panel-label">角色对白 / 屏幕字幕</Typography.Text>
@@ -2190,7 +3159,6 @@ function SceneEditor({
           ))}
         </Flex>
       </section>
-
       <section className="movie-panel-section">
         <Typography.Text className="movie-panel-label">画面描述</Typography.Text>
         <Input.TextArea
@@ -2199,73 +3167,400 @@ function SceneEditor({
           onChange={(event) => updateScript({ visualDescription: event.target.value })}
         />
       </section>
+    </Flex>
+  )
 
-      <section className="movie-panel-section">
-        <Typography.Text className="movie-panel-label">视频提示词</Typography.Text>
-        <div className="movie-prompt-template">
-          <Typography.Text className="movie-panel-label">结构化视频提示词</Typography.Text>
-          <div className="movie-prompt-tips">
-            {(promptTemplate?.sections ?? [
-              '主体：谁或什么是画面核心。',
-              '动作：主体正在做什么。',
-              '场景：空间、天气、道具、情绪氛围。',
-              '镜头：景别、机位、运镜。',
-              '时序：按秒描述关键动作变化。',
-              '风格：色彩、光线、材质和影片类型。',
-              '约束：不希望出现的内容。',
-            ]).map((item) => (
-              <span key={item}>{item}</span>
-            ))}
+  const mediaPanel = (
+    <section className="movie-panel-section">
+      <Typography.Text className="movie-panel-label">画面占位</Typography.Text>
+      <div className="movie-panel-media" tabIndex={0}>
+        {scenePosterUrl ? (
+          <img src={scenePosterUrl} alt={`${scene.title} 封面`} className="movie-panel-poster" draggable={false} />
+        ) : sceneVideoUrl ? (
+          <video src={sceneVideoUrl} muted preload="metadata" className="movie-panel-video" draggable={false} />
+        ) : (
+          <div className="movie-panel-media-empty">
+            <VideoCameraOutlined />
+            <span>选择视频和封面素材</span>
           </div>
+        )}
+        <div className="movie-panel-media-overlay">
+          {sceneVideoUrl && (
+            <Button icon={<PlayCircleOutlined />} onClick={() => setVideoPreviewOpen(true)}>
+              预览
+            </Button>
+          )}
         </div>
-        <Input
-          value={promptParts.subject}
-          onChange={(event) => updatePromptParts({ subject: event.target.value })}
-          placeholder="主体：例如，年轻女性林夏站在老式公寓走廊"
+      </div>
+      <Flex vertical gap={10} style={{ marginTop: 12 }}>
+        <div className="movie-scene-asset-row">
+          <div>
+            <Typography.Text className="movie-panel-label">画面视频</Typography.Text>
+            <div className="movie-scene-asset-name">{selectedVideoNode?.title ?? '未选择视频'}</div>
+          </div>
+          <Space>
+            <Upload
+              accept="video/*"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                setSceneUploadingType('video')
+                void onUploadSceneAsset('video', file).finally(() => setSceneUploadingType(null))
+                return Upload.LIST_IGNORE
+              }}
+            >
+              <Button size="small" icon={<UploadOutlined />} loading={sceneUploadingType === 'video'}>上传</Button>
+            </Upload>
+            <Button size="small" icon={<VideoCameraOutlined />} onClick={() => setAssetPickerType('video')}>选择</Button>
+          </Space>
+        </div>
+        <div className="movie-scene-asset-row">
+          <div>
+            <Typography.Text className="movie-panel-label">封面图片</Typography.Text>
+            <div className="movie-scene-asset-name">{selectedImageNode?.title ?? '未选择图片'}</div>
+          </div>
+          <Space>
+            <Upload
+              accept="image/*"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                setSceneUploadingType('image')
+                void onUploadSceneAsset('image', file).finally(() => setSceneUploadingType(null))
+                return Upload.LIST_IGNORE
+              }}
+            >
+              <Button size="small" icon={<UploadOutlined />} loading={sceneUploadingType === 'image'}>上传</Button>
+            </Upload>
+            <Button size="small" icon={<PictureOutlined />} onClick={() => setAssetPickerType('image')}>选择</Button>
+          </Space>
+        </div>
+      </Flex>
+    </section>
+  )
+
+  const promptPanel = (
+    <section className="movie-panel-section">
+      <Typography.Text className="movie-panel-label">视频提示词</Typography.Text>
+      <div className="movie-prompt-template">
+        <Typography.Text className="movie-panel-label">结构化视频提示词</Typography.Text>
+        <div className="movie-prompt-tips">
+          {(promptTemplate?.sections ?? [
+            '主体：谁或什么是画面核心。',
+            '动作：主体正在做什么。',
+            '场景：空间、天气、道具、情绪氛围。',
+            '镜头：景别、机位、运镜。',
+            '时序：按秒描述关键动作变化。',
+            '风格：色彩、光线、材质和影片类型。',
+            '约束：不希望出现的内容。',
+          ]).map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+        </div>
+      </div>
+      <Input value={promptParts.subject} onChange={(event) => updatePromptParts({ subject: event.target.value })} placeholder="主体：例如，年轻女性林夏站在老式公寓走廊" />
+      <Input.TextArea value={promptParts.action} autoSize={{ minRows: 2, maxRows: 4 }} onChange={(event) => updatePromptParts({ action: event.target.value })} placeholder="动作：主体做什么，尽量聚焦一组主要动作" />
+      <Input.TextArea value={promptParts.scene} autoSize={{ minRows: 2, maxRows: 4 }} onChange={(event) => updatePromptParts({ scene: event.target.value })} placeholder="场景：空间、时代、天气、道具、情绪氛围" />
+      <Input.TextArea value={promptParts.camera} autoSize={{ minRows: 2, maxRows: 4 }} onChange={(event) => updatePromptParts({ camera: event.target.value })} placeholder="镜头：景别、机位、运镜或镜头切换" />
+      <Input.TextArea value={promptParts.timeline} autoSize={{ minRows: 2, maxRows: 4 }} onChange={(event) => updatePromptParts({ timeline: event.target.value })} placeholder="时序：例如 [0-2s] 建立场景；[2-5s] 完成关键动作" />
+      <Input.TextArea value={promptParts.style} autoSize={{ minRows: 2, maxRows: 4 }} onChange={(event) => updatePromptParts({ style: event.target.value })} placeholder="风格：电影感、写实、低饱和、高对比、细腻光影" />
+      <Input.TextArea value={promptParts.constraints} autoSize={{ minRows: 2, maxRows: 4 }} onChange={(event) => updatePromptParts({ constraints: event.target.value })} placeholder="约束：不出现文字水印，不切换主角，主体一致" />
+      <Typography.Text className="movie-panel-label">最终提示词</Typography.Text>
+      <Input.TextArea
+        value={scene.script.videoPrompt || generatedPrompt}
+        autoSize={{ minRows: 3, maxRows: 6 }}
+        onChange={(event) => updateScript({ videoPrompt: event.target.value })}
+      />
+    </section>
+  )
+
+  return (
+    <>
+      <Collapse
+        className="movie-scene-collapse"
+        activeKey={activePanelKeys}
+        onChange={(keys) => onActivePanelKeysChange(Array.isArray(keys) ? keys.map(String) : [String(keys)])}
+        items={[
+          { key: 'config', label: '节点配置', children: configPanel },
+          { key: 'media', label: '画面选择', children: mediaPanel },
+          { key: 'prompt', label: '提示词编辑', children: promptPanel },
+        ]}
+      />
+      <Modal
+        title={scene.title}
+        open={videoPreviewOpen}
+        footer={null}
+        centered
+        width={860}
+        onCancel={() => setVideoPreviewOpen(false)}
+        className="movie-video-preview-modal"
+      >
+        {sceneVideoUrl && (
+          <video src={sceneVideoUrl} controls autoPlay className="movie-video-preview-player" draggable={false} />
+        )}
+      </Modal>
+      <Modal
+        title={assetPickerType === 'video' ? '选择画面视频' : '选择封面图片'}
+        open={assetPickerType !== null}
+        footer={null}
+        width={620}
+        onCancel={() => setAssetPickerType(null)}
+        className="movie-video-preview-modal"
+      >
+        <AssetPickerList
+          assets={assetPickerType === 'video' ? videoNodes : imageNodes}
+          emptyText={assetPickerType === 'video' ? '还没有视频素材' : '还没有图片素材'}
+          onSelect={(assetId) => {
+            onChange((current) => ({
+              ...current,
+              media: {
+                ...current.media,
+                kind: assetPickerType === 'video' ? 'video' : current.media.kind,
+                videoNodeId: assetPickerType === 'video' ? assetId : current.media.videoNodeId,
+                coverImageNodeId: assetPickerType === 'image' ? assetId : current.media.coverImageNodeId,
+              },
+            }))
+            setAssetPickerType(null)
+          }}
         />
-        <Input.TextArea
-          value={promptParts.action}
-          autoSize={{ minRows: 2, maxRows: 4 }}
-          onChange={(event) => updatePromptParts({ action: event.target.value })}
-          placeholder="动作：主体做什么，尽量聚焦一组主要动作"
-        />
-        <Input.TextArea
-          value={promptParts.scene}
-          autoSize={{ minRows: 2, maxRows: 4 }}
-          onChange={(event) => updatePromptParts({ scene: event.target.value })}
-          placeholder="场景：空间、时代、天气、道具、情绪氛围"
-        />
-        <Input.TextArea
-          value={promptParts.camera}
-          autoSize={{ minRows: 2, maxRows: 4 }}
-          onChange={(event) => updatePromptParts({ camera: event.target.value })}
-          placeholder="镜头：景别、机位、运镜或镜头切换"
-        />
-        <Input.TextArea
-          value={promptParts.timeline}
-          autoSize={{ minRows: 2, maxRows: 4 }}
-          onChange={(event) => updatePromptParts({ timeline: event.target.value })}
-          placeholder="时序：例如 [0-2s] 建立场景；[2-5s] 完成关键动作"
-        />
-        <Input.TextArea
-          value={promptParts.style}
-          autoSize={{ minRows: 2, maxRows: 4 }}
-          onChange={(event) => updatePromptParts({ style: event.target.value })}
-          placeholder="风格：电影感、写实、低饱和、高对比、细腻光影"
-        />
-        <Input.TextArea
-          value={promptParts.constraints}
-          autoSize={{ minRows: 2, maxRows: 4 }}
-          onChange={(event) => updatePromptParts({ constraints: event.target.value })}
-          placeholder="约束：不出现文字水印，不切换主角，主体一致"
-        />
-        <Typography.Text className="movie-panel-label">最终提示词</Typography.Text>
-        <Input.TextArea
-          value={scene.script.videoPrompt || generatedPrompt}
-          autoSize={{ minRows: 3, maxRows: 6 }}
-          onChange={(event) => updateScript({ videoPrompt: event.target.value })}
-        />
-      </section>
+      </Modal>
+    </>
+  )
+}
+
+function endpointLabel(
+  endpoint: NodeLinkEndpoint,
+  sceneMap: Map<string, SceneNode>,
+  assetMap: Map<string, AssetNode>,
+) {
+  if (endpoint.type === 'scene') {
+    const scene = sceneMap.get(endpoint.id)
+    return `场景：${scene?.title ?? endpoint.id} · ${endpoint.handle}`
+  }
+  const asset = assetMap.get(endpoint.id)
+  return `${assetTypeLabel(endpoint.type)}：${asset?.title ?? endpoint.id} · ${endpoint.handle}`
+}
+
+function NodeLinkEditor({
+  link,
+  sceneMap,
+  assetMap,
+  onDelete,
+}: {
+  link: NodeLink
+  sceneMap: Map<string, SceneNode>
+  assetMap: Map<string, AssetNode>
+  onDelete: () => void
+}) {
+  return (
+    <section className="movie-panel-section movie-node-link-editor">
+      <Flex align="center" justify="space-between">
+        <div>
+          <Typography.Text className="movie-panel-label">节点连接</Typography.Text>
+          <Typography.Title level={4}>连接关系</Typography.Title>
+        </div>
+        <Button danger icon={<DeleteOutlined />} onClick={onDelete}>删除</Button>
+      </Flex>
+      <div className="movie-link-endpoint-list">
+        <div>
+          <Typography.Text className="movie-panel-label">起点</Typography.Text>
+          <Typography.Text>{endpointLabel(link.from, sceneMap, assetMap)}</Typography.Text>
+        </div>
+        <div>
+          <Typography.Text className="movie-panel-label">终点</Typography.Text>
+          <Typography.Text>{endpointLabel(link.to, sceneMap, assetMap)}</Typography.Text>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function NodeHandles({
+  node,
+  highlightedSide,
+  onBegin,
+}: {
+  node: Pick<NodeLinkEndpoint, 'type' | 'id'>
+  highlightedSide?: NodeHandleSide
+  onBegin: (event: ReactPointerEvent<HTMLButtonElement>, endpoint: NodeLinkEndpoint) => void
+}) {
+  const sides: NodeHandleSide[] = ['top', 'right', 'bottom', 'left']
+  return (
+    <div className="movie-node-handles" aria-hidden="true">
+      {sides.map((side) => {
+        const endpoint: NodeLinkEndpoint = { ...node, handle: side }
+        return (
+          <button
+            key={side}
+            type="button"
+            className={[
+              'movie-node-handle',
+              `is-${side}`,
+              highlightedSide === side ? 'is-snap-target' : '',
+            ].filter(Boolean).join(' ')}
+            data-node-type={node.type}
+            data-node-id={node.id}
+            data-handle={side}
+            onPointerDown={(event) => onBegin(event, endpoint)}
+            title="拖拽连接节点"
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function AssetPickerList({
+  assets,
+  emptyText,
+  onSelect,
+}: {
+  assets: AssetNode[]
+  emptyText: string
+  onSelect: (assetId: string) => void
+}) {
+  if (assets.length === 0) {
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />
+  }
+  return (
+    <div className="movie-asset-picker-list">
+      {assets.map((asset) => (
+        <button key={asset.id} type="button" className="movie-asset-picker-item" onClick={() => onSelect(asset.id)}>
+          <span className="movie-asset-picker-thumb">
+            {asset.type === 'image' && asset.media.url ? (
+              <img src={asset.media.url} alt="" draggable={false} />
+            ) : asset.type === 'video' && asset.media.url ? (
+              <video src={asset.media.url} muted preload="metadata" draggable={false} />
+            ) : asset.type === 'image' ? (
+              <PictureOutlined />
+            ) : (
+              <VideoCameraOutlined />
+            )}
+          </span>
+          <span className="movie-asset-picker-main">
+            <span className="movie-asset-picker-title">{asset.title}</span>
+            <span className="movie-asset-picker-meta">{asset.media.status === 'ready' ? '可用素材' : '未上传'}</span>
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function AssetEditor({
+  asset,
+  uploadState,
+  onChange,
+  onUpload,
+  onDelete,
+}: {
+  asset: AssetNode
+  uploadState: AssetUploadState
+  onChange: (updater: (asset: AssetNode) => AssetNode) => void
+  onUpload: (file: File) => void
+  onDelete: () => void
+}) {
+  const [markdownPreview, setMarkdownPreview] = useState(false)
+  const isUploading = uploadState.status === 'uploading'
+  const isText = asset.type === 'text'
+  const isImage = asset.type === 'image'
+
+  const updateText = (text: string) => {
+    onChange((current) => ({ ...current, text }))
+  }
+
+  const appendMarkdown = (prefix: string, suffix = '') => {
+    const currentText = asset.text ?? ''
+    updateText(`${currentText}${currentText.endsWith('\n') || !currentText ? '' : '\n'}${prefix}${suffix}`)
+  }
+
+  return (
+    <Flex vertical gap={16}>
+      <Flex align="flex-start" justify="space-between" gap={12}>
+        <div className="movie-panel-title-block">
+          <Typography.Text className="movie-panel-kicker">{assetTypeLabel(asset.type)}</Typography.Text>
+          <Input
+            value={asset.title}
+            onChange={(event) => onChange((current) => ({ ...current, title: event.target.value }))}
+            className="movie-panel-title-input"
+          />
+        </div>
+        <Button danger type="text" icon={<DeleteOutlined />} onClick={onDelete} aria-label={`删除素材 ${asset.title}`} />
+      </Flex>
+
+      {isText ? (
+        <section className="movie-panel-section">
+          <Flex align="center" justify="space-between">
+            <Typography.Text className="movie-panel-label">文本内容</Typography.Text>
+            <Space>
+              <Tooltip title="加粗">
+                <Button size="small" icon={<BorderOuterOutlined />} onClick={() => appendMarkdown('**加粗文本**')} />
+              </Tooltip>
+              <Tooltip title="斜体">
+                <Button size="small" icon={<ItalicOutlined />} onClick={() => appendMarkdown('*斜体文本*')} />
+              </Tooltip>
+              <Tooltip title="无序列表">
+                <Button size="small" icon={<UnorderedListOutlined />} onClick={() => appendMarkdown('- 列表项')} />
+              </Tooltip>
+              <Tooltip title="有序列表">
+                <Button size="small" icon={<OrderedListOutlined />} onClick={() => appendMarkdown('1. 列表项')} />
+              </Tooltip>
+              <Button size="small" icon={<EditOutlined />} onClick={() => setMarkdownPreview((value) => !value)}>
+                {markdownPreview ? '编辑' : '预览'}
+              </Button>
+            </Space>
+          </Flex>
+          {markdownPreview ? (
+            <div className="movie-markdown-preview">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{asset.text ?? ''}</ReactMarkdown>
+            </div>
+          ) : (
+            <Input.TextArea
+              value={asset.text ?? ''}
+              autoSize={{ minRows: 10, maxRows: 18 }}
+              onChange={(event) => updateText(event.target.value)}
+            />
+          )}
+        </section>
+      ) : (
+        <section className="movie-panel-section">
+          <Typography.Text className="movie-panel-label">{isImage ? '图片文件' : '视频文件'}</Typography.Text>
+          <div className="movie-panel-media" tabIndex={0}>
+            {isImage && asset.media.url ? (
+              <img src={asset.media.url} alt={asset.title} className="movie-panel-poster" draggable={false} />
+            ) : !isImage && asset.media.url ? (
+              <video src={asset.media.url} muted preload="metadata" className="movie-panel-video" draggable={false} />
+            ) : (
+              <div className="movie-panel-media-empty">
+                {isImage ? <PictureOutlined /> : <VideoCameraOutlined />}
+                <span>{isImage ? '图片待上传' : '视频待上传'}</span>
+              </div>
+            )}
+            <div className="movie-panel-media-overlay">
+              <Upload
+                accept={isImage ? 'image/*' : 'video/*'}
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  onUpload(file)
+                  return Upload.LIST_IGNORE
+                }}
+              >
+                <Button icon={<UploadOutlined />} loading={isUploading}>
+                  上传
+                </Button>
+              </Upload>
+              {asset.media.url && !isImage && (
+                <Button icon={<PlayCircleOutlined />} onClick={() => window.open(asset.media.url, '_blank', 'noreferrer')}>
+                  预览
+                </Button>
+              )}
+            </div>
+          </div>
+          {uploadState.message && (
+            <div className={uploadState.status === 'failed' ? 'movie-generation-message is-error' : 'movie-generation-message'}>
+              {uploadState.message}
+            </div>
+          )}
+        </section>
+      )}
     </Flex>
   )
 }

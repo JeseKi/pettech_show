@@ -57,7 +57,29 @@ class InteractiveMovieScene(Base):
     media_object_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
     media_storage_uri: Mapped[str] = mapped_column(Text, nullable=False, default="")
     poster_url: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    video_node_id: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    cover_image_node_id: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     media_status: Mapped[str] = mapped_column(String(20), nullable=False, default="mock")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class InteractiveMovieAssetNode(Base):
+    __tablename__ = "interactive_movie_asset_nodes"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    position_x: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    position_y: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    media_url: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    media_object_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    media_storage_uri: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    media_content_type: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    media_size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    media_status: Mapped[str] = mapped_column(String(20), nullable=False, default="empty")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 
@@ -81,6 +103,23 @@ class InteractiveMovieChoice(Base):
     to_scene_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     label: Mapped[str] = mapped_column(String(200), nullable=False)
     trigger: Mapped[str] = mapped_column(String(40), nullable=False, default="after_scene")
+    offset_x: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    offset_y: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class InteractiveMovieNodeLink(Base):
+    __tablename__ = "interactive_movie_node_links"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    from_node_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    from_node_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    from_handle: Mapped[str] = mapped_column(String(12), nullable=False, default="right")
+    to_node_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    to_node_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    to_handle: Mapped[str] = mapped_column(String(12), nullable=False, default="left")
+    offset_x: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     offset_y: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

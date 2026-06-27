@@ -13,13 +13,17 @@ class PromptTemplateOut(BaseModel):
     example: str
 
 
-class UploadedVideoOut(BaseModel):
+class UploadedAssetOut(BaseModel):
     url: str | None = None
     storage_uri: str
     object_key: str
     filename: str
     content_type: str
     size: int = Field(ge=0)
+
+
+class UploadedVideoOut(UploadedAssetOut):
+    pass
 
 
 class CanvasViewportIn(BaseModel):
@@ -29,7 +33,7 @@ class CanvasViewportIn(BaseModel):
 
 
 class SelectedObjectIn(BaseModel):
-    type: Literal["scene", "choice"]
+    type: Literal["scene", "choice", "text", "image", "video", "nodeLink"]
     id: str
 
 
@@ -63,6 +67,8 @@ class SceneMediaIn(BaseModel):
     objectKey: str = ""
     storageUri: str = ""
     posterUrl: str = ""
+    videoNodeId: str = ""
+    coverImageNodeId: str = ""
     status: Literal["empty", "mock", "ready"] = "mock"
 
 
@@ -81,6 +87,39 @@ class ChoiceEdgeIn(BaseModel):
     toSceneId: str
     label: str
     trigger: Literal["after_scene"] = "after_scene"
+    offsetX: float = 0
+    offsetY: float = 0
+
+
+class AssetMediaIn(BaseModel):
+    url: str = ""
+    objectKey: str = ""
+    storageUri: str = ""
+    contentType: str = ""
+    size: int = Field(default=0, ge=0)
+    status: Literal["empty", "ready"] = "empty"
+
+
+class AssetNodeIn(BaseModel):
+    id: str
+    type: Literal["text", "image", "video"]
+    title: str
+    position: dict[str, float] = Field(default_factory=lambda: {"x": 0, "y": 0})
+    text: str = ""
+    media: AssetMediaIn = Field(default_factory=AssetMediaIn)
+
+
+class NodeLinkEndpointIn(BaseModel):
+    type: Literal["scene", "text", "image", "video"]
+    id: str
+    handle: Literal["top", "right", "bottom", "left"] = "right"
+
+
+class NodeLinkIn(BaseModel):
+    id: str
+    from_: NodeLinkEndpointIn = Field(alias="from")
+    to: NodeLinkEndpointIn
+    offsetX: float = 0
     offsetY: float = 0
 
 
@@ -90,6 +129,8 @@ class InteractiveMovieDocumentIn(BaseModel):
     updatedAt: str | None = None
     scenes: list[SceneNodeIn] = Field(default_factory=list)
     choices: list[ChoiceEdgeIn] = Field(default_factory=list)
+    assetNodes: list[AssetNodeIn] = Field(default_factory=list)
+    nodeLinks: list[NodeLinkIn] = Field(default_factory=list)
     selectedObject: SelectedObjectIn | None = None
     viewport: CanvasViewportIn = Field(default_factory=lambda: CanvasViewportIn(x=360, y=160, zoom=1))
 
@@ -150,6 +191,8 @@ class InteractiveMovieProjectPatchIn(BaseModel):
     project: dict[str, Any] = Field(default_factory=dict)
     scenes: EntityPatchIn = Field(default_factory=EntityPatchIn)
     choices: EntityPatchIn = Field(default_factory=EntityPatchIn)
+    asset_nodes: EntityPatchIn = Field(default_factory=EntityPatchIn)
+    node_links: EntityPatchIn = Field(default_factory=EntityPatchIn)
     script_lines: EntityPatchIn = Field(default_factory=EntityPatchIn)
     viewport: dict[str, Any] = Field(default_factory=dict)
     selected_object: dict[str, Any] = Field(default_factory=dict)

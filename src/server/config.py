@@ -169,6 +169,22 @@ class GlobalConfig(BaseSettings):
         title="Info Distribution 可访问的当前系统图片 Base URL",
     )
 
+    interactive_movie_storage_backend: str = Field(
+        default="local",
+        title="互动电影资产存储后端",
+        description="local 或 s3",
+    )
+
+    interactive_movie_local_asset_dir: Path = Field(
+        default=Path("data") / "interactive-movie-assets",
+        title="互动电影本地资产目录",
+    )
+
+    interactive_movie_local_asset_base_url: str = Field(
+        default="/api/interactive-movie/assets/local",
+        title="互动电影本地资产公开 Base URL",
+    )
+
     interactive_movie_s3_endpoint_url: str = Field(
         default="",
         title="互动电影 S3 Endpoint",
@@ -214,6 +230,12 @@ class GlobalConfig(BaseSettings):
         default=200,
         ge=1,
         title="互动电影视频上传大小限制 MB",
+    )
+
+    interactive_movie_max_image_upload_mb: int = Field(
+        default=20,
+        ge=1,
+        title="互动电影图片上传大小限制 MB",
     )
 
     chat_api_base_url: str = Field(

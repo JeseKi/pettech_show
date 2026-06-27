@@ -27,6 +27,7 @@ from .schemas import (
     InteractiveMovieSetPublishedReleaseIn,
     InteractiveMovieSyncStateOut,
     PromptTemplateOut,
+    UploadedAssetOut,
     UploadedVideoOut,
 )
 from .service import (
@@ -38,12 +39,15 @@ from .service import (
     get_sync_state,
     list_releases,
     list_projects,
+    local_asset_response,
     patch_project,
     publish_project,
     prompt_template,
+    read_image_upload,
     read_video_upload,
     rename_project,
     set_published_release,
+    upload_image,
     upload_video,
 )
 
@@ -202,6 +206,39 @@ async def upload_scene_video(
 ):
     content = await read_video_upload(file)
     return await run_in_thread(lambda: upload_video(file, content))
+
+
+@router.post(
+    "/assets/images",
+    response_model=UploadedAssetOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="上传互动影游图片资产",
+)
+async def upload_movie_image_asset(
+    file: Annotated[UploadFile, File(description="图片资产文件")],
+    _: User = Security(get_current_user, scopes=[SCOPE_PROFILE_READ]),
+):
+    content = await read_image_upload(file)
+    return await run_in_thread(lambda: upload_image(file, content))
+
+
+@router.post(
+    "/assets/videos",
+    response_model=UploadedAssetOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="上传互动影游视频资产",
+)
+async def upload_movie_video_asset(
+    file: Annotated[UploadFile, File(description="视频资产文件")],
+    _: User = Security(get_current_user, scopes=[SCOPE_PROFILE_READ]),
+):
+    content = await read_video_upload(file)
+    return await run_in_thread(lambda: upload_video(file, content))
+
+
+@router.get("/assets/local/{object_key:path}", summary="读取本地互动影游资产")
+async def read_local_movie_asset(object_key: str):
+    return await run_in_thread(lambda: local_asset_response(object_key))
 
 
 @router.get(

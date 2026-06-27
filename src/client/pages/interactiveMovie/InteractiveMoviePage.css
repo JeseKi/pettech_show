@@ -541,6 +541,73 @@
   background: rgba(67, 36, 18, 0.96);
 }
 
+.movie-node-link-line {
+  fill: none;
+  stroke: rgba(125, 211, 252, 0.58);
+  stroke-dasharray: 7 6;
+  stroke-linecap: round;
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.movie-node-link-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-linecap: round;
+  stroke-width: 18;
+  pointer-events: stroke;
+  cursor: grab;
+}
+
+.movie-node-link-hit:active {
+  cursor: grabbing;
+}
+
+.movie-node-link.is-selected .movie-node-link-line {
+  stroke: rgba(184, 255, 103, 0.94);
+  stroke-dasharray: none;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px rgba(184, 255, 103, 0.32));
+}
+
+.movie-node-link.is-draft .movie-node-link-line {
+  stroke: rgba(184, 255, 103, 0.88);
+  stroke-dasharray: 4 4;
+}
+
+.movie-node-link-endpoint {
+  fill: rgba(184, 255, 103, 0.96);
+  stroke: rgba(15, 23, 42, 0.94);
+  stroke-width: 2;
+  cursor: crosshair;
+  pointer-events: all;
+}
+
+.movie-node-link-delete {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 50%;
+  background: rgba(20, 22, 27, 0.96);
+  color: #fecaca;
+  cursor: pointer;
+  font-size: 13px;
+  pointer-events: auto;
+}
+
+.movie-node-link-delete:hover {
+  background: rgba(248, 113, 113, 0.18);
+  color: #fff;
+}
+
+.movie-node-link foreignObject {
+  overflow: visible;
+  pointer-events: auto;
+}
+
 .movie-scene-node {
   position: absolute;
   width: 292px;
@@ -638,6 +705,8 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .movie-node-synopsis {
@@ -658,6 +727,79 @@
   border-radius: 50%;
   background: var(--app-accent);
   box-shadow: 0 0 14px rgba(184, 255, 103, 0.8);
+}
+
+.movie-node-handles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.movie-node-handle {
+  position: absolute;
+  display: block;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: crosshair;
+  opacity: 0;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(0.78);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    background-color 160ms ease;
+}
+
+.movie-node-handle::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(15, 23, 42, 0.92);
+  border-radius: 50%;
+  background: rgba(125, 211, 252, 0.95);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.movie-scene-node:hover .movie-node-handle,
+.movie-asset-node:hover .movie-node-handle,
+.movie-scene-node.is-selected .movie-node-handle,
+.movie-asset-node.is-selected .movie-node-handle,
+.movie-canvas-stage.is-linking .movie-node-handle {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.movie-node-handle:hover::after,
+.movie-node-handle.is-snap-target::after {
+  background: rgba(184, 255, 103, 0.96);
+  box-shadow: 0 0 0 4px rgba(184, 255, 103, 0.18);
+}
+
+.movie-node-handle.is-top {
+  top: 0;
+  left: 50%;
+}
+
+.movie-node-handle.is-right {
+  top: 50%;
+  left: 100%;
+}
+
+.movie-node-handle.is-bottom {
+  top: 100%;
+  left: 50%;
+}
+
+.movie-node-handle.is-left {
+  top: 50%;
+  left: 0;
 }
 
 .movie-canvas-hint {
@@ -918,12 +1060,16 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .movie-panel-poster {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .movie-panel-media-overlay {
@@ -1080,6 +1226,52 @@
   border: 1px solid rgba(56, 189, 248, 0.16);
   border-radius: 8px;
   background: rgba(56, 189, 248, 0.06);
+}
+
+.movie-scene-collapse {
+  border: 0;
+  background: transparent;
+}
+
+.movie-scene-collapse .ant-collapse-item {
+  margin-bottom: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.movie-scene-collapse .ant-collapse-header {
+  align-items: center !important;
+  color: var(--app-text-primary) !important;
+  font-weight: 800;
+}
+
+.movie-scene-collapse .ant-collapse-content {
+  border-top-color: rgba(255, 255, 255, 0.08) !important;
+  background: transparent !important;
+}
+
+.movie-scene-collapse .ant-collapse-content-box {
+  padding: 12px !important;
+}
+
+.movie-node-link-editor .ant-typography {
+  margin: 0;
+}
+
+.movie-link-endpoint-list {
+  display: grid;
+  gap: 10px;
+}
+
+.movie-link-endpoint-list > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .movie-prompt-tips {
@@ -1760,6 +1952,262 @@
 
 .movie-public-empty .ant-empty-description {
   color: rgba(226, 232, 240, 0.72);
+}
+
+.movie-asset-node {
+  position: absolute;
+  display: flex;
+  width: 244px;
+  min-height: 142px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  background: rgba(15, 17, 21, 0.94);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+  color: var(--app-text-primary);
+  cursor: grab;
+  user-select: none;
+}
+
+.movie-asset-node.is-selected {
+  border-color: rgba(184, 255, 103, 0.75);
+  box-shadow:
+    0 0 0 1px rgba(184, 255, 103, 0.2),
+    0 18px 42px rgba(0, 0, 0, 0.34);
+}
+
+.movie-asset-node.is-text {
+  min-height: 138px;
+  background:
+    linear-gradient(180deg, rgba(31, 34, 41, 0.96), rgba(18, 20, 24, 0.96)),
+    var(--app-bg-elevated);
+}
+
+.movie-asset-header,
+.movie-asset-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.movie-asset-header {
+  justify-content: space-between;
+}
+
+.movie-asset-icon {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.1);
+  color: #7dd3fc;
+  font-size: 16px;
+}
+
+.movie-asset-title {
+  display: block;
+  max-width: 132px;
+  overflow: hidden;
+  color: var(--app-text-primary) !important;
+  font-size: 14px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movie-asset-text-body {
+  display: -webkit-box;
+  min-height: 54px;
+  overflow: hidden;
+  color: rgba(226, 232, 240, 0.76);
+  font-size: 12px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.movie-asset-text-body :where(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote, pre) {
+  margin: 0 0 4px;
+}
+
+.movie-asset-text-body :where(h1, h2, h3) {
+  color: var(--app-text-primary);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.movie-asset-text-body :where(ul, ol) {
+  padding-left: 16px;
+}
+
+.movie-asset-text-body :where(code) {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.movie-asset-media-preview {
+  display: flex;
+  height: 88px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(226, 232, 240, 0.62);
+  font-size: 22px;
+}
+
+.movie-asset-media-preview :where(img, video) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.movie-asset-media-empty {
+  display: inline-flex;
+}
+
+.movie-canvas-context-menu {
+  position: absolute;
+  display: grid;
+  width: 178px;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(12, 14, 18, 0.96);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+  z-index: 20;
+}
+
+.movie-canvas-context-menu button,
+.movie-asset-picker-item {
+  border: 0;
+  background: transparent;
+  color: var(--app-text-primary);
+  cursor: pointer;
+}
+
+.movie-canvas-context-menu button {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.movie-canvas-context-menu button:hover,
+.movie-asset-picker-item:hover {
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.movie-scene-asset-row {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.movie-scene-asset-name {
+  max-width: 180px;
+  overflow: hidden;
+  color: rgba(226, 232, 240, 0.82);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movie-asset-picker-list {
+  display: grid;
+  gap: 8px;
+}
+
+.movie-asset-picker-item {
+  display: flex;
+  width: 100%;
+  min-height: 68px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.movie-asset-picker-thumb {
+  display: inline-flex;
+  width: 76px;
+  height: 52px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(226, 232, 240, 0.68);
+}
+
+.movie-asset-picker-thumb :where(img, video) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.movie-asset-picker-main {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.movie-asset-picker-title {
+  overflow: hidden;
+  color: var(--app-text-primary);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movie-asset-picker-meta {
+  color: rgba(226, 232, 240, 0.56);
+  font-size: 12px;
+}
+
+.movie-markdown-preview {
+  min-height: 220px;
+  max-height: 460px;
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.28);
+  color: inherit;
+  line-height: 1.7;
+}
+
+.movie-markdown-preview :where(h1, h2, h3, p, ul, ol, blockquote, pre, table) {
+  margin-top: 0;
+}
+
+.movie-markdown-preview :where(ul, ol) {
+  padding-left: 20px;
 }
 
 @media (max-width: 980px) {

@@ -61,6 +61,8 @@ export type InteractiveMovieProjectPatch = {
   project: Record<string, unknown>
   scenes: InteractiveMovieEntityPatch
   choices: InteractiveMovieEntityPatch
+  asset_nodes: InteractiveMovieEntityPatch
+  node_links: InteractiveMovieEntityPatch
   script_lines: InteractiveMovieEntityPatch
   viewport: Record<string, unknown>
   selected_object: Record<string, unknown>
@@ -190,7 +192,16 @@ export async function getInteractiveMoviePublicProject<TDocument>(
 export async function uploadInteractiveMovieVideo(file: File): Promise<InteractiveMovieVideoUpload> {
   const formData = new FormData()
   formData.append('file', file)
-  const response = await api.post<InteractiveMovieVideoUpload>('/interactive-movie/videos', formData, {
+  const response = await api.post<InteractiveMovieVideoUpload>('/interactive-movie/assets/videos', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return response.data
+}
+
+export async function uploadInteractiveMovieImage(file: File): Promise<InteractiveMovieVideoUpload> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await api.post<InteractiveMovieVideoUpload>('/interactive-movie/assets/images', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
   return response.data

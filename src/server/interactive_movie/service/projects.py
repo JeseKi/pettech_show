@@ -54,7 +54,7 @@ def create_project(db: Session, user: User, payload: InteractiveMovieProjectCrea
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="项目 ID 已存在")
 
     now = utc_now()
-    document_payload = document.model_dump()
+    document_payload = document.model_dump(by_alias=True)
     document_snapshot = normalize_document(document_payload)
     content_hash = compute_content_hash(document_snapshot)
     selected = document_snapshot.get("selectedObject") or {}

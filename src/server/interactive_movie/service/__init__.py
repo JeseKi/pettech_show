@@ -21,7 +21,14 @@ from .releases import (
     publish_project,
     set_published_release,
 )
-from .uploads import read_video_upload, upload_video, _s3_client
+from .uploads import (
+    _s3_client,
+    local_asset_response,
+    read_image_upload,
+    read_video_upload,
+    upload_image,
+    upload_video,
+)
 
 __all__ = [
     "_s3_client",
@@ -34,11 +41,14 @@ __all__ = [
     "get_sync_state",
     "list_projects",
     "list_releases",
+    "local_asset_response",
     "patch_project",
     "prompt_template",
     "publish_project",
+    "read_image_upload",
     "read_video_upload",
     "rename_project",
     "set_published_release",
+    "upload_image",
     "upload_video",
 ]

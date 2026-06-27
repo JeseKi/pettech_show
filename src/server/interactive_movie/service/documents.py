@@ -11,7 +11,9 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from ..models import (
+    InteractiveMovieAssetNode,
     InteractiveMovieChoice,
+    InteractiveMovieNodeLink,
     InteractiveMovieProject,
     InteractiveMovieScene,
     InteractiveMovieScriptLine,
@@ -50,6 +52,18 @@ def snapshot(db: Session, project: InteractiveMovieProject) -> dict[str, Any]:
         .order_by(InteractiveMovieChoice.sort_order.asc(), InteractiveMovieChoice.id.asc())
         .all()
     )
+    asset_nodes = (
+        db.query(InteractiveMovieAssetNode)
+        .filter(InteractiveMovieAssetNode.project_id == project.id)
+        .order_by(InteractiveMovieAssetNode.sort_order.asc(), InteractiveMovieAssetNode.id.asc())
+        .all()
+    )
+    node_links = (
+        db.query(InteractiveMovieNodeLink)
+        .filter(InteractiveMovieNodeLink.project_id == project.id)
+        .order_by(InteractiveMovieNodeLink.sort_order.asc(), InteractiveMovieNodeLink.id.asc())
+        .all()
+    )
     viewport = db.query(InteractiveMovieViewport).filter(InteractiveMovieViewport.project_id == project.id).first()
     scene_docs = [_scene_document(db, scene) for scene in scenes]
     return {
@@ -58,6 +72,8 @@ def snapshot(db: Session, project: InteractiveMovieProject) -> dict[str, Any]:
         "updatedAt": iso(project.updated_at),
         "scenes": scene_docs,
         "choices": [_choice_document(choice) for choice in choices],
+        "assetNodes": [_asset_node_document(asset) for asset in asset_nodes],
+        "nodeLinks": [_node_link_document(link) for link in node_links],
         "selectedObject": {
             "type": project.selected_object_type,
             "id": project.selected_object_id,
@@ -106,6 +122,8 @@ def _scene_document(db: Session, scene: InteractiveMovieScene) -> dict[str, Any]
             "objectKey": scene.media_object_key,
             "storageUri": scene.media_storage_uri,
             "posterUrl": scene.poster_url,
+            "videoNodeId": scene.video_node_id,
+            "coverImageNodeId": scene.cover_image_node_id,
             "status": scene.media_status,
         },
         "script": {
@@ -126,6 +144,24 @@ def _scene_document(db: Session, scene: InteractiveMovieScene) -> dict[str, Any]
     }
 
 
+def _asset_node_document(asset: InteractiveMovieAssetNode) -> dict[str, Any]:
+    return {
+        "id": asset.id,
+        "type": asset.type,
+        "title": asset.title,
+        "position": {"x": asset.position_x, "y": asset.position_y},
+        "text": asset.text,
+        "media": {
+            "url": asset.media_url,
+            "objectKey": asset.media_object_key,
+            "storageUri": asset.media_storage_uri,
+            "contentType": asset.media_content_type,
+            "size": asset.media_size,
+            "status": asset.media_status,
+        },
+    }
+
+
 def _choice_document(choice: InteractiveMovieChoice) -> dict[str, Any]:
     return {
         "id": choice.id,
@@ -133,7 +169,26 @@ def _choice_document(choice: InteractiveMovieChoice) -> dict[str, Any]:
         "toSceneId": choice.to_scene_id,
         "label": choice.label,
         "trigger": choice.trigger,
+        "offsetX": choice.offset_x,
         "offsetY": choice.offset_y,
+    }
+
+
+def _node_link_document(link: InteractiveMovieNodeLink) -> dict[str, Any]:
+    return {
+        "id": link.id,
+        "from": {
+            "type": link.from_node_type,
+            "id": link.from_node_id,
+            "handle": link.from_handle,
+        },
+        "to": {
+            "type": link.to_node_type,
+            "id": link.to_node_id,
+            "handle": link.to_handle,
+        },
+        "offsetX": link.offset_x,
+        "offsetY": link.offset_y,
     }
 
 
@@ -142,6 +197,8 @@ def _canonical_document(document: dict[str, Any]) -> dict[str, Any]:
     cleaned.pop("updatedAt", None)
     cleaned["scenes"] = sorted(cleaned.get("scenes") or [], key=lambda item: item.get("id", ""))
     cleaned["choices"] = sorted(cleaned.get("choices") or [], key=lambda item: item.get("id", ""))
+    cleaned["assetNodes"] = sorted(cleaned.get("assetNodes") or [], key=lambda item: item.get("id", ""))
+    cleaned["nodeLinks"] = sorted(cleaned.get("nodeLinks") or [], key=lambda item: item.get("id", ""))
     for scene in cleaned["scenes"]:
         script = scene.get("script") or {}
         script["lines"] = sorted(script.get("lines") or [], key=lambda item: item.get("id", ""))

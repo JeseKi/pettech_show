@@ -22,6 +22,17 @@ type SceneNode = {
     kind: 'image' | 'video' | 'placeholder'
     url?: string
     posterUrl?: string
+    videoNodeId?: string
+    coverImageNodeId?: string
+  }
+}
+
+type AssetNode = {
+  id: string
+  type: 'text' | 'image' | 'video'
+  title: string
+  media: {
+    url?: string
   }
 }
 
@@ -37,6 +48,7 @@ type PublicMovieDocument = {
   title: string
   scenes: SceneNode[]
   choices: ChoiceEdge[]
+  assetNodes?: AssetNode[]
 }
 
 type BootPreloadState = {
@@ -176,12 +188,14 @@ export default function PublicInteractiveMoviePlayer() {
   }, [projectId])
 
   const sceneMap = useMemo(() => new Map((document?.scenes ?? []).map((scene) => [scene.id, scene])), [document])
+  const assetMap = useMemo(() => new Map((document?.assetNodes ?? []).map((asset) => [asset.id, asset])), [document])
   const startScene = document ? findStartScene(document) : null
   const scene = sceneMap.get(sceneId) ?? startScene
   const outgoingChoices = (document?.choices ?? []).filter((choice) => (
     choice.fromSceneId === scene?.id && sceneMap.has(choice.toSceneId)
   ))
-  const videoUrl = getSceneVideoUrl(scene)
+  const videoUrl = getSceneVideoUrl(scene, assetMap)
+  const posterUrl = getScenePosterUrl(scene, assetMap)
   const hasVideo = Boolean(videoUrl)
   const currentLine = scene?.script.lines[lineIndex]
   const routeTree = useMemo(() => (
@@ -374,7 +388,7 @@ export default function PublicInteractiveMoviePlayer() {
             key={scene.id}
             ref={videoRef}
             src={videoUrl}
-            poster={scene.media.posterUrl}
+            poster={posterUrl}
             className="movie-public-video"
             controls
             autoPlay
@@ -565,23 +579,35 @@ function sceneRoleLabel(role: SceneNode['role']) {
   return '节点'
 }
 
-function getSceneVideoUrl(scene?: SceneNode | null) {
-  if (scene?.media.kind !== 'video') return undefined
+function getSceneVideoUrl(scene: SceneNode | null | undefined, assetMap: Map<string, AssetNode>) {
+  if (!scene) return undefined
+  const videoNode = scene.media.videoNodeId ? assetMap.get(scene.media.videoNodeId) : undefined
+  const referencedUrl = videoNode?.type === 'video' ? videoNode.media.url?.trim() : ''
+  if (referencedUrl) return referencedUrl
+  if (scene.media.kind !== 'video') return undefined
   const url = scene.media.url?.trim()
   return url || undefined
 }
 
+function getScenePosterUrl(scene: SceneNode | null | undefined, assetMap: Map<string, AssetNode>) {
+  if (!scene) return undefined
+  const imageNode = scene.media.coverImageNodeId ? assetMap.get(scene.media.coverImageNodeId) : undefined
+  const referencedUrl = imageNode?.type === 'image' ? imageNode.media.url?.trim() : ''
+  return referencedUrl || scene.media.posterUrl?.trim() || undefined
+}
+
 function collectSceneAndNextVideoUrls(document: PublicMovieDocument, sceneId: string) {
   const sceneMap = new Map(document.scenes.map((scene) => [scene.id, scene]))
+  const assetMap = new Map((document.assetNodes ?? []).map((asset) => [asset.id, asset]))
   const currentScene = sceneMap.get(sceneId)
   const urls = new Set<string>()
-  const currentUrl = getSceneVideoUrl(currentScene)
+  const currentUrl = getSceneVideoUrl(currentScene, assetMap)
   if (currentUrl) urls.add(currentUrl)
 
   document.choices
     .filter((choice) => choice.fromSceneId === sceneId)
     .forEach((choice) => {
-      const nextUrl = getSceneVideoUrl(sceneMap.get(choice.toSceneId))
+      const nextUrl = getSceneVideoUrl(sceneMap.get(choice.toSceneId), assetMap)
       if (nextUrl) urls.add(nextUrl)
     })
 

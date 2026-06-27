@@ -35,6 +35,7 @@ def _auth_headers(user: User) -> dict[str, str]:
 
 @pytest.fixture
 def fake_s3_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(global_config, "interactive_movie_storage_backend", "s3")
     monkeypatch.setattr(global_config, "interactive_movie_s3_endpoint_url", "https://cos.example.com")
     monkeypatch.setattr(global_config, "interactive_movie_s3_region_name", "ap-guangzhou")
     monkeypatch.setattr(global_config, "interactive_movie_s3_bucket", "movie-bucket")
@@ -43,6 +44,38 @@ def fake_s3_config(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(global_config, "interactive_movie_s3_prefix", "movie-assets")
     monkeypatch.setattr(global_config, "interactive_movie_s3_public_base_url", "https://cdn.example.com")
     monkeypatch.setattr(global_config, "interactive_movie_max_video_upload_mb", 10)
+
+
+def test_upload_image_asset_to_local_storage(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    monkeypatch.setattr(global_config, "interactive_movie_storage_backend", "local")
+    monkeypatch.setattr(global_config, "interactive_movie_local_asset_dir", tmp_path / "movie-assets")
+    monkeypatch.setattr(global_config, "interactive_movie_local_asset_base_url", "/api/interactive-movie/assets/local")
+    monkeypatch.setattr(global_config, "interactive_movie_max_image_upload_mb", 10)
+    user = _create_user(test_db_session, "interactive_movie_local_image")
+
+    resp = test_client.post(
+        "/api/interactive-movie/assets/images",
+        headers=_auth_headers(user),
+        files={"file": ("cover.png", b"image-data", "image/png")},
+    )
+
+    assert resp.status_code == HTTPStatus.CREATED, resp.text
+    payload = resp.json()
+    assert payload["filename"] == "cover.png"
+    assert payload["content_type"] == "image/png"
+    assert payload["object_key"].startswith("images/")
+    assert payload["storage_uri"].startswith("local://images/")
+    assert payload["url"].startswith("/api/interactive-movie/assets/local/images/")
+    assert (tmp_path / "movie-assets" / payload["object_key"]).read_bytes() == b"image-data"
+
+    asset_resp = test_client.get(payload["url"])
+    assert asset_resp.status_code == HTTPStatus.OK
+    assert asset_resp.content == b"image-data"
 
 
 def test_upload_scene_video_to_s3(
@@ -107,6 +140,8 @@ def test_project_create_sync_and_patch(test_client, test_db_session):
     assert created["version"] == 1
     assert created["content_hash"].startswith("sha256:")
     assert created["document"]["scenes"][0]["title"] == "开场"
+    assert created["document"]["assetNodes"][0]["type"] == "text"
+    assert created["document"]["nodeLinks"][0]["from"]["id"] == "scene-a"
 
     sync_resp = test_client.get(
         "/api/interactive-movie/projects/movie-cloud-a/sync-state",
@@ -133,6 +168,30 @@ def test_project_create_sync_and_patch(test_client, test_db_session):
                 "delete": [],
             },
             "choices": {"upsert": [], "delete": []},
+            "asset_nodes": {
+                "upsert": [
+                    {
+                        "id": "asset-text-a",
+                        "title": "文本新版",
+                        "text": "## 新文本",
+                    }
+                ],
+                "delete": [],
+            },
+            "node_links": {
+                "upsert": [
+                    {
+                        "id": "link-a",
+                        "fromNodeType": "scene",
+                        "fromNodeId": "scene-a",
+                        "fromHandle": "right",
+                        "toNodeType": "text",
+                        "toNodeId": "asset-text-a",
+                        "toHandle": "left",
+                    }
+                ],
+                "delete": [],
+            },
             "script_lines": {
                 "upsert": [{"id": "line-a", "sceneId": "scene-a", "text": "新的台词"}],
                 "delete": [],
@@ -149,6 +208,9 @@ def test_project_create_sync_and_patch(test_client, test_db_session):
     assert patched["document"]["scenes"][0]["title"] == "开场新版"
     assert patched["document"]["scenes"][0]["position"]["x"] == 120
     assert patched["document"]["scenes"][0]["script"]["lines"][0]["text"] == "新的台词"
+    assert patched["document"]["assetNodes"][0]["title"] == "文本新版"
+    assert patched["document"]["assetNodes"][0]["text"] == "## 新文本"
+    assert patched["document"]["nodeLinks"][0]["to"]["type"] == "text"
     assert patched["document"]["viewport"]["zoom"] == 0.8
 
     conflict_resp = test_client.patch(
@@ -160,6 +222,8 @@ def test_project_create_sync_and_patch(test_client, test_db_session):
             "project": {"title": "过期保存"},
             "scenes": {"upsert": [], "delete": []},
             "choices": {"upsert": [], "delete": []},
+            "asset_nodes": {"upsert": [], "delete": []},
+            "node_links": {"upsert": [], "delete": []},
             "script_lines": {"upsert": [], "delete": []},
             "viewport": {},
             "selected_object": {},
@@ -247,6 +311,9 @@ def test_publish_release_public_read_switch_close_and_delete(test_client, test_d
     assert public_payload["release_id"] == first_release["id"]
     assert public_payload["version_no"] == 1
     assert public_payload["document"]["title"] == "云端草稿"
+    assert public_payload["document"]["assetNodes"][1]["type"] == "image"
+    assert public_payload["document"]["scenes"][0]["media"]["videoNodeId"] == "asset-video-a"
+    assert public_payload["document"]["nodeLinks"][0]["to"]["id"] == "asset-text-a"
 
     rename_resp = test_client.patch(
         "/api/interactive-movie/projects/movie-public-a/title",
@@ -369,7 +436,12 @@ def _project_document(project_id: str) -> dict[str, Any]:
                 "title": "开场",
                 "role": "start",
                 "position": {"x": 0, "y": 0},
-                "media": {"kind": "placeholder", "status": "mock"},
+                "media": {
+                    "kind": "video",
+                    "status": "ready",
+                    "videoNodeId": "asset-video-a",
+                    "coverImageNodeId": "asset-image-a",
+                },
                 "script": {
                     "synopsis": "摘要",
                     "visualDescription": "画面",
@@ -380,4 +452,49 @@ def _project_document(project_id: str) -> dict[str, Any]:
             }
         ],
         "choices": [],
+        "nodeLinks": [
+            {
+                "id": "link-a",
+                "from": {"type": "scene", "id": "scene-a", "handle": "right"},
+                "to": {"type": "text", "id": "asset-text-a", "handle": "left"},
+            }
+        ],
+        "assetNodes": [
+            {
+                "id": "asset-text-a",
+                "type": "text",
+                "title": "文本素材",
+                "position": {"x": 320, "y": 0},
+                "text": "# 标题\n\n正文",
+                "media": {"status": "empty"},
+            },
+            {
+                "id": "asset-image-a",
+                "type": "image",
+                "title": "封面图",
+                "position": {"x": 640, "y": 0},
+                "media": {
+                    "url": "https://cdn.example.com/cover.png",
+                    "objectKey": "images/cover.png",
+                    "storageUri": "s3://bucket/images/cover.png",
+                    "contentType": "image/png",
+                    "size": 10,
+                    "status": "ready",
+                },
+            },
+            {
+                "id": "asset-video-a",
+                "type": "video",
+                "title": "画面视频",
+                "position": {"x": 960, "y": 0},
+                "media": {
+                    "url": "https://cdn.example.com/video.mp4",
+                    "objectKey": "videos/video.mp4",
+                    "storageUri": "s3://bucket/videos/video.mp4",
+                    "contentType": "video/mp4",
+                    "size": 20,
+                    "status": "ready",
+                },
+            },
+        ],
     }
