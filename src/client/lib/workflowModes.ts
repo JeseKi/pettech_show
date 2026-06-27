@@ -4,6 +4,7 @@ export type AiwikiModeId = 'materials' | 'search-assets' | 'full'
 export type SeedMatrixModeId = 'standard' | 'batch' | 'high-frequency' | 'hook-driven'
 export type DailyWriterModeId = 'single' | 'batch' | 'five-pack'
 export type CapabilityGroupId = 'competitor-insights' | 'topic-planning' | 'script-creation'
+export type WorkflowExternalConfigKey = 'infoDistributionBaseUrl'
 
 export const AGENT_TOOL = {
   key: 'agents',
@@ -58,6 +59,26 @@ export const WECOM_MOMENTS_PUBLISH_TOOL = {
   description: '基于企业微信客户朋友圈 API，演示从授权、素材 media_id、可见范围到 jobid、moment_id 和复盘回流的官方接口链路。',
   buttonText: '查看发布链路',
 }
+
+export const INFO_DISTRIBUTION_TOOL = {
+  key: 'info-distribution',
+  path: '',
+  navLabel: '全域平台内容分发',
+  title: '全域平台内容分发',
+  description: '跳转到全域内容分发平台，统一处理多平台内容发布和分发。',
+  buttonText: '打开分发平台',
+  externalConfigKey: 'infoDistributionBaseUrl' as WorkflowExternalConfigKey,
+}
+
+export const TOOL_ENTRIES = [
+  AGENT_TOOL,
+  INTERACTIVE_MOVIE_TOOL,
+  PERSONAL_AIWIKI_TOOL,
+  GESTURE_CONTROL_TOOL,
+  WECHAT_AUTOMATION_FLOW_TOOL,
+  WECOM_MOMENTS_PUBLISH_TOOL,
+  INFO_DISTRIBUTION_TOOL,
+]
 
 export const CONTENT_GROWTH_TOOL = {
   key: 'content-growth',

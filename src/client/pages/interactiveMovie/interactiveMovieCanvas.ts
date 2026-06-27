@@ -1,14 +1,9 @@
 import type { AssetNode, AssetNodeType, ConnectableNodeType, InteractiveMovieProject, NodeHandleSide, NodeLinkEndpoint, SceneNode } from './interactiveMovieTypes'
 import { ASSET_NODE_MEDIA_HEIGHT, ASSET_NODE_TEXT_HEIGHT, ASSET_NODE_WIDTH, NODE_HEIGHT, NODE_WIDTH } from './interactiveMovieConstants'
+import { formatDateTime as formatBackendDateTime } from '../../lib/dateTime'
 
 export const formatDateTime = (value: string | null | undefined) => {
-  if (!value) return '-'
-  const timestamp = Date.parse(value)
-  if (!Number.isFinite(timestamp)) return value
-  return new Intl.DateTimeFormat('zh-CN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(timestamp))
+  return formatBackendDateTime(value)
 }
 
 export const assetTypeLabel = (type: AssetNodeType) => {

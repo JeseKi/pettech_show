@@ -17,6 +17,7 @@ import {
   type TrendPoint,
 } from '../../lib/adminMonitoring'
 import { resolveErrorMessage } from '../../lib/errorMessage'
+import { formatDateTime } from '../../lib/dateTime'
 
 const { RangePicker } = DatePicker
 
@@ -206,8 +207,7 @@ function fieldOrder(key: string): number {
 
 function formatRowCell(key: string, value: unknown): string {
   if (DATE_FIELD_KEYS.has(key) && typeof value === 'string' && value) {
-    const parsed = dayjs(value)
-    return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : value
+    return formatDateTime(value)
   }
   const valueMap = ROW_VALUE_LABELS[key]
   if (valueMap && typeof value === 'string') {

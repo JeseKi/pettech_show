@@ -8,6 +8,21 @@ interface DevFrontendConfigResponse {
   }
 }
 
+interface FrontendConfigResponse {
+  info_distribution?: {
+    base_url?: string
+  }
+}
+
+export async function fetchFrontendConfig(): Promise<FrontendConfigResponse | null> {
+  try {
+    const response = await api.get<FrontendConfigResponse>('/frontend-config')
+    return response.data
+  } catch {
+    return null
+  }
+}
+
 export async function fetchDevFrontendConfig(): Promise<DevFrontendConfigResponse | null> {
   try {
     const response = await api.get<DevFrontendConfigResponse>('/dev/providers/frontend-config')

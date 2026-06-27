@@ -8,6 +8,7 @@ import {
   fetchOAuthDeviceAuthorizationMetadata,
 } from '../../lib/oauthProvider'
 import type { OAuthDeviceAuthorizationMetadata } from '../../lib/types'
+import { formatDateTime } from '../../lib/dateTime'
 
 const { Paragraph, Text, Title } = Typography
 
@@ -29,9 +30,7 @@ function normalizeUserCode(value: string): string {
 }
 
 function formatExpiresAt(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleString()
+  return formatDateTime(value)
 }
 
 export default function OAuthDeviceAuthorizePage() {

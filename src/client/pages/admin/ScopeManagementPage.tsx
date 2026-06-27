@@ -7,6 +7,7 @@ import type { AdminScope, ScopeCategory } from '../../lib/types'
 import { resolveApiErrorMessage } from '../../lib/error'
 import { useAuth } from '../../hooks/useAuth'
 import DangerousActionTwoFactorModal from '../../components/auth/DangerousActionTwoFactorModal'
+import { formatDateTime } from '../../lib/dateTime'
 
 interface ScopeFormValues {
   category: ScopeCategory
@@ -155,7 +156,7 @@ export default function ScopeManagementPage() {
         title: '更新时间',
         dataIndex: 'updated_at',
         key: 'updated_at',
-        render: (value: string) => new Date(value).toLocaleString(),
+        render: (value: string) => formatDateTime(value),
       },
       {
         title: '操作',

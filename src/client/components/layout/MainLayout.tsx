@@ -31,31 +31,22 @@ import {
 } from '@ant-design/icons'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { useRuntimeConfig } from '../../hooks/useRuntimeConfig'
 import ProfilePage from '../../pages/profile/ProfilePage'
 import SecurityPage from '../../pages/profile/SecurityPage'
 import DevicesPage from '../../pages/profile/DevicesPage'
 import BrandLogo from '../brand/BrandLogo'
 import {
-  AGENT_TOOL,
   CAPABILITY_GROUP_META,
   CONTENT_GROWTH_TOOL,
-  GESTURE_CONTROL_TOOL,
-  INTERACTIVE_MOVIE_TOOL,
-  PERSONAL_AIWIKI_TOOL,
-  WECHAT_AUTOMATION_FLOW_TOOL,
-  WECOM_MOMENTS_PUBLISH_TOOL,
+  TOOL_ENTRIES,
   VISIBLE_CAPABILITY_ENTRIES,
   type CapabilityGroupId,
 } from '../../lib/workflowModes'
 
 const workflowEntries = [
-  AGENT_TOOL,
+  ...TOOL_ENTRIES,
   CONTENT_GROWTH_TOOL,
-  PERSONAL_AIWIKI_TOOL,
-  GESTURE_CONTROL_TOOL,
-  WECHAT_AUTOMATION_FLOW_TOOL,
-  WECOM_MOMENTS_PUBLISH_TOOL,
-  INTERACTIVE_MOVIE_TOOL,
   ...VISIBLE_CAPABILITY_ENTRIES,
 ]
 
@@ -70,6 +61,7 @@ export default function MainLayout() {
   const location = useLocation()
   const { token } = theme.useToken()
   const { user, logout, logoutAllDevices } = useAuth()
+  const { infoDistribution } = useRuntimeConfig()
   const [collapsed, setCollapsed] = useState(true)
   const [isMobile, setIsMobile] = useState(false)
   const [settingsModalOpen, setSettingsModalOpen] = useState(false)
@@ -153,32 +145,23 @@ export default function MainLayout() {
         key: 'tools-group',
         icon: <VideoCameraOutlined />,
         label: '工具',
-        children: [
-          {
-            key: AGENT_TOOL.key,
-            label: <Link to={AGENT_TOOL.path}>{AGENT_TOOL.navLabel}</Link>,
-          },
-          {
-            key: PERSONAL_AIWIKI_TOOL.key,
-            label: <Link to={PERSONAL_AIWIKI_TOOL.path}>{PERSONAL_AIWIKI_TOOL.navLabel}</Link>,
-          },
-          {
-            key: GESTURE_CONTROL_TOOL.key,
-            label: <Link to={GESTURE_CONTROL_TOOL.path}>{GESTURE_CONTROL_TOOL.navLabel}</Link>,
-          },
-          {
-            key: WECHAT_AUTOMATION_FLOW_TOOL.key,
-            label: <Link to={WECHAT_AUTOMATION_FLOW_TOOL.path}>{WECHAT_AUTOMATION_FLOW_TOOL.navLabel}</Link>,
-          },
-          {
-            key: WECOM_MOMENTS_PUBLISH_TOOL.key,
-            label: <Link to={WECOM_MOMENTS_PUBLISH_TOOL.path}>{WECOM_MOMENTS_PUBLISH_TOOL.navLabel}</Link>,
-          },
-          {
-            key: INTERACTIVE_MOVIE_TOOL.key,
-            label: <Link to={INTERACTIVE_MOVIE_TOOL.path}>{INTERACTIVE_MOVIE_TOOL.navLabel}</Link>,
-          },
-        ],
+        children: TOOL_ENTRIES.map((entry) => {
+          if ('externalConfigKey' in entry) {
+            const href = infoDistribution.baseUrl
+            return {
+              key: entry.key,
+              disabled: !href,
+              label: href
+                ? <a href={href} target="_blank" rel="noreferrer">{entry.navLabel}</a>
+                : <span title="请先配置 INFO_DISTRIBUTION_BASE_URL">{entry.navLabel}</span>,
+            }
+          }
+
+          return {
+            key: entry.key,
+            label: <Link to={entry.path}>{entry.navLabel}</Link>,
+          }
+        }),
       },
       ...Object.entries(CAPABILITY_GROUP_META).map(([groupId, meta]) => ({
         key: `${groupId}-group`,
@@ -208,7 +191,7 @@ export default function MainLayout() {
     }
 
     return items
-  }, [user?.role])
+  }, [infoDistribution.baseUrl, user?.role])
 
   const handleLogout = async () => {
     await logout()

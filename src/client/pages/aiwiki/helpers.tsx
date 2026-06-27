@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { AiwikiJob, AiwikiJobSummary, AiwikiProgressEvent } from '../../lib/aiwiki'
+import { formatDateTime as formatBackendDateTime } from '../../lib/dateTime'
 
 export const ACCEPTED_TYPES = '.md,.markdown,.txt,.xlsx,.pdf'
 export const ACTIVE_STATUSES = new Set(['queued', 'running'])
@@ -50,8 +51,7 @@ export function statusMeta(status?: string) {
 }
 
 export function formatDateTime(value?: string | null): string {
-  if (!value) return '-'
-  return new Date(value).toLocaleString()
+  return formatBackendDateTime(value)
 }
 
 export function firstFileName(job: AiwikiJobSummary | AiwikiJob): string {

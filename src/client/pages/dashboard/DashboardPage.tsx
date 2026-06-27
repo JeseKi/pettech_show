@@ -3,17 +3,13 @@ import { BarChartOutlined, BookOutlined, FileSearchOutlined, FileTextOutlined, R
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  AGENT_TOOL,
   CAPABILITY_GROUP_META,
   CONTENT_GROWTH_TOOL,
-  GESTURE_CONTROL_TOOL,
-  INTERACTIVE_MOVIE_TOOL,
-  PERSONAL_AIWIKI_TOOL,
-  WECHAT_AUTOMATION_FLOW_TOOL,
-  WECOM_MOMENTS_PUBLISH_TOOL,
+  TOOL_ENTRIES,
   VISIBLE_CAPABILITY_ENTRIES,
   type CapabilityGroupId,
 } from '../../lib/workflowModes'
+import { useRuntimeConfig } from '../../hooks/useRuntimeConfig'
 
 const capabilityGroupIcons: Record<CapabilityGroupId, ReactNode> = {
   'competitor-insights': <FileSearchOutlined />,
@@ -30,7 +26,7 @@ const entryGroups = [
   {
     title: '工具',
     icon: <BookOutlined />,
-    entries: [AGENT_TOOL, PERSONAL_AIWIKI_TOOL, GESTURE_CONTROL_TOOL, WECHAT_AUTOMATION_FLOW_TOOL, WECOM_MOMENTS_PUBLISH_TOOL, INTERACTIVE_MOVIE_TOOL],
+    entries: TOOL_ENTRIES,
   },
   ...Object.entries(CAPABILITY_GROUP_META).map(([groupId, meta]) => ({
     title: meta.title,
@@ -40,6 +36,8 @@ const entryGroups = [
 ]
 
 export default function DashboardPage() {
+  const { infoDistribution } = useRuntimeConfig()
+
   return (
     <Flex vertical gap={24}>
       <Typography.Title level={2} style={{ margin: 0 }}>
@@ -54,35 +52,48 @@ export default function DashboardPage() {
             </Typography.Title>
           </Flex>
           <Row gutter={[16, 16]}>
-            {group.entries.map((entry) => (
-              <Col key={entry.key} xs={24} md={12} xl={8}>
-                <Card
-                  hoverable
-                  title={(
-                    <Flex align="center" gap={8}>
-                      {group.icon}
-                      <span>{entry.navLabel}</span>
+            {group.entries.map((entry) => {
+              const isExternal = 'externalConfigKey' in entry
+              const href = isExternal ? infoDistribution.baseUrl : entry.path
+              const actionLabel = isExternal && !href ? '未配置' : '进入'
+              const buttonLabel = isExternal && !href ? '请配置 INFO_DISTRIBUTION_BASE_URL' : entry.buttonText
+              const renderAction = (label: string) => {
+                if (!href) return <span>{label}</span>
+                return isExternal
+                  ? <a href={href} target="_blank" rel="noreferrer">{label}</a>
+                  : <Link to={href}>{label}</Link>
+              }
+
+              return (
+                <Col key={entry.key} xs={24} md={12} xl={8}>
+                  <Card
+                    hoverable
+                    title={(
+                      <Flex align="center" gap={8}>
+                        {group.icon}
+                        <span>{entry.navLabel}</span>
+                      </Flex>
+                    )}
+                    extra={(
+                      <Button type="link" icon={<RightOutlined />} iconPosition="end" disabled={!href}>
+                        {renderAction(actionLabel)}
+                      </Button>
+                    )}
+                    style={{ height: '100%' }}
+                    styles={{ body: { minHeight: 152 } }}
+                  >
+                    <Flex vertical justify="space-between" gap={16} style={{ height: '100%' }}>
+                      <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                        {entry.description}
+                      </Typography.Paragraph>
+                      <Button type="primary" icon={group.icon} style={{ alignSelf: 'flex-start' }} disabled={!href}>
+                        {renderAction(buttonLabel)}
+                      </Button>
                     </Flex>
-                  )}
-                  extra={(
-                    <Button type="link" icon={<RightOutlined />} iconPosition="end">
-                      <Link to={entry.path}>进入</Link>
-                    </Button>
-                  )}
-                  style={{ height: '100%' }}
-                  styles={{ body: { minHeight: 152 } }}
-                >
-                  <Flex vertical justify="space-between" gap={16} style={{ height: '100%' }}>
-                    <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                      {entry.description}
-                    </Typography.Paragraph>
-                    <Button type="primary" icon={group.icon} style={{ alignSelf: 'flex-start' }}>
-                      <Link to={entry.path}>{entry.buttonText}</Link>
-                    </Button>
-                  </Flex>
-                </Card>
-              </Col>
-            ))}
+                  </Card>
+                </Col>
+              )
+            })}
           </Row>
         </Flex>
       ))}

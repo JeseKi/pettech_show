@@ -221,6 +221,16 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/frontend-config", summary="前端运行时配置", tags=["系统"])
+def frontend_config():
+    """返回允许浏览器读取的非敏感前端运行时配置。"""
+    return {
+        "info_distribution": {
+            "base_url": global_config.info_distribution_base_url.strip(),
+        }
+    }
+
+
 app.include_router(auth_router)
 app.include_router(oauth_router)
 app.include_router(oauth_provider_router)

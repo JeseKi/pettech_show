@@ -13,6 +13,7 @@ import {
   MessageCircle,
   MessageCircleWarning,
   Network,
+  NotebookText,
   PenLine,
   PenTool,
   Puzzle,
@@ -33,10 +34,13 @@ import {
   CAPABILITY_GROUP_META,
   CONTENT_GROWTH_TOOL,
   GESTURE_CONTROL_TOOL,
+  INFO_DISTRIBUTION_TOOL,
   INTERACTIVE_MOVIE_TOOL,
+  PERSONAL_AIWIKI_TOOL,
   WECHAT_AUTOMATION_FLOW_TOOL,
   WECOM_MOMENTS_PUBLISH_TOOL,
   VISIBLE_CAPABILITY_ENTRIES,
+  type WorkflowExternalConfigKey,
 } from '../../../lib/workflowModes'
 
 type LandingNavMenuItem = {
@@ -44,6 +48,7 @@ type LandingNavMenuItem = {
   path: string
   description: string
   icon: LucideIcon
+  externalConfigKey?: WorkflowExternalConfigKey
 }
 
 export type LandingNavGroup = {
@@ -136,6 +141,18 @@ export const landingNavGroups: LandingNavGroup[] = [
         icon: Bot,
       },
       {
+        label: INTERACTIVE_MOVIE_TOOL.navLabel,
+        path: INTERACTIVE_MOVIE_TOOL.path,
+        description: INTERACTIVE_MOVIE_TOOL.description,
+        icon: Film,
+      },
+      {
+        label: PERSONAL_AIWIKI_TOOL.navLabel,
+        path: PERSONAL_AIWIKI_TOOL.path,
+        description: PERSONAL_AIWIKI_TOOL.description,
+        icon: NotebookText,
+      },
+      {
         label: GESTURE_CONTROL_TOOL.navLabel,
         path: GESTURE_CONTROL_TOOL.path,
         description: GESTURE_CONTROL_TOOL.description,
@@ -154,10 +171,11 @@ export const landingNavGroups: LandingNavGroup[] = [
         icon: Network,
       },
       {
-        label: INTERACTIVE_MOVIE_TOOL.navLabel,
-        path: INTERACTIVE_MOVIE_TOOL.path,
-        description: INTERACTIVE_MOVIE_TOOL.description,
-        icon: Film,
+        label: INFO_DISTRIBUTION_TOOL.navLabel,
+        path: INFO_DISTRIBUTION_TOOL.path,
+        description: INFO_DISTRIBUTION_TOOL.description,
+        icon: Network,
+        externalConfigKey: INFO_DISTRIBUTION_TOOL.externalConfigKey,
       },
     ],
   },

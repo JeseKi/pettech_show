@@ -6,8 +6,13 @@ export interface TurnstileRuntimeConfig {
   scriptUrl?: string
 }
 
+export interface InfoDistributionRuntimeConfig {
+  baseUrl: string
+}
+
 export interface RuntimeConfigValue {
   loading: boolean
+  infoDistribution: InfoDistributionRuntimeConfig
   turnstile: TurnstileRuntimeConfig
 }
 

@@ -1,18 +1,24 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import {
   RuntimeConfigContext,
+  type InfoDistributionRuntimeConfig,
   type RuntimeConfigValue,
   type TurnstileRuntimeConfig,
 } from '../contexts/RuntimeConfigContext'
-import { fetchDevFrontendConfig } from '../lib/runtimeConfig'
+import { fetchDevFrontendConfig, fetchFrontendConfig } from '../lib/runtimeConfig'
 
 const fallbackTurnstileConfig: TurnstileRuntimeConfig = {
   enabled: Boolean((import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim()),
   siteKey: (import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim(),
 }
 
+const fallbackInfoDistributionConfig: InfoDistributionRuntimeConfig = {
+  baseUrl: (import.meta.env.VITE_INFO_DISTRIBUTION_BASE_URL ?? '').trim(),
+}
+
 export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
+  const [infoDistribution, setInfoDistribution] = useState<InfoDistributionRuntimeConfig>(fallbackInfoDistributionConfig)
   const [turnstile, setTurnstile] = useState<TurnstileRuntimeConfig>(fallbackTurnstileConfig)
 
   useEffect(() => {
@@ -20,8 +26,20 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
 
     const load = async () => {
       try {
-        const config = await fetchDevFrontendConfig()
-        const devTurnstile = config?.turnstile
+        const [config, devConfig] = await Promise.all([
+          fetchFrontendConfig(),
+          fetchDevFrontendConfig(),
+        ])
+
+        if (!alive) {
+          return
+        }
+
+        const infoDistributionBaseUrl = (config?.info_distribution?.base_url ?? '').trim()
+          || fallbackInfoDistributionConfig.baseUrl
+        setInfoDistribution({ baseUrl: infoDistributionBaseUrl })
+
+        const devTurnstile = devConfig?.turnstile
         if (!alive || !devTurnstile) {
           return
         }
@@ -50,9 +68,10 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
   const value = useMemo<RuntimeConfigValue>(
     () => ({
       loading,
+      infoDistribution,
       turnstile,
     }),
-    [loading, turnstile],
+    [infoDistribution, loading, turnstile],
   )
 
   return (

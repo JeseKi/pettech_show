@@ -1,6 +1,7 @@
 import { Button, Space, Tag, Typography } from 'antd'
 import type { TableColumnsType, FormInstance } from 'antd'
 import type { AdminUser, UserRole, UserStatus } from '../../../lib/types'
+import { formatDateTime } from '../../../lib/dateTime'
 
 interface UseColumnsProps {
   currentUserId?: number
@@ -72,7 +73,7 @@ export function useColumns({
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (value: string) => new Date(value).toLocaleString(),
+      render: (value: string) => formatDateTime(value),
     },
     {
       title: '标识',

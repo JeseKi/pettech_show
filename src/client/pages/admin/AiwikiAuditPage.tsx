@@ -4,6 +4,7 @@ import { FileSearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { listAiwikiAuditLogs, type AiwikiAuditLog } from '../../lib/aiwiki'
 import { resolveErrorMessage } from '../../lib/errorMessage'
+import { formatDateTime } from '../../lib/dateTime'
 
 export default function AiwikiAuditPage() {
   const { message } = App.useApp()
@@ -47,7 +48,7 @@ export default function AiwikiAuditPage() {
       key: 'created_at',
       width: 170,
       render: (value: string) => (
-        <Typography.Text style={{ whiteSpace: 'nowrap' }}>{new Date(value).toLocaleString()}</Typography.Text>
+        <Typography.Text style={{ whiteSpace: 'nowrap' }}>{formatDateTime(value)}</Typography.Text>
       ),
     },
     {

@@ -3,6 +3,7 @@ import { BookOpenText, ChevronDown, LayoutDashboard, LogIn, Menu, X } from 'luci
 import { Link } from 'react-router-dom'
 import BrandLogo from '../../../components/brand/BrandLogo'
 import { BRAND_NAME } from '../../../lib/brand'
+import { useRuntimeConfig } from '../../../hooks/useRuntimeConfig'
 import { landingNavGroups } from './pageData'
 
 type LandingNavProps = {
@@ -15,6 +16,7 @@ const NAV_MENU_OPEN_DELAY_MS = 120
 const NAV_MENU_CLOSE_DELAY_MS = 500
 
 export function LandingNav({ isAuthenticated, onAuthAction, onCoursesOpen }: LandingNavProps) {
+  const { infoDistribution } = useRuntimeConfig()
   const [activeNavLabel, setActiveNavLabel] = useState<string | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeMobileGroupLabel, setActiveMobileGroupLabel] = useState(() => landingNavGroups[0]?.label ?? '')
@@ -70,6 +72,13 @@ export function LandingNav({ isAuthenticated, onAuthAction, onCoursesOpen }: Lan
     closeAllMenus()
     onCoursesOpen()
   }, [closeAllMenus, onCoursesOpen])
+
+  const resolveItemPath = useCallback((item: { path: string; externalConfigKey?: string }) => {
+    if (item.externalConfigKey === 'infoDistributionBaseUrl') {
+      return infoDistribution.baseUrl
+    }
+    return item.path
+  }, [infoDistribution.baseUrl])
 
   useEffect(() => () => {
     clearOpenTimer()
@@ -145,9 +154,10 @@ export function LandingNav({ isAuthenticated, onAuthAction, onCoursesOpen }: Lan
               <div className={menuClassName} aria-label={`${group.label}子菜单`}>
                 {group.items.map((item) => {
                   const ItemIcon = item.icon
-
-                  return (
-                    <Link className="landing-nav__menu-link" to={item.path} key={item.path} onClick={closeAllMenus}>
+                  const itemPath = resolveItemPath(item)
+                  const isExternal = Boolean(item.externalConfigKey)
+                  const content = (
+                    <>
                       <span className="landing-nav__menu-icon">
                         <ItemIcon size={17} />
                       </span>
@@ -155,6 +165,24 @@ export function LandingNav({ isAuthenticated, onAuthAction, onCoursesOpen }: Lan
                         <strong>{item.label}</strong>
                         <span>{item.description}</span>
                       </span>
+                    </>
+                  )
+
+                  if (!itemPath) {
+                    return (
+                      <span className="landing-nav__menu-link" key={item.label} title="请先配置 INFO_DISTRIBUTION_BASE_URL">
+                        {content}
+                      </span>
+                    )
+                  }
+
+                  return isExternal ? (
+                    <a className="landing-nav__menu-link" href={itemPath} key={item.label} target="_blank" rel="noreferrer" onClick={closeAllMenus}>
+                      {content}
+                    </a>
+                  ) : (
+                    <Link className="landing-nav__menu-link" to={itemPath} key={itemPath} onClick={closeAllMenus}>
+                      {content}
                     </Link>
                   )
                 })}
@@ -232,9 +260,10 @@ export function LandingNav({ isAuthenticated, onAuthAction, onCoursesOpen }: Lan
                 </Link>
                 {group.items.map((item) => {
                   const ItemIcon = item.icon
-
-                  return (
-                    <Link className="landing-mobile-menu__item" to={item.path} key={item.path} onClick={closeAllMenus}>
+                  const itemPath = resolveItemPath(item)
+                  const isExternal = Boolean(item.externalConfigKey)
+                  const content = (
+                    <>
                       <span className="landing-mobile-menu__item-icon">
                         <ItemIcon size={16} />
                       </span>
@@ -242,6 +271,24 @@ export function LandingNav({ isAuthenticated, onAuthAction, onCoursesOpen }: Lan
                         <strong>{item.label}</strong>
                         <span>{item.description}</span>
                       </span>
+                    </>
+                  )
+
+                  if (!itemPath) {
+                    return (
+                      <span className="landing-mobile-menu__item" key={item.label} title="请先配置 INFO_DISTRIBUTION_BASE_URL">
+                        {content}
+                      </span>
+                    )
+                  }
+
+                  return isExternal ? (
+                    <a className="landing-mobile-menu__item" href={itemPath} key={item.label} target="_blank" rel="noreferrer" onClick={closeAllMenus}>
+                      {content}
+                    </a>
+                  ) : (
+                    <Link className="landing-mobile-menu__item" to={itemPath} key={itemPath} onClick={closeAllMenus}>
+                      {content}
                     </Link>
                   )
                 })}
