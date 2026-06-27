@@ -41,6 +41,24 @@ export const PERSONAL_AIWIKI_TOOL = {
   buttonText: '进入个人知识库',
 }
 
+export const WECHAT_AUTOMATION_FLOW_TOOL = {
+  key: 'wechat-automation-flow',
+  path: '/wechat-automation-flow',
+  navLabel: '微信自动化流程',
+  title: '微信自动化流程',
+  description: '以流程网络演示从任务输入、素材编排、风控校验到微信生态发布复盘的 Agent 自动化路径。',
+  buttonText: '查看流程演示',
+}
+
+export const WECOM_MOMENTS_PUBLISH_TOOL = {
+  key: 'wecom-moments-publish',
+  path: '/wecom-moments-publish',
+  navLabel: '企业微信朋友圈发布',
+  title: '企业微信朋友圈发布',
+  description: '基于企业微信客户朋友圈 API，演示从授权、素材 media_id、可见范围到 jobid、moment_id 和复盘回流的官方接口链路。',
+  buttonText: '查看发布链路',
+}
+
 export const CONTENT_GROWTH_TOOL = {
   key: 'content-growth',
   path: '/content-growth',

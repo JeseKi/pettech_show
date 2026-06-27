@@ -9,6 +9,8 @@ import {
   GESTURE_CONTROL_TOOL,
   INTERACTIVE_MOVIE_TOOL,
   PERSONAL_AIWIKI_TOOL,
+  WECHAT_AUTOMATION_FLOW_TOOL,
+  WECOM_MOMENTS_PUBLISH_TOOL,
   VISIBLE_CAPABILITY_ENTRIES,
   type CapabilityGroupId,
 } from '../../lib/workflowModes'
@@ -28,7 +30,7 @@ const entryGroups = [
   {
     title: '工具',
     icon: <BookOutlined />,
-    entries: [AGENT_TOOL, PERSONAL_AIWIKI_TOOL, GESTURE_CONTROL_TOOL, INTERACTIVE_MOVIE_TOOL],
+    entries: [AGENT_TOOL, PERSONAL_AIWIKI_TOOL, GESTURE_CONTROL_TOOL, WECHAT_AUTOMATION_FLOW_TOOL, WECOM_MOMENTS_PUBLISH_TOOL, INTERACTIVE_MOVIE_TOOL],
   },
   ...Object.entries(CAPABILITY_GROUP_META).map(([groupId, meta]) => ({
     title: meta.title,

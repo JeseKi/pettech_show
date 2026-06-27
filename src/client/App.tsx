@@ -19,10 +19,18 @@ import InteractiveMoviePage from './pages/interactiveMovie'
 import PublicInteractiveMoviePlayer from './pages/interactiveMovie/PublicInteractiveMoviePlayer'
 import CapabilityEntryPage from './pages/capabilities/CapabilityEntryPage'
 import GestureControlPage from './pages/gestureControl'
+import WechatAutomationFlowPage from './pages/wechatAutomationFlow'
+import WecomMomentsPublishPage from './pages/wecomMomentsPublish'
 import { AuthProvider, RequireAdmin, RequireAuth } from './providers/AuthProvider'
 import { RuntimeConfigProvider } from './providers/RuntimeConfigProvider'
 import { GestureControlProvider } from './components/gesture/GestureControlProvider'
-import { GESTURE_CONTROL_TOOL, PERSONAL_AIWIKI_TOOL, VISIBLE_CAPABILITY_ENTRIES } from './lib/workflowModes'
+import {
+  GESTURE_CONTROL_TOOL,
+  PERSONAL_AIWIKI_TOOL,
+  VISIBLE_CAPABILITY_ENTRIES,
+  WECHAT_AUTOMATION_FLOW_TOOL,
+  WECOM_MOMENTS_PUBLISH_TOOL,
+} from './lib/workflowModes'
 
 function LegacyChatSessionRedirect() {
   const { sessionId } = useParams<{ sessionId?: string }>()
@@ -115,6 +123,8 @@ export default function App() {
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path={PERSONAL_AIWIKI_TOOL.path} element={<PersonalAiwikiPage />} />
                   <Route path={GESTURE_CONTROL_TOOL.path} element={<GestureControlPage />} />
+                  <Route path={WECHAT_AUTOMATION_FLOW_TOOL.path} element={<WechatAutomationFlowPage />} />
+                  <Route path={WECOM_MOMENTS_PUBLISH_TOOL.path} element={<WecomMomentsPublishPage />} />
                   <Route path="/seed-matrices" element={<Navigate to="/content-growth?stage=strategy&strategyMode=standard" replace />} />
                   <Route path="/seed-matrices/standard" element={<Navigate to="/content-growth?stage=strategy&strategyMode=standard" replace />} />
                   <Route path="/seed-matrices/batch" element={<Navigate to="/content-growth?stage=strategy&strategyMode=batch" replace />} />

@@ -1,0 +1,21 @@
+.wechat-automation-flow-page {
+  width: 100%;
+  min-height: calc(100vh - 152px);
+}
+
+.wechat-automation-flow-frame {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 152px);
+  min-height: 720px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 8px;
+  background: #050706;
+}
+
+@media (max-width: 768px) {
+  .wechat-automation-flow-frame {
+    height: calc(100vh - 128px);
+    min-height: 640px;
+  }
+}

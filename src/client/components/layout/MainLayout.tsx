@@ -42,6 +42,8 @@ import {
   GESTURE_CONTROL_TOOL,
   INTERACTIVE_MOVIE_TOOL,
   PERSONAL_AIWIKI_TOOL,
+  WECHAT_AUTOMATION_FLOW_TOOL,
+  WECOM_MOMENTS_PUBLISH_TOOL,
   VISIBLE_CAPABILITY_ENTRIES,
   type CapabilityGroupId,
 } from '../../lib/workflowModes'
@@ -51,6 +53,8 @@ const workflowEntries = [
   CONTENT_GROWTH_TOOL,
   PERSONAL_AIWIKI_TOOL,
   GESTURE_CONTROL_TOOL,
+  WECHAT_AUTOMATION_FLOW_TOOL,
+  WECOM_MOMENTS_PUBLISH_TOOL,
   INTERACTIVE_MOVIE_TOOL,
   ...VISIBLE_CAPABILITY_ENTRIES,
 ]
@@ -161,6 +165,14 @@ export default function MainLayout() {
           {
             key: GESTURE_CONTROL_TOOL.key,
             label: <Link to={GESTURE_CONTROL_TOOL.path}>{GESTURE_CONTROL_TOOL.navLabel}</Link>,
+          },
+          {
+            key: WECHAT_AUTOMATION_FLOW_TOOL.key,
+            label: <Link to={WECHAT_AUTOMATION_FLOW_TOOL.path}>{WECHAT_AUTOMATION_FLOW_TOOL.navLabel}</Link>,
+          },
+          {
+            key: WECOM_MOMENTS_PUBLISH_TOOL.key,
+            label: <Link to={WECOM_MOMENTS_PUBLISH_TOOL.path}>{WECOM_MOMENTS_PUBLISH_TOOL.navLabel}</Link>,
           },
           {
             key: INTERACTIVE_MOVIE_TOOL.key,
@@ -549,6 +561,8 @@ export default function MainLayout() {
               margin: '0 auto',
               maxWidth: location.pathname.startsWith('/aiwiki')
                 || location.pathname.startsWith('/content-growth')
+                || location.pathname.startsWith('/wechat-automation-flow')
+                || location.pathname.startsWith('/wecom-moments-publish')
                 || location.pathname.startsWith('/competitor-insights')
                 || location.pathname.startsWith('/topic-planning')
                 || location.pathname.startsWith('/script-creation')

@@ -34,6 +34,8 @@ import {
   CONTENT_GROWTH_TOOL,
   GESTURE_CONTROL_TOOL,
   INTERACTIVE_MOVIE_TOOL,
+  WECHAT_AUTOMATION_FLOW_TOOL,
+  WECOM_MOMENTS_PUBLISH_TOOL,
   VISIBLE_CAPABILITY_ENTRIES,
 } from '../../../lib/workflowModes'
 
@@ -138,6 +140,18 @@ export const landingNavGroups: LandingNavGroup[] = [
         path: GESTURE_CONTROL_TOOL.path,
         description: GESTURE_CONTROL_TOOL.description,
         icon: Hand,
+      },
+      {
+        label: WECHAT_AUTOMATION_FLOW_TOOL.navLabel,
+        path: WECHAT_AUTOMATION_FLOW_TOOL.path,
+        description: WECHAT_AUTOMATION_FLOW_TOOL.description,
+        icon: Route,
+      },
+      {
+        label: WECOM_MOMENTS_PUBLISH_TOOL.navLabel,
+        path: WECOM_MOMENTS_PUBLISH_TOOL.path,
+        description: WECOM_MOMENTS_PUBLISH_TOOL.description,
+        icon: Network,
       },
       {
         label: INTERACTIVE_MOVIE_TOOL.navLabel,
