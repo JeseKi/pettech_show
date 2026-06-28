@@ -25,6 +25,7 @@ dist-ssr
 
 # env
 .env
+.token
 config/config.json
 
 # tmp

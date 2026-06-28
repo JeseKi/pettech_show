@@ -12,13 +12,14 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import Scope
 
 from src.server.config import global_config
+from src.server.access_gate import service as access_gate_service
 from src.server.database import get_database_info, init_database
 from src.server.logging_config import setup_logging
 from src.server.providers.service import sync_external_providers
@@ -63,6 +64,10 @@ async def lifespan(_: FastAPI):
     - 启动时检查并按需初始化数据库。
     """
     logger.info("应用启动中...")
+    if global_config.app_env != "test":
+        access_gate_service.initialize_access_token(PROJECT_ROOT)
+        logger.success(f"访问 token 已写入: {PROJECT_ROOT / '.token'}")
+
     db_info = get_database_info()
     if not db_info.database_exists:
         logger.warning("数据库不存在，正在执行初始化...")
@@ -209,8 +214,58 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class AccessGateMiddleware(BaseHTTPMiddleware):
+    """
+    Require the startup token before serving protected pages or private APIs.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if global_config.app_env == "test":
+            return await call_next(request)
+
+        path = request.url.path
+        if access_gate_service.is_public_request_path(path):
+            return await call_next(request)
+
+        query_token = access_gate_service.query_gate_token(request)
+        if query_token:
+            if access_gate_service.is_valid_token(PROJECT_ROOT, query_token):
+                response = RedirectResponse(
+                    access_gate_service.strip_gate_token_from_url(request),
+                    status_code=303,
+                )
+                response.set_cookie(
+                    key=access_gate_service.ACCESS_GATE_COOKIE_NAME,
+                    value=query_token,
+                    httponly=True,
+                    secure=global_config.app_env == "prod",
+                    samesite="lax",
+                    path="/",
+                )
+                return response
+            return HTMLResponse(
+                access_gate_service.build_gate_page(path=path, invalid_token=True),
+                status_code=401,
+            )
+
+        if access_gate_service.is_gate_authorized(request, PROJECT_ROOT):
+            return await call_next(request)
+
+        if path.startswith("/api"):
+            return JSONResponse(
+                {"detail": "访问需要服务器启动 token"},
+                status_code=403,
+            )
+
+        return HTMLResponse(
+            access_gate_service.build_gate_page(path=path),
+            status_code=401,
+        )
+
+
 app.add_middleware(CacheControlMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(AccessGateMiddleware)
 
 
 # --- API 路由 ---
