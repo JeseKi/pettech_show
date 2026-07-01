@@ -1,5 +1,5 @@
-import { DoubleLeftOutlined, DoubleRightOutlined } from '@ant-design/icons'
-import { Empty } from 'antd'
+import { DeleteOutlined, DoubleLeftOutlined, DoubleRightOutlined } from '@ant-design/icons'
+import { Button, Empty, Typography } from 'antd'
 import { AssetEditor } from '../AssetEditor'
 import { ChoiceEditor } from '../ChoiceEditor'
 import { NodeLinkEditor } from '../NodeLinkEditor'
@@ -14,6 +14,7 @@ export function EditorFloatingPanel() {
     confirmDeleteAssetNode,
     confirmDeleteChoice,
     confirmDeleteScene,
+    confirmDeleteSelectedCanvasNodes,
     createSceneForChoice,
     deleteLine,
     deleteNodeLink,
@@ -25,6 +26,7 @@ export function EditorFloatingPanel() {
     scenePanelState,
     scenes,
     selectedAsset,
+    selectedCanvasNodes,
     selectedChoice,
     selectedNodeLink,
     selectedScene,
@@ -56,6 +58,9 @@ export function EditorFloatingPanel() {
       return fromSceneToVideo || fromVideoToScene
     }))
     : []
+  const hasMultiSelection = selectedCanvasNodes.length > 1
+  const selectedSceneCount = selectedCanvasNodes.filter((item) => item.type === 'scene').length
+  const selectedAssetCount = selectedCanvasNodes.length - selectedSceneCount
 
   return (
     <div className={rightPanelCollapsed ? 'movie-floating-panel is-collapsed' : 'movie-floating-panel'}>
@@ -73,7 +78,25 @@ export function EditorFloatingPanel() {
         onPointerDown={(event) => event.stopPropagation()}
         onWheel={(event) => event.stopPropagation()}
       >
-        {selectedScene && (
+        {hasMultiSelection && (
+          <section className="movie-panel-section movie-multi-selection-panel">
+            <div className="movie-panel-title-block">
+              <Typography.Text className="movie-panel-kicker">多选节点</Typography.Text>
+              <Typography.Title level={3}>{selectedCanvasNodes.length} 个节点已选中</Typography.Title>
+            </div>
+            <Typography.Text className="movie-panel-muted">
+              {selectedSceneCount} 个场景 · {selectedAssetCount} 个素材
+            </Typography.Text>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              onClick={confirmDeleteSelectedCanvasNodes}
+            >
+              删除已选节点
+            </Button>
+          </section>
+        )}
+        {!hasMultiSelection && selectedScene && (
             <SceneEditor
               scene={selectedScene}
               outgoingChoices={choices.filter((choice) => choice.fromSceneId === selectedScene.id)}
@@ -96,7 +119,7 @@ export function EditorFloatingPanel() {
               onDeleteScene={() => confirmDeleteScene(selectedScene.id)}
             />
         )}
-        {selectedChoice && (
+        {!hasMultiSelection && selectedChoice && (
           <ChoiceEditor
             choice={selectedChoice}
             scenes={scenes}
@@ -105,7 +128,7 @@ export function EditorFloatingPanel() {
             onDeleteChoice={() => confirmDeleteChoice(selectedChoice.id)}
           />
         )}
-        {selectedAsset && (
+        {!hasMultiSelection && selectedAsset && (
           <AssetEditor
             asset={selectedAsset}
             uploadState={uploadByAssetId[selectedAsset.id] ?? { status: 'idle' }}
@@ -114,7 +137,7 @@ export function EditorFloatingPanel() {
             onDelete={() => confirmDeleteAssetNode(selectedAsset.id)}
           />
         )}
-        {selectedNodeLink && (
+        {!hasMultiSelection && selectedNodeLink && (
           <NodeLinkEditor
             link={selectedNodeLink}
             sceneMap={sceneMap}
@@ -122,7 +145,7 @@ export function EditorFloatingPanel() {
             onDelete={() => deleteNodeLink(selectedNodeLink.id)}
           />
         )}
-        {!selectedScene && !selectedChoice && !selectedAsset && !selectedNodeLink && (
+        {!hasMultiSelection && !selectedScene && !selectedChoice && !selectedAsset && !selectedNodeLink && (
           <Empty description="选择一个场景或选择连线开始编辑" />
         )}
       </aside>

@@ -402,12 +402,19 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  cursor: grab;
   background:
     radial-gradient(circle at 52% 38%, rgba(56, 189, 248, 0.08), transparent 34%),
     radial-gradient(circle at 18% 72%, rgba(184, 255, 103, 0.06), transparent 28%),
     var(--app-bg);
   touch-action: none;
+}
+
+.movie-canvas.is-drag {
+  cursor: grab;
+}
+
+.movie-canvas.is-marquee {
+  cursor: crosshair;
 }
 
 .movie-canvas::before,
@@ -444,7 +451,7 @@
     radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.24) 100%);
 }
 
-.movie-canvas:active {
+.movie-canvas.is-drag:active {
   cursor: grabbing;
 }
 
@@ -457,6 +464,15 @@
   overflow: visible;
   transform-origin: 0 0;
   z-index: 1;
+}
+
+.movie-canvas-marquee {
+  position: absolute;
+  z-index: 8;
+  border: 1px solid rgba(56, 189, 248, 0.9);
+  background: rgba(56, 189, 248, 0.14);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.16) inset;
+  pointer-events: none;
 }
 
 .movie-edge-layer {
@@ -1110,6 +1126,69 @@
   background: rgba(0, 0, 0, 0.28);
 }
 
+.movie-agent-tool-steps {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.movie-agent-tool-step {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 7px 8px;
+}
+
+.movie-agent-tool-step-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.8);
+}
+
+.movie-agent-tool-step.is-running .movie-agent-tool-step-dot {
+  background: #38bdf8;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.14);
+}
+
+.movie-agent-tool-step.is-done .movie-agent-tool-step-dot {
+  background: #2dd4bf;
+}
+
+.movie-agent-tool-step.is-error .movie-agent-tool-step-dot {
+  background: #fb7185;
+}
+
+.movie-agent-tool-step-main {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.movie-agent-tool-step-main strong,
+.movie-agent-tool-step-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.movie-agent-tool-step-main strong {
+  color: var(--app-text-primary);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.movie-agent-tool-step-main small {
+  color: var(--app-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .movie-agent-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 38px;
@@ -1265,6 +1344,19 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.movie-multi-selection-panel {
+  gap: 12px;
+}
+
+.movie-multi-selection-panel .ant-btn {
+  align-self: stretch;
+}
+
+.movie-panel-muted {
+  color: var(--app-text-muted) !important;
+  font-size: 13px;
 }
 
 .movie-panel-label {

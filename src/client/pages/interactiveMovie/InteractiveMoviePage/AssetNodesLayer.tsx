@@ -7,12 +7,12 @@ import { NodeHandles } from '../NodeHandles'
 import { useInteractiveMoviePageContext } from './useInteractiveMoviePageContext'
 
 export function AssetNodesLayer() {
-  const { assetNodes, beginLinkDrag, beginNodeDrag, confirmDeleteAssetNode, linkDraft, selectedObject, setSelectedObject } = useInteractiveMoviePageContext()
+  const { assetNodes, beginLinkDrag, beginNodeDrag, confirmDeleteAssetNode, linkDraft, selectedCanvasNodeKeys, setSelectedObject } = useInteractiveMoviePageContext()
 
   return (
     <>
       {assetNodes.map((asset) => {
-        const selected = selectedObject.type === asset.type && selectedObject.id === asset.id
+        const selected = selectedCanvasNodeKeys.has(`${asset.type}:${asset.id}`)
         const icon = asset.type === 'text'
           ? <FileTextOutlined />
           : asset.type === 'image'
@@ -30,6 +30,7 @@ export function AssetNodesLayer() {
             onPointerDown={(event) => beginNodeDrag(event, asset.type, asset.id)}
             onClick={(event) => {
               event.stopPropagation()
+              if (selected && selectedCanvasNodeKeys.size > 1) return
               setSelectedObject({ type: asset.type, id: asset.id })
             }}
           >

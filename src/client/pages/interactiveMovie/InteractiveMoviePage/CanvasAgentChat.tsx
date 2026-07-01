@@ -15,13 +15,21 @@ import {
 import { listMyAgents, type UserAgent } from '../../../lib/agentMarket'
 import { listMyAgentSkills, type UserAgentSkill } from '../../../lib/agentSkills'
 import { resolveErrorMessage } from '../../../lib/errorMessage'
-import type { CanvasAgentToolCall } from '../interactiveMovieTypes'
+import type { CanvasAgentToolCall, CanvasAgentToolResult } from '../interactiveMovieTypes'
 import { useInteractiveMoviePageContext } from './useInteractiveMoviePageContext'
 
 type CanvasAgentMessage = {
+  steps?: CanvasAgentToolStep[]
   id: string
   role: 'user' | 'assistant'
   content: string
+}
+
+type CanvasAgentToolStep = {
+  detail?: string
+  id: string
+  status: 'done' | 'error' | 'running'
+  title: string
 }
 
 type PanelGeometry = {
@@ -59,7 +67,7 @@ type MentionOption = {
 
 const FRONTEND_CANVAS_PREFIX = 'frontend_canvas__'
 const FRONTEND_CANVAS_UNAVAILABLE_MESSAGE = '请在画布中调用智能体, 而非在聊天栏调用.'
-const MAX_TOOL_STEPS = 4
+const MAX_TOOL_STEPS = 8
 const PANEL_GEOMETRY_KEY = 'interactiveMovie.canvasAgent.panelGeometry'
 const PANEL_SESSION_KEY = 'interactiveMovie.canvasAgent.sessionId'
 const KNOWLEDGE_MENTION = '$知识库'
@@ -244,18 +252,126 @@ const canvasToolDefinitions: Array<Record<string, unknown>> = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: `${FRONTEND_CANVAS_PREFIX}apply_operations`,
+      description: '批量执行多个画布操作，适合一次性创建知识库图、批量创建节点和连线，减少多轮工具调用。每个 operation.action 可为 create_node、update_node、delete_node、create_relation、update_relation、delete_relation。',
+      parameters: {
+        type: 'object',
+        properties: {
+          operations: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                action: {
+                  type: 'string',
+                  enum: ['create_node', 'update_node', 'delete_node', 'create_relation', 'update_relation', 'delete_relation'],
+                },
+                type: { type: 'string' },
+                id: { type: 'string' },
+                title: { type: 'string' },
+                position: { type: 'object' },
+                patch: { type: 'object' },
+                role: { type: 'string' },
+                script: { type: 'object' },
+                text: { type: 'string' },
+                media: { type: 'object' },
+                fromSceneId: { type: 'string' },
+                toSceneId: { type: 'string' },
+                label: { type: 'string' },
+                from: { type: 'object' },
+                to: { type: 'object' },
+              },
+              required: ['action'],
+              additionalProperties: true,
+            },
+          },
+        },
+        required: ['operations'],
+        additionalProperties: false,
+      },
+    },
+  },
 ]
 
 const messageId = (role: CanvasAgentMessage['role']) => `${role}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+const toolStepId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+)
+
+const readableValue = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null)
 
 const parseToolArguments = (raw: unknown): Record<string, unknown> => {
   if (typeof raw !== 'string') return {}
   try {
     const parsed = JSON.parse(raw) as unknown
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
+    return isRecord(parsed) ? parsed : {}
   } catch {
     return {}
   }
+}
+
+const toolFunctionPayload = (toolCall: Record<string, unknown>) => (
+  isRecord(toolCall.function) ? toolCall.function : null
+)
+
+const toolFunctionName = (toolCall: Record<string, unknown>) => {
+  const functionPayload = toolFunctionPayload(toolCall)
+  return typeof functionPayload?.name === 'string' ? functionPayload.name : ''
+}
+
+const toolFunctionArguments = (toolCall: Record<string, unknown>) => {
+  const functionPayload = toolFunctionPayload(toolCall)
+  return parseToolArguments(functionPayload?.arguments)
+}
+
+const endpointLabel = (value: unknown) => {
+  if (!isRecord(value)) return ''
+  const type = readableValue(value.type)
+  const id = readableValue(value.id)
+  return [type, id].filter(Boolean).join(':')
+}
+
+const canvasToolStepTitle = (toolCall: Record<string, unknown>) => {
+  const name = toolFunctionName(toolCall).replace(FRONTEND_CANVAS_PREFIX, '')
+  const args = toolFunctionArguments(toolCall)
+  const type = readableValue(args.type)
+  const id = readableValue(args.id)
+  const title = readableValue(args.title)
+  const label = readableValue(args.label)
+  if (name === 'get_overview') return { title: '读取画布概括' }
+  if (name === 'get_node_detail') return { title: `读取节点详情：${[type, id].filter(Boolean).join(':') || '未指定节点'}` }
+  if (name === 'create_node') return { title: `创建${type === 'scene' ? '场景' : '节点'}：${title || type || '未命名'}` }
+  if (name === 'update_node') return { title: `更新节点：${[type, id].filter(Boolean).join(':') || '未指定节点'}` }
+  if (name === 'delete_node') return { title: `删除节点：${[type, id].filter(Boolean).join(':') || '未指定节点'}` }
+  if (name === 'create_relation') {
+    if (type === 'choice') return { title: `创建选择线：${label || '未命名选择'}`, detail: `${readableValue(args.fromSceneId) || '?'} -> ${readableValue(args.toSceneId) || '?'}` }
+    return { title: '创建节点连接', detail: `${endpointLabel(args.from) || '?'} -> ${endpointLabel(args.to) || '?'}` }
+  }
+  if (name === 'update_relation') return { title: `更新关系：${[type, id].filter(Boolean).join(':') || '未指定关系'}` }
+  if (name === 'delete_relation') return { title: `删除关系：${[type, id].filter(Boolean).join(':') || '未指定关系'}` }
+  if (name === 'apply_operations') {
+    const operations = Array.isArray(args.operations) ? args.operations : []
+    return { title: `批量执行画布操作：${operations.length} 个` }
+  }
+  return { title: `调用画布工具：${name || 'unknown'}` }
+}
+
+const extractKnowledgeToolTrace = (raw: Record<string, unknown> | null | undefined) => {
+  const trace = raw?.tool_trace
+  if (!Array.isArray(trace)) return []
+  return trace
+    .filter((item): item is Record<string, unknown> => isRecord(item))
+    .map((item) => ({
+      page: readableValue(item.page) || readableValue(item.title) || '',
+      source: readableValue(item.source) || 'tool_call',
+    }))
+    .filter((item) => item.page)
 }
 
 const extractToolCalls = (raw: Record<string, unknown> | null | undefined): Array<Record<string, unknown>> => {
@@ -270,12 +386,7 @@ const extractToolCalls = (raw: Record<string, unknown> | null | undefined): Arra
 }
 
 const toolCallToCanvasCall = (toolCall: Record<string, unknown>): CanvasAgentToolCall => {
-  const functionPayload = toolCall.function
-  if (typeof functionPayload !== 'object' || functionPayload === null) return { name: '' }
-  const name = typeof (functionPayload as { name?: unknown }).name === 'string'
-    ? String((functionPayload as { name: string }).name)
-    : ''
-  return { name, arguments: parseToolArguments((functionPayload as { arguments?: unknown }).arguments) }
+  return { name: toolFunctionName(toolCall), arguments: toolFunctionArguments(toolCall) }
 }
 
 const toolCallId = (toolCall: Record<string, unknown>, index: number) => (
@@ -473,6 +584,7 @@ export function CanvasAgentChat({
         '你是互动电影画布智能体。你可以通过 frontend_canvas__ 前缀工具读取和修改当前画布。',
         `这些工具只能在画布页执行；如果不在画布页，应返回：${FRONTEND_CANVAS_UNAVAILABLE_MESSAGE}`,
         '当前 system context 只包含画布概括。需要完整字段时先调用 get_node_detail，不要凭旧上下文猜测。',
+        '当需要创建或修改多个节点/关系时，优先调用 frontend_canvas__apply_operations 批量提交，避免一轮只处理一个对象。',
         '完成工具调用后，用简洁中文说明你做了什么。回复支持 Markdown。',
         `当前项目：${activeProject.title}`,
         selectedAgentId ? `本轮指定智能体 id：${selectedAgentId}` : '',
@@ -483,7 +595,74 @@ export function CanvasAgentChat({
     { role: 'user', content: userContent },
   ]
 
-  const requestWithTools = async (baseMessages: ChatMessagePayload[], step = 1): Promise<string> => {
+  const updateAssistantMessage = (
+    assistantMessageId: string,
+    updater: (message: CanvasAgentMessage) => CanvasAgentMessage,
+  ) => {
+    setMessages((current) => current.map((message) => (
+      message.id === assistantMessageId ? updater(message) : message
+    )))
+  }
+
+  const appendToolStep = (assistantMessageId: string, toolStep: CanvasAgentToolStep) => {
+    updateAssistantMessage(assistantMessageId, (message) => ({
+      ...message,
+      steps: [...(message.steps ?? []), toolStep],
+    }))
+  }
+
+  const updateToolStep = (
+    assistantMessageId: string,
+    stepId: string,
+    patch: Partial<Omit<CanvasAgentToolStep, 'id'>>,
+  ) => {
+    updateAssistantMessage(assistantMessageId, (message) => ({
+      ...message,
+      steps: (message.steps ?? []).map((step) => (
+        step.id === stepId ? { ...step, ...patch } : step
+      )),
+    }))
+  }
+
+  const appendKnowledgeTraceSteps = (
+    assistantMessageId: string,
+    raw: Record<string, unknown> | null | undefined,
+    seenTraceKeys: Set<string>,
+  ) => {
+    for (const item of extractKnowledgeToolTrace(raw)) {
+      const key = `${item.source}:${item.page}`
+      if (seenTraceKeys.has(key)) continue
+      seenTraceKeys.add(key)
+      appendToolStep(assistantMessageId, {
+        id: toolStepId('knowledge-entry'),
+        status: 'done',
+        title: `读取知识库词条：${item.page}`,
+        detail: item.source === 'auto_fallback' ? '模型未主动调用工具时由后端按索引自动读取' : undefined,
+      })
+    }
+  }
+
+  const requestWithTools = async (
+    baseMessages: ChatMessagePayload[],
+    assistantMessageId: string,
+    seenKnowledgeTraceKeys: Set<string>,
+    step = 1,
+  ): Promise<string> => {
+    if (step > MAX_TOOL_STEPS) {
+      appendToolStep(assistantMessageId, {
+        id: toolStepId('tool-limit'),
+        status: 'error',
+        title: '工具调用已暂停',
+        detail: '已完成的画布操作会保留，可以继续追问让智能体补齐剩余部分。',
+      })
+      return `工具调用已暂停。已完成的画布操作会保留，你可以继续要求我补齐剩余内容。`
+    }
+    const responseStepId = toolStepId('model-response')
+    appendToolStep(assistantMessageId, {
+      id: responseStepId,
+      status: 'running',
+      title: '等待模型响应',
+    })
     const response = await createChatCompletion({
       messages: baseMessages,
       agent_id: selectedAgentId ?? undefined,
@@ -491,17 +670,47 @@ export function CanvasAgentChat({
       temperature: 0.2,
       max_tokens: 2200,
     })
+    appendKnowledgeTraceSteps(assistantMessageId, response.raw ?? null, seenKnowledgeTraceKeys)
     const toolCalls = extractToolCalls(response.raw ?? null).filter((toolCall) => {
-      const functionPayload = toolCall.function
-      const name = typeof functionPayload === 'object' && functionPayload !== null
-        ? (functionPayload as { name?: unknown }).name
-        : null
+      const name = toolFunctionName(toolCall)
       return typeof name === 'string' && name.startsWith(FRONTEND_CANVAS_PREFIX)
     })
-    if (toolCalls.length === 0) return response.content || '已处理。'
-    if (step > MAX_TOOL_STEPS) return '工具调用轮次过多，已停止。'
+    if (toolCalls.length === 0) {
+      updateToolStep(assistantMessageId, responseStepId, {
+        status: 'done',
+        title: '模型生成回复',
+      })
+      return response.content || '已处理。'
+    }
+    updateToolStep(assistantMessageId, responseStepId, {
+      status: 'done',
+      title: `模型请求 ${toolCalls.length} 个工具调用`,
+    })
+    if (response.content.trim()) {
+      appendToolStep(assistantMessageId, {
+        id: toolStepId('model-output'),
+        status: 'done',
+        title: '模型输出',
+        detail: response.content.trim(),
+      })
+    }
 
-    const toolResults = toolCalls.map((toolCall) => executeCanvasAgentTool(toolCallToCanvasCall(toolCall)))
+    const toolResults: CanvasAgentToolResult[] = []
+    for (const toolCall of toolCalls) {
+      const description = canvasToolStepTitle(toolCall)
+      const executionStepId = toolStepId('canvas-tool')
+      appendToolStep(assistantMessageId, {
+        id: executionStepId,
+        status: 'running',
+        ...description,
+      })
+      const result = executeCanvasAgentTool(toolCallToCanvasCall(toolCall))
+      toolResults.push(result)
+      updateToolStep(assistantMessageId, executionStepId, {
+        status: result.ok ? 'done' : 'error',
+        detail: result.message,
+      })
+    }
     const nextMessages: ChatMessagePayload[] = [
       ...baseMessages,
       { role: 'assistant', content: response.content ?? '', tool_calls: toolCalls },
@@ -512,7 +721,7 @@ export function CanvasAgentChat({
         content: JSON.stringify(result),
       })),
     ]
-    return requestWithTools(nextMessages, step + 1)
+    return requestWithTools(nextMessages, assistantMessageId, seenKnowledgeTraceKeys, step + 1)
   }
 
   const sendMessage = async () => {
@@ -520,19 +729,56 @@ export function CanvasAgentChat({
     if (!content || loading) return
     setInput('')
     setLoading(true)
-    setMessages((current) => [...current, { id: messageId('user'), role: 'user', content }])
+    const assistantMessageId = messageId('assistant')
+    const initialSteps: CanvasAgentToolStep[] = content.includes(KNOWLEDGE_MENTION)
+      ? [{
+        id: toolStepId('knowledge-index'),
+        status: 'running',
+        title: '读取个人 AI Wiki 索引',
+        detail: '根据 $知识库 指令注入索引，并允许后端读取相关词条全文。',
+      }]
+      : []
+    setMessages((current) => [
+      ...current,
+      { id: messageId('user'), role: 'user', content },
+      { id: assistantMessageId, role: 'assistant', content: '正在处理...', steps: initialSteps },
+    ])
     try {
-      const assistantContent = await requestWithTools(buildBaseMessages(content))
-      setMessages((current) => [...current, { id: messageId('assistant'), role: 'assistant', content: assistantContent }])
+      const seenKnowledgeTraceKeys = new Set<string>()
+      const assistantContent = await requestWithTools(buildBaseMessages(content), assistantMessageId, seenKnowledgeTraceKeys)
+      if (content.includes(KNOWLEDGE_MENTION)) {
+        updateToolStep(assistantMessageId, initialSteps[0]?.id ?? '', {
+          status: 'done',
+          title: '已注入个人 AI Wiki 索引',
+        })
+      }
+      updateAssistantMessage(assistantMessageId, (message) => ({
+        ...message,
+        content: assistantContent,
+      }))
       const session = await persistChatSessionTurn({
         session_id: activeSessionId ?? undefined,
         agent_id: selectedAgentId ?? undefined,
         user_content: content,
         assistant_content: assistantContent,
       })
-      await refreshSessions(session.id)
+      setActiveSessionId(session.id)
+      setSelectedAgentId(session.agent_id ?? selectedAgentId)
+      setSessions(await listChatSessions())
     } catch (error) {
-      setMessages((current) => [...current, { id: messageId('assistant'), role: 'assistant', content: resolveErrorMessage(error) }])
+      updateAssistantMessage(assistantMessageId, (message) => ({
+        ...message,
+        content: resolveErrorMessage(error),
+        steps: [
+          ...(message.steps ?? []),
+          {
+            id: toolStepId('error'),
+            status: 'error',
+            title: '处理失败',
+            detail: resolveErrorMessage(error),
+          },
+        ],
+      }))
     } finally {
       setLoading(false)
     }
@@ -678,6 +924,19 @@ export function CanvasAgentChat({
           <div className="movie-agent-empty">让智能体读取、创建、更新或删除当前画布节点和连线。</div>
         ) : messages.map((message) => (
           <div key={message.id} className={`movie-agent-message is-${message.role}`}>
+            {message.steps && message.steps.length > 0 && (
+              <div className="movie-agent-tool-steps">
+                {message.steps.map((step) => (
+                  <div className={`movie-agent-tool-step is-${step.status}`} key={step.id}>
+                    <span className="movie-agent-tool-step-dot" aria-hidden />
+                    <span className="movie-agent-tool-step-main">
+                      <strong>{step.title}</strong>
+                      {step.detail && <small>{step.detail}</small>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
           </div>
         ))}

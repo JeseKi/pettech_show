@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
-import { BorderOuterOutlined, BranchesOutlined, DownOutlined, EditOutlined, FileTextOutlined, FullscreenOutlined, MessageOutlined, PictureOutlined, PlusOutlined, UpOutlined, VideoCameraOutlined, ZoomInOutlined, ZoomOutOutlined } from '@ant-design/icons'
+import { BorderOuterOutlined, BranchesOutlined, DownOutlined, DragOutlined, EditOutlined, FileTextOutlined, FullscreenOutlined, MessageOutlined, PictureOutlined, PlusOutlined, UpOutlined, VideoCameraOutlined, ZoomInOutlined, ZoomOutOutlined } from '@ant-design/icons'
 import { Button, Tooltip, Typography } from 'antd'
 import { useInteractiveMoviePageContext } from './useInteractiveMoviePageContext'
 import { CanvasStage } from './CanvasStage'
@@ -16,6 +16,8 @@ export function MovieCanvas() {
     beginPan,
     bottomToolbarCollapsed,
     canvasContextMenu,
+    canvasMarquee,
+    canvasPointerMode,
     canvasRef,
     endPointerInteraction,
     fitView,
@@ -25,14 +27,24 @@ export function MovieCanvas() {
     openCanvasContextMenu,
     runContextMenuAction,
     setBottomToolbarCollapsed,
+    setCanvasPointerMode,
     viewport,
     zoomBy,
   } = useInteractiveMoviePageContext()
 
+  const marqueeRect = canvasMarquee
+    ? {
+      left: Math.min(canvasMarquee.start.x, canvasMarquee.current.x),
+      top: Math.min(canvasMarquee.start.y, canvasMarquee.current.y),
+      width: Math.abs(canvasMarquee.current.x - canvasMarquee.start.x),
+      height: Math.abs(canvasMarquee.current.y - canvasMarquee.start.y),
+    }
+    : null
+
   return (
     <section
       ref={canvasRef}
-      className="movie-canvas"
+      className={`movie-canvas is-${canvasPointerMode}`}
       style={{
         '--movie-grid-x': String(viewport.x) + 'px',
         '--movie-grid-y': String(viewport.y) + 'px',
@@ -53,7 +65,16 @@ export function MovieCanvas() {
         <CanvasStage />
       </div>
 
-      <div className="movie-canvas-hint">无限画布 · 拖拽空白移动 · 拖拽节点/Choice 调整结构 · 滚轮缩放</div>
+      {marqueeRect && (
+        <div
+          className="movie-canvas-marquee"
+          style={marqueeRect}
+        />
+      )}
+
+      <div className="movie-canvas-hint">
+        无限画布 · {canvasPointerMode === 'marquee' ? '拖拽空白框选' : '拖拽空白移动'} · 拖拽节点/Choice 调整结构 · 滚轮缩放
+      </div>
 
       {canvasContextMenu && (
         <div
@@ -102,8 +123,14 @@ export function MovieCanvas() {
           {bottomToolbarCollapsed ? <UpOutlined /> : <DownOutlined />}
         </button>
         <div className="movie-bottom-controls">
-          <Tooltip title="选择 / 拖拽">
-            <Button shape="circle" icon={<EditOutlined />} />
+          <Tooltip title={canvasPointerMode === 'marquee' ? '当前：框选节点，点击切换为空白拖动' : '当前：空白拖动画布，点击切换为框选'}>
+            <Button
+              shape="circle"
+              type={canvasPointerMode === 'marquee' ? 'primary' : 'default'}
+              icon={canvasPointerMode === 'marquee' ? <EditOutlined /> : <DragOutlined />}
+              onClick={() => setCanvasPointerMode(canvasPointerMode === 'marquee' ? 'drag' : 'marquee')}
+              aria-label={canvasPointerMode === 'marquee' ? '切换为空白拖动画布' : '切换为框选节点'}
+            />
           </Tooltip>
           <Tooltip title="添加场景">
             <Button shape="circle" icon={<PlusOutlined />} onClick={() => addScene()} />

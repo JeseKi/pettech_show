@@ -144,20 +144,23 @@ async def complete_with_personal_aiwiki_tools(
 ) -> dict[str, Any]:
     post = post_func or service_attr("_post_chat_completion", _post_chat_completion)
     current_payload = without_stream(payload)
+    tool_trace: list[dict[str, Any]] = []
     for step in range(1, MAX_TOOL_CALL_STEPS + 1):
         response = await post(config, current_payload)
         tool_calls = extract_tool_calls(response)
         if not tool_calls:
             fallback_payload = build_payload_after_auto_entry_fallback(current_payload, response, user, stream=False)
             if fallback_payload is not None:
-                return await post(config, fallback_payload)
-            return response
+                tool_trace.extend(tool_trace_from_auto_entry_payload(fallback_payload))
+                return attach_tool_trace(await post(config, fallback_payload), tool_trace)
+            return attach_tool_trace(response, tool_trace)
         if has_frontend_tool_call(tool_calls):
-            return response
+            return attach_tool_trace(response, tool_trace)
 
+        tool_trace.extend(tool_trace_from_personal_aiwiki_calls(tool_calls))
         current_payload = build_payload_after_tool_calls(current_payload, response, tool_calls, user, stream=False)
 
-    return tool_loop_limit_response(payload)
+    return attach_tool_trace(tool_loop_limit_response(payload), tool_trace)
 
 
 async def stream_personal_aiwiki_tool_events(
@@ -258,7 +261,7 @@ def tool_loop_limit_response(payload: dict[str, Any]) -> dict[str, Any]:
             {
                 "message": {
                     "role": "assistant",
-                    "content": "个人 AI Wiki 工具调用轮次过多，已停止。请缩小问题范围或指定一个词条再试。",
+                    "content": "个人 AI Wiki 工具调用已暂停。请缩小问题范围或指定一个词条再试。",
                 }
             }
         ],
@@ -322,6 +325,62 @@ def build_payload_after_auto_entry_fallback(
     final_payload["messages"] = messages
     final_payload["stream"] = stream
     return final_payload
+
+
+def attach_tool_trace(response: dict[str, Any], trace: list[dict[str, Any]]) -> dict[str, Any]:
+    if not trace:
+        return response
+    next_response = dict(response)
+    next_response["tool_trace"] = trace
+    return next_response
+
+
+def tool_trace_from_personal_aiwiki_calls(tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    trace: list[dict[str, Any]] = []
+    for tool_call in tool_calls:
+        function = tool_call.get("function") if isinstance(tool_call, dict) else None
+        name = function.get("name") if isinstance(function, dict) else None
+        if name != PERSONAL_AIWIKI_TOOL_NAME:
+            continue
+        arguments = parse_tool_arguments(function.get("arguments") if isinstance(function, dict) else None)
+        raw_page = str(arguments.get("page") or arguments.get("slug") or arguments.get("path") or "").strip()
+        page = personal_aiwiki_service.normalize_wiki_page(raw_page) if raw_page else ""
+        trace.append(
+            {
+                "kind": "personal_aiwiki_entry",
+                "status": "completed",
+                "tool": PERSONAL_AIWIKI_TOOL_NAME,
+                "page": page or raw_page,
+                "source": "tool_call",
+            }
+        )
+    return trace
+
+
+def tool_trace_from_auto_entry_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    trace: list[dict[str, Any]] = []
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return trace
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if not isinstance(content, str) or AUTO_ENTRY_CONTEXT_MARKER not in content:
+            continue
+        for match in re.finditer(r"^路径：(.+)$", content, flags=re.MULTILINE):
+            page = match.group(1).strip()
+            if page:
+                trace.append(
+                    {
+                        "kind": "personal_aiwiki_entry",
+                        "status": "completed",
+                        "tool": PERSONAL_AIWIKI_TOOL_NAME,
+                        "page": page,
+                        "source": "auto_fallback",
+                    }
+                )
+    return trace
 
 
 def should_auto_fetch_entries(content: str) -> bool:

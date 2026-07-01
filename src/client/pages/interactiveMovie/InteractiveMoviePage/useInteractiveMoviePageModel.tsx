@@ -4,7 +4,7 @@ import { App, Input } from 'antd'
 import { closeInteractiveMoviePublication, createInteractiveMovieProject, deleteInteractiveMovieProject, getInteractiveMovieProject, getInteractiveMoviePromptTemplate, getInteractiveMovieSyncState, listInteractiveMovieReleases, listInteractiveMovieProjects, patchInteractiveMovieProject, publishInteractiveMovieProject, renameInteractiveMovieProject, setInteractiveMoviePublishedRelease, uploadInteractiveMovieImage, uploadInteractiveMovieVideo } from '../../../lib/interactiveMovie'
 import type { InteractiveMovieProjectDetail, InteractiveMovieRelease, PromptTemplate } from '../../../lib/interactiveMovie'
 import { resolveErrorMessage } from '../../../lib/errorMessage'
-import type { AssetNode, AssetNodeType, AssetUploadState, CanvasAgentToolCall, CanvasAgentToolResult, CanvasContextMenuState, CanvasViewport, ChoiceEdge, ChoiceEndpointDraftState, ConnectableNodeType, InteractionState, InteractiveMovieProject, LinkDraftState, NodeHandleSide, NodeLink, NodeLinkEndpoint, SceneNode, SelectedObject, StoredWorkspace } from '../interactiveMovieTypes'
+import type { AssetNode, AssetNodeType, AssetUploadState, CanvasAgentToolCall, CanvasAgentToolResult, CanvasContextMenuState, CanvasMarqueeState, CanvasPointerMode, CanvasViewport, ChoiceEdge, ChoiceEndpointDraftState, ConnectableNodeType, InteractionState, InteractiveMovieProject, LinkDraftState, NodeHandleSide, NodeLink, NodeLinkEndpoint, SceneNode, SelectedObject, StoredWorkspace } from '../interactiveMovieTypes'
 import { LINK_SNAP_RADIUS, MAX_ZOOM, MIN_ZOOM, NODE_HEIGHT, NODE_WIDTH, clamp, uniqueId } from '../interactiveMovieConstants'
 import { createDefaultProject, createDraftAssetNode, createDraftScene, firstSelectableObject, normalizeProjectChoices } from '../interactiveMovieProject'
 import { cleanupProjectReplicasOutside, cloudReplicaKey, draftReplicaKey, hasCloudCopy, isMissingCloudProjectError, loadScenePanelState, loadWorkspace, persistScenePanelState, persistWorkspaceLocally, readProjectReplica, removeProjectReplicas, withCloudMeta, writeProjectReplica } from '../interactiveMovieStorage'
@@ -42,6 +42,12 @@ const handleValue = (value: unknown): NodeHandleSide => (
 
 const selectedObjectForNode = (type: ConnectableNodeType, id: string): SelectedObject => ({ type, id })
 
+const selectedNodeKey = (type: ConnectableNodeType, id: string) => `${type}:${id}`
+
+const selectedObjectIsNode = (value: SelectedObject): value is SelectedObject & { type: ConnectableNodeType } => (
+  value.type === 'scene' || value.type === 'text' || value.type === 'image' || value.type === 'video'
+)
+
 export function useInteractiveMoviePageModel() {
   const { message, modal } = App.useApp()
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -58,6 +64,9 @@ export function useInteractiveMoviePageModel() {
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState('本地草稿')
+  const [canvasPointerMode, setCanvasPointerMode] = useState<CanvasPointerMode>('marquee')
+  const [selectedCanvasNodes, setSelectedCanvasNodes] = useState<SelectedObject[]>([])
+  const [canvasMarquee, setCanvasMarquee] = useState<CanvasMarqueeState | null>(null)
   const [publishModalOpen, setPublishModalOpen] = useState(false)
   const [releaseHistory, setReleaseHistory] = useState<InteractiveMovieRelease[]>([])
   const [releaseLoading, setReleaseLoading] = useState(false)
@@ -100,6 +109,11 @@ export function useInteractiveMoviePageModel() {
   const assetMap = useMemo(() => new Map(assetNodes.map((asset) => [asset.id, asset])), [assetNodes])
   const videoNodes = useMemo(() => assetNodes.filter((asset) => asset.type === 'video'), [assetNodes])
   const imageNodes = useMemo(() => assetNodes.filter((asset) => asset.type === 'image'), [assetNodes])
+  const selectedCanvasNodeKeys = useMemo(() => new Set(
+    selectedCanvasNodes
+      .filter(selectedObjectIsNode)
+      .map((item) => selectedNodeKey(item.type, item.id)),
+  ), [selectedCanvasNodes])
   const startScene = scenes.find((scene) => scene.role === 'start') ?? scenes[0]
   const previewScene = scenes.find((scene) => scene.id === previewSceneId) ?? startScene
   const outgoingPreviewChoices = choices.filter((choice) => (
@@ -267,6 +281,7 @@ export function useInteractiveMoviePageModel() {
   }
 
   const setSelectedObject = (nextSelectedObject: SelectedObject) => {
+    setSelectedCanvasNodes(selectedObjectIsNode(nextSelectedObject) ? [nextSelectedObject] : [])
     updateActiveProject((project) => ({ ...project, selectedObject: nextSelectedObject }))
   }
 
@@ -426,6 +441,19 @@ export function useInteractiveMoviePageModel() {
     if (event.button !== 0) return
     setCanvasContextMenu(null)
     event.currentTarget.setPointerCapture(event.pointerId)
+    if (canvasPointerMode === 'marquee') {
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+      setSelectedCanvasNodes([])
+      setCanvasMarquee({ start: point, current: point })
+      interactionRef.current = {
+        type: 'marquee',
+        pointerId: event.pointerId,
+        startClient: { x: event.clientX, y: event.clientY },
+      }
+      return
+    }
     interactionRef.current = {
       type: 'pan',
       pointerId: event.pointerId,
@@ -442,6 +470,18 @@ export function useInteractiveMoviePageModel() {
       : assetNodes.find((item) => item.id === nodeId)
     if (!node) return
     event.currentTarget.setPointerCapture(event.pointerId)
+    const isGroupDrag = selectedCanvasNodeKeys.has(selectedNodeKey(nodeType, nodeId)) && selectedCanvasNodes.length > 1
+    const groupStartPositions = isGroupDrag
+      ? selectedCanvasNodes
+        .filter(selectedObjectIsNode)
+        .map((item) => {
+          const target = item.type === 'scene'
+            ? scenes.find((scene) => scene.id === item.id)
+            : assetNodes.find((asset) => asset.id === item.id && asset.type === item.type)
+          return target ? { id: item.id, type: item.type, position: target.position } : null
+        })
+        .filter((item): item is { id: string; type: 'scene' | AssetNodeType; position: { x: number; y: number } } => Boolean(item))
+      : undefined
     interactionRef.current = {
       type: 'node',
       pointerId: event.pointerId,
@@ -449,8 +489,9 @@ export function useInteractiveMoviePageModel() {
       nodeId,
       startClient: { x: event.clientX, y: event.clientY },
       startPosition: node.position,
+      groupStartPositions,
     }
-    setSelectedObject({ type: nodeType, id: nodeId })
+    if (!isGroupDrag) setSelectedObject({ type: nodeType, id: nodeId })
   }
 
   const beginChoiceDrag = (event: ReactPointerEvent<HTMLButtonElement>, choiceId: string) => {
@@ -735,9 +776,31 @@ export function useInteractiveMoviePageModel() {
       })
       return
     }
+    if (interaction.type === 'marquee') {
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setCanvasMarquee((current) => current
+        ? { ...current, current: { x: event.clientX - rect.left, y: event.clientY - rect.top } }
+        : current)
+      return
+    }
     if (interaction.type === 'node') {
       const dx = (event.clientX - interaction.startClient.x) / viewport.zoom
       const dy = (event.clientY - interaction.startClient.y) / viewport.zoom
+      if (interaction.groupStartPositions?.length) {
+        updateActiveProject((project) => ({
+          ...project,
+          scenes: project.scenes.map((scene) => {
+            const groupNode = interaction.groupStartPositions?.find((item) => item.type === 'scene' && item.id === scene.id)
+            return groupNode ? { ...scene, position: { x: groupNode.position.x + dx, y: groupNode.position.y + dy } } : scene
+          }),
+          assetNodes: project.assetNodes.map((asset) => {
+            const groupNode = interaction.groupStartPositions?.find((item) => item.type === asset.type && item.id === asset.id)
+            return groupNode ? { ...asset, position: { x: groupNode.position.x + dx, y: groupNode.position.y + dy } } : asset
+          }),
+        }))
+        return
+      }
       const nextPosition = {
         x: interaction.startPosition.x + dx,
         y: interaction.startPosition.y + dy,
@@ -837,6 +900,54 @@ export function useInteractiveMoviePageModel() {
         }
         interactionRef.current = null
         updateChoiceEndpointDraftState(null)
+        return
+      }
+      if (interaction.type === 'marquee') {
+        const start = canvasPointFromEvent({
+          clientX: interaction.startClient.x,
+          clientY: interaction.startClient.y,
+        })
+        const end = canvasPointFromEvent(event)
+        const marqueeBounds = {
+          x: Math.min(start.x, end.x),
+          y: Math.min(start.y, end.y),
+          width: Math.abs(end.x - start.x),
+          height: Math.abs(end.y - start.y),
+        }
+        const screenDistance = Math.hypot(
+          event.clientX - interaction.startClient.x,
+          event.clientY - interaction.startClient.y,
+        )
+        if (screenDistance < 4) {
+          setSelectedCanvasNodes([])
+        } else {
+          const intersects = (bounds: { x: number; y: number; width: number; height: number }) => (
+            bounds.x + bounds.width >= marqueeBounds.x
+            && bounds.x <= marqueeBounds.x + marqueeBounds.width
+            && bounds.y + bounds.height >= marqueeBounds.y
+            && bounds.y <= marqueeBounds.y + marqueeBounds.height
+          )
+          const nextSelectedNodes: SelectedObject[] = [
+            ...scenes
+              .filter((scene) => {
+                const bounds = nodeBounds({ type: 'scene', id: scene.id }, sceneMap, assetMap)
+                return bounds ? intersects(bounds) : false
+              })
+              .map((scene): SelectedObject => ({ type: 'scene', id: scene.id })),
+            ...assetNodes
+              .filter((asset) => {
+                const bounds = nodeBounds({ type: asset.type, id: asset.id }, sceneMap, assetMap)
+                return bounds ? intersects(bounds) : false
+              })
+              .map((asset): SelectedObject => ({ type: asset.type, id: asset.id })),
+          ]
+          setSelectedCanvasNodes(nextSelectedNodes)
+          if (nextSelectedNodes[0]) {
+            updateActiveProject((project) => ({ ...project, selectedObject: nextSelectedNodes[0] }))
+          }
+        }
+        interactionRef.current = null
+        setCanvasMarquee(null)
         return
       }
       interactionRef.current = null
@@ -1150,6 +1261,80 @@ export function useInteractiveMoviePageModel() {
     })
   }
 
+  const deleteSelectedCanvasNodes = useCallback(() => {
+    const nodesToDelete = selectedCanvasNodes.filter(selectedObjectIsNode)
+    if (nodesToDelete.length === 0) return
+    const sceneIds = new Set(nodesToDelete.filter((item) => item.type === 'scene').map((item) => item.id))
+    const assetKeys = new Set(nodesToDelete.filter((item) => item.type !== 'scene').map((item) => selectedNodeKey(item.type, item.id)))
+
+    updateActiveProject((project) => {
+      const nextScenes = project.scenes.filter((scene) => !sceneIds.has(scene.id))
+      const nextAssets = project.assetNodes.filter((asset) => !assetKeys.has(selectedNodeKey(asset.type, asset.id)))
+      const deletedChoiceIds = new Set(
+        project.choices
+          .filter((choice) => sceneIds.has(choice.fromSceneId) || sceneIds.has(choice.toSceneId))
+          .map((choice) => choice.id),
+      )
+      const nextChoices = project.choices.filter((choice) => !deletedChoiceIds.has(choice.id))
+      const nextNodeLinks = project.nodeLinks.filter((link) => {
+        const fromDeleted = link.from.type === 'scene'
+          ? sceneIds.has(link.from.id)
+          : assetKeys.has(selectedNodeKey(link.from.type, link.from.id))
+        const toDeleted = link.to.type === 'scene'
+          ? sceneIds.has(link.to.id)
+          : assetKeys.has(selectedNodeKey(link.to.type, link.to.id))
+        return !fromDeleted && !toDeleted
+      })
+      const removedNodeLinkIds = new Set(project.nodeLinks.filter((link) => !nextNodeLinks.includes(link)).map((link) => link.id))
+      const selectedWasDeleted = (
+        (project.selectedObject.type === 'scene' && sceneIds.has(project.selectedObject.id))
+        || (project.selectedObject.type !== 'choice' && project.selectedObject.type !== 'nodeLink' && assetKeys.has(selectedNodeKey(project.selectedObject.type, project.selectedObject.id)))
+        || (project.selectedObject.type === 'choice' && deletedChoiceIds.has(project.selectedObject.id))
+        || (project.selectedObject.type === 'nodeLink' && removedNodeLinkIds.has(project.selectedObject.id))
+      )
+      const nextSelectedObject = selectedWasDeleted
+        ? firstSelectableObject(nextScenes, nextChoices, nextAssets)
+        : project.selectedObject
+      if (lastCanvasSceneIdByProjectRef.current[project.id] && sceneIds.has(lastCanvasSceneIdByProjectRef.current[project.id])) {
+        lastCanvasSceneIdByProjectRef.current[project.id] = nextSelectedObject.type === 'scene' ? nextSelectedObject.id : ''
+      }
+      return {
+        ...project,
+        scenes: nextScenes.map((scene) => ({
+          ...scene,
+          media: {
+            ...scene.media,
+            videoNodeId: scene.media.videoNodeId && assetKeys.has(selectedNodeKey('video', scene.media.videoNodeId)) ? '' : scene.media.videoNodeId,
+            coverImageNodeId: scene.media.coverImageNodeId && assetKeys.has(selectedNodeKey('image', scene.media.coverImageNodeId)) ? '' : scene.media.coverImageNodeId,
+          },
+        })),
+        choices: nextChoices,
+        assetNodes: nextAssets,
+        nodeLinks: nextNodeLinks,
+        selectedObject: nextSelectedObject,
+      }
+    })
+    setSelectedCanvasNodes([])
+    message.success(`已删除 ${nodesToDelete.length} 个节点`)
+  }, [message, selectedCanvasNodes, updateActiveProject])
+
+  const confirmDeleteSelectedCanvasNodes = useCallback(() => {
+    const nodesToDelete = selectedCanvasNodes.filter(selectedObjectIsNode)
+    if (nodesToDelete.length === 0) return
+    const sceneCount = nodesToDelete.filter((item) => item.type === 'scene').length
+    const assetCount = nodesToDelete.length - sceneCount
+    modal.confirm({
+      title: `删除已选 ${nodesToDelete.length} 个节点？`,
+      content: `会删除 ${sceneCount} 个场景、${assetCount} 个素材，并清理相关选择线、节点连接和场景媒体引用。`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk() {
+        deleteSelectedCanvasNodes()
+      },
+    })
+  }, [deleteSelectedCanvasNodes, modal, selectedCanvasNodes])
+
   const buildCanvasAgentOverview = () => {
     const project = activeProjectRef.current
     return {
@@ -1281,6 +1466,41 @@ export function useInteractiveMoviePageModel() {
     }
     const project = activeProjectRef.current
 
+    if (name === 'canvas_apply_operations') {
+      const operations = Array.isArray(args.operations)
+        ? args.operations.filter((item): item is Record<string, unknown> => isRecord(item))
+        : []
+      if (operations.length === 0) {
+        return { ok: false, name, message: '需要提供 operations 数组' }
+      }
+      const actionToToolName: Record<string, string> = {
+        create_node: 'canvas_create_node',
+        update_node: 'canvas_update_node',
+        delete_node: 'canvas_delete_node',
+        create_relation: 'canvas_create_relation',
+        update_relation: 'canvas_update_relation',
+        delete_relation: 'canvas_delete_relation',
+      }
+      const results = operations.map((operation) => {
+        const action = stringValue(operation.action)
+        const toolName = action ? actionToToolName[action] : null
+        if (!toolName) {
+          return { ok: false, name: 'canvas_apply_operations', message: `未知批量操作 ${action || ''}` }
+        }
+        const { action: _action, ...operationArgs } = operation
+        void _action
+        return executeCanvasAgentTool({ name: toolName, arguments: operationArgs })
+      })
+      const failedCount = results.filter((result) => !result.ok).length
+      return {
+        ok: failedCount === 0,
+        name,
+        message: failedCount === 0
+          ? `已完成 ${results.length} 个画布操作`
+          : `已完成 ${results.length - failedCount} 个画布操作，${failedCount} 个失败`,
+        data: results,
+      }
+    }
     if (name === 'canvas_get_overview') {
       return { ok: true, name, message: '已获取画布概括', data: buildCanvasAgentOverview() }
     }
@@ -1701,15 +1921,23 @@ export function useInteractiveMoviePageModel() {
       }
       const target = event.target as HTMLElement | null
       const isEditingText = target?.closest('input, textarea, [contenteditable="true"]')
+      if (!isEditingText && selectedCanvasNodes.length > 1 && (event.key === 'Delete' || event.key === 'Backspace')) {
+        event.preventDefault()
+        event.stopPropagation()
+        if (event.repeat) return
+        confirmDeleteSelectedCanvasNodes()
+        return
+      }
       if (!isEditingText && selectedObject.type === 'nodeLink' && (event.key === 'Delete' || event.key === 'Backspace')) {
         event.preventDefault()
         event.stopPropagation()
+        if (event.repeat) return
         deleteNodeLink(selectedObject.id)
       }
     }
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [deleteNodeLink, saveDraft, selectedObject])
+  }, [confirmDeleteSelectedCanvasNodes, deleteNodeLink, saveDraft, selectedCanvasNodes.length, selectedObject])
 
   useEffect(() => {
     if (!cloudReady || !activeProject?.contentHash) return undefined
@@ -1889,6 +2117,8 @@ export function useInteractiveMoviePageModel() {
     bottomToolbarCollapsed,
     buildCanvasAgentOverview,
     canvasContextMenu,
+    canvasMarquee,
+    canvasPointerMode,
     canvasRef,
     choices,
     choiceEndpointDraft,
@@ -1898,6 +2128,7 @@ export function useInteractiveMoviePageModel() {
     confirmDeleteChoice,
     confirmDeleteProject,
     confirmDeleteScene,
+    confirmDeleteSelectedCanvasNodes,
     confirmRenameProject,
     createProject,
     createSceneForChoice,
@@ -1940,11 +2171,14 @@ export function useInteractiveMoviePageModel() {
     scenes,
     selectCanvasScene,
     selectedAsset,
+    selectedCanvasNodeKeys,
+    selectedCanvasNodes,
     selectedChoice,
     selectedNodeLink,
     selectedObject,
     selectedScene,
     setBottomToolbarCollapsed,
+    setCanvasPointerMode,
     setPreviewOpen,
     setPublishModalOpen,
     setReleaseOnline,

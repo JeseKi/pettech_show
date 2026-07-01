@@ -82,6 +82,13 @@ export type CanvasViewport = {
   zoom: number
 }
 
+export type CanvasPointerMode = 'drag' | 'marquee'
+
+export type CanvasMarqueeState = {
+  start: { x: number; y: number }
+  current: { x: number; y: number }
+}
+
 export type VideoPromptParts = {
   subject: string
   action: string
@@ -136,6 +143,16 @@ export type InteractionState =
     nodeId: string
     startClient: { x: number; y: number }
     startPosition: { x: number; y: number }
+    groupStartPositions?: Array<{
+      id: string
+      type: 'scene' | AssetNodeType
+      position: { x: number; y: number }
+    }>
+  }
+  | {
+    type: 'marquee'
+    pointerId: number
+    startClient: { x: number; y: number }
   }
   | {
     type: 'choice'

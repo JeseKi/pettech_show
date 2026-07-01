@@ -6,12 +6,12 @@ import { NodeHandles } from '../NodeHandles'
 import { useInteractiveMoviePageContext } from './useInteractiveMoviePageContext'
 
 export function SceneNodesLayer() {
-  const { assetMap, beginLinkDrag, beginNodeDrag, confirmDeleteScene, linkDraft, scenes, selectCanvasScene, selectedObject } = useInteractiveMoviePageContext()
+  const { assetMap, beginLinkDrag, beginNodeDrag, confirmDeleteScene, linkDraft, scenes, selectCanvasScene, selectedCanvasNodeKeys, selectedObject } = useInteractiveMoviePageContext()
 
   return (
     <>
       {scenes.map((scene) => {
-        const selected = selectedObject.type === 'scene' && selectedObject.id === scene.id
+        const selected = selectedCanvasNodeKeys.has(`scene:${scene.id}`)
         const posterUrl = getScenePosterUrl(scene, assetMap)
         return (
           <div
@@ -21,6 +21,7 @@ export function SceneNodesLayer() {
             onPointerDown={(event) => beginNodeDrag(event, 'scene', scene.id)}
             onClick={(event) => {
               event.stopPropagation()
+              if (selected && selectedCanvasNodeKeys.size > 1) return
               selectCanvasScene(scene.id)
             }}
           >
