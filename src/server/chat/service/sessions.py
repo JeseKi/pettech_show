@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 from fastapi import HTTPException, status
@@ -23,6 +24,7 @@ from ..schemas import ChatCompletionIn, ChatMessageIn, ChatMessageOut, ChatSessi
 from .http_client import _chat_completions_url, _upstream_error_detail
 from .payloads import _build_upstream_payload, _resolve_chat_model
 from .personal_aiwiki import build_personal_aiwiki_chat_context, stream_personal_aiwiki_tool_events
+from .reasoning_adapter import assistant_rollout_message
 from .serializers import _message_out, _message_outs_from_rollout_items, _message_role, _rollout_items_to_chat_message_inputs, _session_summary_out, _session_title_from_prompt
 from .streaming import _configured_stream_chat_events, _sse_event
 
@@ -144,7 +146,11 @@ async def stream_persistent_chat_session(
     else:
         messages = dao.list_messages(owner_user_id=user.id, session_id=session.id)
         history_messages = [
-            {"role": _message_role(message.role), "content": message.content}
+            {
+                "role": _message_role(message.role),
+                "content": message.content,
+                **({"reasoning_content": message.reasoning_content} if message.reasoning_content is not None else {}),
+            }
             for message in messages
         ]
     completion_payload = ChatCompletionIn(
@@ -171,6 +177,7 @@ async def stream_persistent_chat_session(
     ).model_dump())
 
     assistant_parts: list[str] = []
+    reasoning_parts: list[str] = []
     assistant_completed = False
     try:
         event_stream = (
@@ -184,6 +191,11 @@ async def stream_persistent_chat_session(
                 if isinstance(content, str) and content:
                     assistant_parts.append(content)
                 yield _sse_event(event, data)
+                continue
+            if event == "reasoning_delta":
+                reasoning_content = data.get("reasoning_content")
+                if isinstance(reasoning_content, str) and reasoning_content:
+                    reasoning_parts.append(reasoning_content)
                 continue
             if event == "rollout_items":
                 items = data.get("items")
@@ -201,6 +213,7 @@ async def stream_persistent_chat_session(
                     session_id=session.id,
                     model=model,
                     assistant_parts=assistant_parts,
+                    reasoning_parts=reasoning_parts,
                 )
                 assistant_content = "".join(assistant_parts)
                 if assistant_content.strip():
@@ -208,7 +221,11 @@ async def stream_persistent_chat_session(
                         owner_user_id=user.id,
                         session_id=session.id,
                         item_type="message",
-                        payload=rollout_message("assistant", assistant_content),
+                        payload=rollout_message(
+                            "assistant",
+                            assistant_content,
+                            reasoning_content="".join(reasoning_parts) if reasoning_parts else None,
+                        ),
                     )
                 yield _sse_event("done", {"session_id": session.id})
                 continue
@@ -273,6 +290,7 @@ def _append_assistant_message(
     session_id: str,
     model: str,
     assistant_parts: list[str],
+    reasoning_parts: list[str],
 ) -> bool:
     assistant_content = "".join(assistant_parts)
     if not assistant_content.strip():
@@ -283,6 +301,7 @@ def _append_assistant_message(
         role="assistant",
         content=assistant_content,
         model=model,
+        reasoning_content="".join(reasoning_parts) if reasoning_parts else None,
     )
     return True
 
@@ -297,14 +316,20 @@ def _ensure_rollout_items_from_messages(dao: ChatDAO, *, user_id: int, session_i
         owner_user_id=user_id,
         session_id=session_id,
         items=[
-            rollout_message(_message_role(message.role), message.content)
+            rollout_message(
+                _message_role(message.role),
+                message.content,
+                reasoning_content=message.reasoning_content if message.role == "assistant" else None,
+            )
             for message in legacy_messages
             if message.role in {"user", "assistant", "system"}
         ],
     )
 
 
-def rollout_message(role: str, content: str) -> dict[str, str]:
+def rollout_message(role: str, content: str, *, reasoning_content: str | None = None) -> dict[str, Any]:
+    if role == "assistant":
+        return assistant_rollout_message(content, reasoning_content=reasoning_content)
     return {"type": "message", "role": role, "content": content}
 
 

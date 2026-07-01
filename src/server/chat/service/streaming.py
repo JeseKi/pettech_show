@@ -14,11 +14,14 @@ from src.server.config import GlobalConfig
 
 from .http_client import _chat_completions_url, _chat_headers, _upstream_error_detail
 from .package_hooks import service_attr
+from .reasoning_adapter import extract_stream_delta
 
 
 async def _stream_sse_events(config: GlobalConfig, payload: dict[str, Any]) -> AsyncIterator[str]:
     try:
         async for event, data in _configured_stream_chat_events(config, payload):
+            if event == "reasoning_delta":
+                continue
             yield _sse_event(event, data)
     except httpx.TimeoutException:
         yield _sse_event("error", {"message": "Chat API 请求超时"})
@@ -62,9 +65,11 @@ async def _stream_chat_events(config: GlobalConfig, payload: dict[str, Any]) -> 
                     yield "done", {}
                     break
                 chunk = json.loads(line)
-                content = _extract_stream_content(chunk)
-                if content:
-                    yield "delta", {"content": content}
+                delta = extract_stream_delta(chunk)
+                if delta.reasoning_content:
+                    yield "reasoning_delta", {"reasoning_content": delta.reasoning_content}
+                if delta.content:
+                    yield "delta", {"content": delta.content}
 
     if not sent_done:
         yield "done", {}
@@ -81,24 +86,4 @@ def _sse_event(event: str, data: dict[str, Any]) -> str:
 
 
 def _extract_stream_content(chunk: dict[str, Any]) -> str:
-    choices = chunk.get("choices")
-    if not isinstance(choices, list) or not choices:
-        return ""
-    first_choice = choices[0]
-    if not isinstance(first_choice, dict):
-        return ""
-
-    delta = first_choice.get("delta")
-    if isinstance(delta, dict):
-        content = delta.get("content")
-        if isinstance(content, str):
-            return content
-
-    message = first_choice.get("message")
-    if isinstance(message, dict):
-        content = message.get("content")
-        if isinstance(content, str):
-            return content
-
-    text = first_choice.get("text")
-    return text if isinstance(text, str) else ""
+    return extract_stream_delta(chunk).content

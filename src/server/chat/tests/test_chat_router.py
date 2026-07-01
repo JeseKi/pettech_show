@@ -206,6 +206,94 @@ def test_chat_completion_proxies_openai_compatible_response(
     ]
 
 
+def test_chat_completion_preserves_reasoning_content_in_upstream_history(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = _create_user(test_db_session, "chat_reasoning_history")
+    captured: dict[str, Any] = {}
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "reasoning-model")
+    monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+    monkeypatch.setattr(global_config, "keep_reasoning_content", True)
+
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
+        captured["payload"] = payload
+        return {
+            "id": "chatcmpl-reasoning-history",
+            "model": payload["model"],
+            "choices": [{"message": {"role": "assistant", "content": "继续回复"}}],
+        }
+
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
+
+    resp = test_client.post(
+        "/api/chat/completions",
+        headers=_auth_headers(user),
+        json={
+            "messages": [
+                {"role": "user", "content": "第一问"},
+                {"role": "assistant", "content": "第一答", "reasoning_content": "第一轮推理"},
+                {"role": "user", "content": "继续"},
+            ],
+        },
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert captured["payload"]["messages"] == [
+        {"role": "system", "content": "系统提示"},
+        {"role": "user", "content": "第一问"},
+        {"role": "assistant", "content": "第一答", "reasoning_content": "第一轮推理"},
+        {"role": "user", "content": "继续"},
+    ]
+
+
+def test_chat_completion_ignores_reasoning_content_when_disabled(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = _create_user(test_db_session, "chat_reasoning_disabled")
+    captured: dict[str, Any] = {}
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "reasoning-model")
+    monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+    monkeypatch.setattr(global_config, "keep_reasoning_content", False)
+
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
+        captured["payload"] = payload
+        return {
+            "id": "chatcmpl-reasoning-disabled",
+            "model": payload["model"],
+            "choices": [{"message": {"role": "assistant", "content": "继续回复"}}],
+        }
+
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
+
+    resp = test_client.post(
+        "/api/chat/completions",
+        headers=_auth_headers(user),
+        json={
+            "messages": [
+                {"role": "user", "content": "第一问"},
+                {"role": "assistant", "content": "第一答", "reasoning_content": "第一轮推理"},
+                {"role": "user", "content": "继续"},
+            ],
+        },
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert captured["payload"]["messages"] == [
+        {"role": "system", "content": "系统提示"},
+        {"role": "user", "content": "第一问"},
+        {"role": "assistant", "content": "第一答"},
+        {"role": "user", "content": "继续"},
+    ]
+
+
 def test_chat_stream_proxies_openai_compatible_events(
     test_client,
     test_db_session,
@@ -259,13 +347,22 @@ def test_persistent_chat_stream_stores_server_messages_and_uses_server_history(
     monkeypatch.setattr(global_config, "chat_api_key", "test-key")
     monkeypatch.setattr(global_config, "chat_model", "persistent-model")
     monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+    monkeypatch.setattr(global_config, "keep_reasoning_content", True)
 
     async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
         captured_payloads.append(payload)
         return {
             "id": f"chatcmpl-persistent-{len(captured_payloads)}",
             "model": payload["model"],
-            "choices": [{"message": {"role": "assistant", "content": "服务端回复"}}],
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "服务端回复",
+                        "reasoning_content": f"服务端推理{len(captured_payloads)}",
+                    }
+                }
+            ],
         }
 
     monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
@@ -295,6 +392,7 @@ def test_persistent_chat_stream_stores_server_messages_and_uses_server_history(
         ("user", "第一条消息"),
         ("assistant", "服务端回复"),
     ]
+    assert "reasoning_content" not in messages_resp.json()[1]
     assert captured_payloads[0]["messages"] == [
         {"role": "system", "content": "系统提示"},
         {"role": "user", "content": "第一条消息"},
@@ -311,7 +409,7 @@ def test_persistent_chat_stream_stores_server_messages_and_uses_server_history(
     assert captured_payloads[1]["messages"] == [
         {"role": "system", "content": "系统提示"},
         {"role": "user", "content": "第一条消息"},
-        {"role": "assistant", "content": "服务端回复"},
+        {"role": "assistant", "content": "服务端回复", "reasoning_content": "服务端推理1"},
         {"role": "user", "content": "第二条消息"},
     ]
 
@@ -328,6 +426,60 @@ def test_persistent_chat_stream_stores_server_messages_and_uses_server_history(
     assert test_client.get("/api/chat/sessions", headers=headers).json() == []
 
 
+def test_persistent_chat_ignores_stored_reasoning_content_when_disabled(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = _create_user(test_db_session, "chat_persistent_reasoning_disabled")
+    headers = _auth_headers(user)
+    captured_payloads: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "persistent-model")
+    monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+    monkeypatch.setattr(global_config, "keep_reasoning_content", False)
+
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
+        captured_payloads.append(payload)
+        return {
+            "id": f"chatcmpl-persistent-disabled-{len(captured_payloads)}",
+            "model": payload["model"],
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "服务端回复",
+                        "reasoning_content": f"已保存推理{len(captured_payloads)}",
+                    }
+                }
+            ],
+        }
+
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
+
+    first_resp = test_client.post(
+        "/api/chat/sessions/stream",
+        headers=headers,
+        json={"content": "第一条消息"},
+    )
+    assert first_resp.status_code == HTTPStatus.OK, first_resp.text
+
+    session_id = test_client.get("/api/chat/sessions", headers=headers).json()[0]["id"]
+    second_resp = test_client.post(
+        "/api/chat/sessions/stream",
+        headers=headers,
+        json={"session_id": session_id, "content": "第二条消息"},
+    )
+    assert second_resp.status_code == HTTPStatus.OK, second_resp.text
+    assert captured_payloads[1]["messages"] == [
+        {"role": "system", "content": "系统提示"},
+        {"role": "user", "content": "第一条消息"},
+        {"role": "assistant", "content": "服务端回复"},
+        {"role": "user", "content": "第二条消息"},
+    ]
+
+
 def test_persistent_chat_canvas_frontend_tools_return_unavailable_outside_canvas(
     test_client,
     test_db_session,
@@ -340,6 +492,7 @@ def test_persistent_chat_canvas_frontend_tools_return_unavailable_outside_canvas
     monkeypatch.setattr(global_config, "chat_api_key", "test-key")
     monkeypatch.setattr(global_config, "chat_model", "persistent-model")
     monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+    monkeypatch.setattr(global_config, "keep_reasoning_content", True)
 
     async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
         captured_payloads.append(payload)
@@ -350,9 +503,10 @@ def test_persistent_chat_canvas_frontend_tools_return_unavailable_outside_canvas
                 "choices": [
                     {
                         "message": {
-                            "role": "assistant",
-                            "content": "",
-                            "tool_calls": [
+                        "role": "assistant",
+                        "content": "",
+                        "reasoning_content": "画布工具推理",
+                        "tool_calls": [
                                 {
                                     "id": "call_canvas_overview",
                                     "type": "function",
@@ -405,6 +559,12 @@ def test_persistent_chat_canvas_frontend_tools_return_unavailable_outside_canvas
     assert 'event: delta\ndata: {"content": "请在画布中和智能体进行对话, 当前环境无法直接操作画布."}' in resp.text
     assert captured_payloads[0]["tools"][1]["function"]["name"] == "frontend_canvas__get_overview"
     tool_message = next(message for message in captured_payloads[1]["messages"] if message["role"] == "tool")
+    assistant_tool_message = next(
+        message
+        for message in captured_payloads[1]["messages"]
+        if message["role"] == "assistant" and message.get("tool_calls")
+    )
+    assert assistant_tool_message["reasoning_content"] == "画布工具推理"
     assert tool_message == {
         "role": "tool",
         "tool_call_id": "call_canvas_overview",
@@ -428,6 +588,11 @@ def test_persistent_chat_canvas_frontend_tools_return_unavailable_outside_canvas
     assert followup_resp.status_code == HTTPStatus.OK, followup_resp.text
     assert any(message.get("tool_calls") for message in captured_payloads[2]["messages"])
     assert any(message.get("role") == "tool" for message in captured_payloads[2]["messages"])
+    assert any(
+        message.get("reasoning_content") == "画布工具推理"
+        for message in captured_payloads[2]["messages"]
+        if message.get("role") == "assistant"
+    )
 
 
 def test_persistent_chat_injects_personal_aiwiki_index_as_user_context(

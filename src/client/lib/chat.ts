@@ -6,6 +6,7 @@ export type ChatRole = 'system' | 'user' | 'assistant' | 'tool'
 export interface ChatMessagePayload {
   role: ChatRole
   content: string
+  reasoning_content?: string
   name?: string
   tool_call_id?: string
   tool_calls?: Array<Record<string, unknown>>

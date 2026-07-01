@@ -13,6 +13,7 @@ from src.server.agent_market.service import agent_label_for_session
 
 from ..models import ChatMessage, ChatRolloutItem, ChatSession
 from ..schemas import ChatMessageOut, ChatRole, ChatSessionSummaryOut, ChatToolStepOut
+from .reasoning_adapter import rollout_message_to_chat_input
 
 
 def _session_summary_out(db: Session, session: ChatSession, message_count: int) -> ChatSessionSummaryOut:
@@ -81,17 +82,9 @@ def _rollout_items_to_chat_message_inputs(items: list[ChatRolloutItem]) -> list[
         role = payload.get("role")
         if role not in {"system", "user", "assistant", "tool"}:
             continue
-        message: dict[str, Any] = {
-            "role": role,
-            "content": payload.get("content") if isinstance(payload.get("content"), str) else "",
-        }
-        if isinstance(payload.get("name"), str):
-            message["name"] = payload["name"]
-        if isinstance(payload.get("tool_call_id"), str):
-            message["tool_call_id"] = payload["tool_call_id"]
-        if isinstance(payload.get("tool_calls"), list):
-            message["tool_calls"] = payload["tool_calls"]
-        messages.append(message)
+        message = rollout_message_to_chat_input(payload)
+        if message is not None:
+            messages.append(message)
     return messages
 
 

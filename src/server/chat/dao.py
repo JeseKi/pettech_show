@@ -90,6 +90,7 @@ class ChatDAO(BaseDAO):
         role: str,
         content: str,
         model: str | None = None,
+        reasoning_content: str | None = None,
     ) -> ChatMessage:
         now = utc_now()
         next_sequence = self.next_sequence(session_id=session_id)
@@ -99,6 +100,7 @@ class ChatDAO(BaseDAO):
             owner_user_id=owner_user_id,
             role=role,
             content=content,
+            reasoning_content=reasoning_content,
             sequence=next_sequence,
             model=model,
             created_at=now,

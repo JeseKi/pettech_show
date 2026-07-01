@@ -12,6 +12,7 @@ from loguru import logger
 from src.server.config import GlobalConfig
 
 from ..schemas import ChatCompletionOut, ChatUsageOut
+from .reasoning_adapter import extract_completion_assistant_message
 
 
 async def _post_chat_completion(config: GlobalConfig, payload: dict[str, Any]) -> dict[str, Any]:
@@ -67,14 +68,9 @@ def _parse_completion(data: dict[str, Any], requested_model: str) -> ChatComplet
     if not isinstance(first_choice, dict):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Chat API choices 格式无效")
 
-    message = first_choice.get("message")
-    content = ""
-    if isinstance(message, dict):
-        raw_content = message.get("content")
-        if isinstance(raw_content, str):
-            content = raw_content
-
-    tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
+    assistant_message = extract_completion_assistant_message(data)
+    content = assistant_message.content
+    tool_calls = assistant_message.tool_calls
     if not content and not tool_calls:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Chat API 返回缺少 assistant content")
 

@@ -14,6 +14,7 @@ from src.server.auth.models import User
 from src.server.config import GlobalConfig
 
 from ..schemas import ChatCompletionIn
+from .reasoning_adapter import message_to_upstream
 
 
 def _build_upstream_payload(
@@ -81,15 +82,10 @@ def _build_messages(
     if system_parts:
         messages.append({"role": "system", "content": "\n\n".join(system_parts)})
 
-    for message in payload.messages:
-        item: dict[str, Any] = {"role": message.role, "content": message.content}
-        if message.name:
-            item["name"] = message.name
-        if message.tool_call_id:
-            item["tool_call_id"] = message.tool_call_id
-        if message.tool_calls:
-            item["tool_calls"] = message.tool_calls
-        messages.append(item)
+    messages.extend(
+        message_to_upstream(message, keep_reasoning_content=config.keep_reasoning_content)
+        for message in payload.messages
+    )
     if extra_user_context.strip():
         messages.append({"role": "user", "content": extra_user_context.strip()})
     return messages

@@ -19,6 +19,7 @@ from src.server.personal_aiwiki import service as personal_aiwiki_service
 
 from .http_client import _chat_completions_url, _parse_completion, _post_chat_completion, _upstream_error_detail
 from .package_hooks import service_attr
+from .reasoning_adapter import extract_completion_assistant_message, strip_reasoning_content_from_messages
 from .streaming import _sse_event
 
 PERSONAL_AIWIKI_TRIGGER = "$知识库"
@@ -160,7 +161,14 @@ async def complete_with_personal_aiwiki_tools(
             return attach_tool_trace(response, tool_trace)
 
         tool_trace.extend(tool_trace_from_personal_aiwiki_calls(tool_calls))
-        current_payload = build_payload_after_tool_calls(current_payload, response, tool_calls, user, stream=False)
+        current_payload = build_payload_after_tool_calls(
+            current_payload,
+            response,
+            tool_calls,
+            user,
+            stream=False,
+            keep_reasoning_content=config.keep_reasoning_content,
+        )
 
     return attach_tool_trace(tool_loop_limit_response(payload), tool_trace)
 
@@ -206,6 +214,7 @@ async def stream_personal_aiwiki_tool_events(
                     tool_calls,
                     tool_messages,
                     stream=False,
+                    keep_reasoning_content=config.keep_reasoning_content,
                 )
                 continue
             if has_frontend_tool_call(tool_calls):
@@ -225,6 +234,7 @@ async def stream_personal_aiwiki_tool_events(
                 tool_calls,
                 tool_messages,
                 stream=False,
+                keep_reasoning_content=config.keep_reasoning_content,
             )
             continue
 
@@ -239,6 +249,9 @@ async def stream_personal_aiwiki_tool_events(
                     "title": f"读取知识库词条：{page or '未指定词条'}",
                 }
             response = await post(config, fallback_payload)
+        reasoning_content = extract_message_reasoning_content(response)
+        if reasoning_content:
+            yield "reasoning_delta", {"reasoning_content": reasoning_content}
         content = extract_message_content(response)
         if content:
             yield "delta", {"content": content}
@@ -261,6 +274,8 @@ async def stream_personal_aiwiki_sse_events(
 ) -> AsyncIterator[str]:
     try:
         async for event, data in stream_personal_aiwiki_tool_events(config, payload, user):
+            if event == "reasoning_delta":
+                continue
             yield _sse_event(event, data)
     except httpx.TimeoutException:
         yield _sse_event("error", {"message": "Chat API 请求超时"})
@@ -290,6 +305,7 @@ def build_payload_after_tool_calls(
     *,
     stream: bool,
     frontend_canvas_mode: str = "passthrough",
+    keep_reasoning_content: bool = False,
 ) -> dict[str, Any]:
     return build_payload_after_tool_messages(
         payload,
@@ -297,6 +313,7 @@ def build_payload_after_tool_calls(
         tool_calls,
         tool_result_messages(user, tool_calls, frontend_canvas_mode=frontend_canvas_mode),
         stream=stream,
+        keep_reasoning_content=keep_reasoning_content,
     )
 
 
@@ -307,10 +324,13 @@ def build_payload_after_tool_messages(
     tool_messages: list[dict[str, str]],
     *,
     stream: bool,
+    keep_reasoning_content: bool = False,
 ) -> dict[str, Any]:
     messages = [dict(message) for message in payload.get("messages", []) if isinstance(message, dict)]
     messages.append(assistant_tool_message(first_response, tool_calls))
     messages.extend(tool_messages)
+    if not keep_reasoning_content:
+        messages = strip_reasoning_content_from_messages(messages)
     final_payload = {
         key: value
         for key, value in payload.items()
@@ -376,13 +396,15 @@ def frontend_canvas_unavailable_response(payload: dict[str, Any]) -> dict[str, A
 
 
 def assistant_tool_message(first_response: dict[str, Any], tool_calls: list[dict[str, Any]]) -> dict[str, Any]:
-    message = first_message(first_response)
-    content = message.get("content") if isinstance(message, dict) else ""
-    return {
+    assistant_message = extract_completion_assistant_message(first_response)
+    message: dict[str, Any] = {
         "role": "assistant",
-        "content": content if isinstance(content, str) else "",
+        "content": assistant_message.content,
         "tool_calls": tool_calls,
     }
+    if assistant_message.reasoning_content is not None:
+        message["reasoning_content"] = assistant_message.reasoning_content
+    return message
 
 
 def tool_result_messages(
@@ -753,6 +775,10 @@ def extract_message_content(data: dict[str, Any]) -> str:
     message = first_message(data)
     content = message.get("content") if isinstance(message, dict) else None
     return content if isinstance(content, str) else _parse_completion(data, requested_model=str(data.get("model") or "")).content
+
+
+def extract_message_reasoning_content(data: dict[str, Any]) -> str:
+    return extract_completion_assistant_message(data).reasoning_content or ""
 
 
 def first_message(data: dict[str, Any]) -> dict[str, Any]:

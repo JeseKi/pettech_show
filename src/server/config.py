@@ -281,6 +281,12 @@ class GlobalConfig(BaseSettings):
         title="Chat API 超时时间",
     )
 
+    keep_reasoning_content: bool = Field(
+        default=False,
+        title="Chat 是否回放 reasoning_content",
+        description="开启后 ChatUI 对话会在上游上下文中回放已保存的 reasoning_content。",
+    )
+
     aiwiki_opencode_command: str = Field(
         default="opencode",
         title="AI Wiki OpenCode 命令",

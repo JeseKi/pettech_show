@@ -13,6 +13,7 @@ ChatRole = Literal["system", "user", "assistant", "tool"]
 class ChatMessageIn(BaseModel):
     role: ChatRole
     content: str = Field(default="", max_length=20_000)
+    reasoning_content: str | None = Field(default=None, max_length=200_000)
     name: str | None = Field(default=None, max_length=100)
     tool_call_id: str | None = Field(default=None, max_length=200)
     tool_calls: list[dict[str, Any]] | None = None
