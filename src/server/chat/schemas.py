@@ -7,12 +7,15 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-ChatRole = Literal["system", "user", "assistant"]
+ChatRole = Literal["system", "user", "assistant", "tool"]
 
 
 class ChatMessageIn(BaseModel):
     role: ChatRole
-    content: str = Field(..., min_length=1, max_length=20_000)
+    content: str = Field(default="", max_length=20_000)
+    name: str | None = Field(default=None, max_length=100)
+    tool_call_id: str | None = Field(default=None, max_length=200)
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 class ChatCompletionIn(BaseModel):
@@ -21,6 +24,7 @@ class ChatCompletionIn(BaseModel):
     model: str | None = Field(default=None, max_length=100)
     temperature: float | None = Field(default=None, ge=0, le=2)
     max_tokens: int | None = Field(default=None, ge=1, le=32_000)
+    tools: list[dict[str, Any]] | None = None
 
 
 class ChatUsageOut(BaseModel):
@@ -67,3 +71,12 @@ class ChatSessionStreamIn(BaseModel):
     model: str | None = Field(default=None, max_length=100)
     temperature: float | None = Field(default=None, ge=0, le=2)
     max_tokens: int | None = Field(default=None, ge=1, le=32_000)
+    tools: list[dict[str, Any]] | None = None
+
+
+class ChatSessionPersistIn(BaseModel):
+    session_id: str | None = Field(default=None, max_length=80)
+    agent_id: str | None = Field(default=None, min_length=2, max_length=80)
+    user_content: str = Field(..., min_length=1, max_length=20_000)
+    assistant_content: str = Field(..., min_length=1, max_length=20_000)
+    model: str | None = Field(default=None, max_length=100)

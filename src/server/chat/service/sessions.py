@@ -19,7 +19,7 @@ from src.server.config import GlobalConfig, global_config
 
 from ..dao import ChatDAO
 from ..models import ChatSession
-from ..schemas import ChatCompletionIn, ChatMessageIn, ChatMessageOut, ChatSessionRenameIn, ChatSessionStreamIn, ChatSessionSummaryOut
+from ..schemas import ChatCompletionIn, ChatMessageIn, ChatMessageOut, ChatSessionPersistIn, ChatSessionRenameIn, ChatSessionStreamIn, ChatSessionSummaryOut
 from .http_client import _chat_completions_url, _upstream_error_detail
 from .payloads import _build_upstream_payload, _resolve_chat_model
 from .personal_aiwiki import build_personal_aiwiki_chat_context, stream_personal_aiwiki_tool_events
@@ -64,6 +64,32 @@ def delete_chat_session(db: Session, user: User, session_id: str) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
 
 
+def persist_frontend_chat_turn(db: Session, user: User, payload: ChatSessionPersistIn) -> ChatSessionSummaryOut:
+    user_content = payload.user_content.strip()
+    assistant_content = payload.assistant_content.strip()
+    if not user_content or not assistant_content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="消息不能为空")
+
+    dao = ChatDAO(db)
+    resolution = _resolve_session_and_agent(db, user, dao, payload, user_content)
+    if resolution.error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=resolution.error)
+    if resolution.session is None or resolution.agent_context is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="会话初始化失败")
+
+    session = resolution.session
+    dao.append_message(owner_user_id=user.id, session_id=session.id, role="user", content=user_content)
+    dao.append_message(
+        owner_user_id=user.id,
+        session_id=session.id,
+        role="assistant",
+        content=assistant_content,
+        model=payload.model,
+    )
+    session = dao.get_session(owner_user_id=user.id, session_id=session.id) or session
+    return _session_summary_out(db, session, dao.count_messages(owner_user_id=user.id, session_id=session.id))
+
+
 async def stream_persistent_chat_session(
     db: Session,
     user: User,
@@ -103,6 +129,7 @@ async def stream_persistent_chat_session(
         model=payload.model,
         temperature=payload.temperature,
         max_tokens=payload.max_tokens,
+        tools=payload.tools,
     )
     model, upstream_payload = _build_upstream_payload(
         completion_payload,
@@ -170,7 +197,7 @@ def _resolve_session_and_agent(
     db: Session,
     user: User,
     dao: ChatDAO,
-    payload: ChatSessionStreamIn,
+    payload: ChatSessionStreamIn | ChatSessionPersistIn,
     prompt: str,
 ) -> SessionAgentResolution:
     if payload.session_id:

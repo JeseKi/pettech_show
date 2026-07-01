@@ -217,7 +217,7 @@ function createMessage(role: ChatMessage['role'], content: string, agent?: Agent
 
 function createMessageFromRecord(record: ChatMessageRecord, agent?: AgentMessageDisplay | null): ChatMessage {
   const createdAt = Date.parse(record.created_at)
-  const role = record.role === 'system' ? 'assistant' : record.role
+  const role = record.role === 'user' ? 'user' : 'assistant'
   return {
     ...createMessage(role, record.content, agent),
     createAt: Number.isFinite(createdAt) ? createdAt : Date.now(),

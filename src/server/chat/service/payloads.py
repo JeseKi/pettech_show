@@ -41,8 +41,9 @@ def _build_upstream_payload(
     }
     if stream:
         upstream_payload["stream"] = True
-    if tools:
-        upstream_payload["tools"] = tools
+    merged_tools = [*(tools or []), *(payload.tools or [])]
+    if merged_tools:
+        upstream_payload["tools"] = merged_tools
     return model, upstream_payload
 
 
@@ -69,8 +70,8 @@ def _build_messages(
     agent_system_prompt: str | None = None,
     extra_system_context: str = "",
     extra_user_context: str = "",
-) -> list[dict[str, str]]:
-    messages: list[dict[str, str]] = []
+) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = []
     base_system_prompt = (
         agent_system_prompt.strip()
         if isinstance(agent_system_prompt, str) and agent_system_prompt.strip()
@@ -80,7 +81,15 @@ def _build_messages(
     if system_parts:
         messages.append({"role": "system", "content": "\n\n".join(system_parts)})
 
-    messages.extend({"role": message.role, "content": message.content} for message in payload.messages)
+    for message in payload.messages:
+        item: dict[str, Any] = {"role": message.role, "content": message.content}
+        if message.name:
+            item["name"] = message.name
+        if message.tool_call_id:
+            item["tool_call_id"] = message.tool_call_id
+        if message.tool_calls:
+            item["tool_calls"] = message.tool_calls
+        messages.append(item)
     if extra_user_context.strip():
         messages.append({"role": "user", "content": extra_user_context.strip()})
     return messages

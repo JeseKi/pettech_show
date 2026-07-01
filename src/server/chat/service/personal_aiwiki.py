@@ -152,6 +152,8 @@ async def complete_with_personal_aiwiki_tools(
             if fallback_payload is not None:
                 return await post(config, fallback_payload)
             return response
+        if has_frontend_tool_call(tool_calls):
+            return response
 
         current_payload = build_payload_after_tool_calls(current_payload, response, tool_calls, user, stream=False)
 
@@ -169,6 +171,10 @@ async def stream_personal_aiwiki_tool_events(
         response = await post(config, current_payload)
         tool_calls = extract_tool_calls(response)
         if tool_calls:
+            if has_frontend_tool_call(tool_calls):
+                yield "frontend_tool_calls", {"tool_calls": tool_calls}
+                yield "done", {}
+                return
             current_payload = build_payload_after_tool_calls(current_payload, response, tool_calls, user, stream=False)
             continue
 
@@ -481,6 +487,15 @@ def extract_tool_calls(data: dict[str, Any]) -> list[dict[str, Any]]:
     message = first_message(data)
     tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
     return [item for item in tool_calls if isinstance(item, dict)] if isinstance(tool_calls, list) else []
+
+
+def has_frontend_tool_call(tool_calls: list[dict[str, Any]]) -> bool:
+    for tool_call in tool_calls:
+        function = tool_call.get("function") if isinstance(tool_call, dict) else None
+        name = function.get("name") if isinstance(function, dict) else None
+        if isinstance(name, str) and name.startswith("frontend_"):
+            return True
+    return False
 
 
 def extract_message_content(data: dict[str, Any]) -> str:

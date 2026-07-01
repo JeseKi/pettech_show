@@ -1,11 +1,14 @@
 import api, { refreshAccessToken } from './api'
 import { getAccessToken } from './tokenStorage'
 
-export type ChatRole = 'system' | 'user' | 'assistant'
+export type ChatRole = 'system' | 'user' | 'assistant' | 'tool'
 
 export interface ChatMessagePayload {
   role: ChatRole
   content: string
+  name?: string
+  tool_call_id?: string
+  tool_calls?: Array<Record<string, unknown>>
 }
 
 export interface ChatCompletionPayload {
@@ -14,6 +17,7 @@ export interface ChatCompletionPayload {
   model?: string
   temperature?: number
   max_tokens?: number
+  tools?: Array<Record<string, unknown>>
 }
 
 export interface ChatUsage {
@@ -28,6 +32,7 @@ export interface ChatCompletion {
   role: 'assistant'
   content: string
   usage: ChatUsage | null
+  raw?: Record<string, unknown> | null
 }
 
 export interface ChatStreamHandlers {
@@ -61,6 +66,15 @@ export interface ChatSessionStreamPayload {
   model?: string
   temperature?: number
   max_tokens?: number
+  tools?: Array<Record<string, unknown>>
+}
+
+export interface ChatSessionPersistTurnPayload {
+  session_id?: string
+  agent_id?: string
+  user_content: string
+  assistant_content: string
+  model?: string
 }
 
 export async function createChatCompletion(payload: ChatCompletionPayload): Promise<ChatCompletion> {
@@ -85,6 +99,11 @@ export async function renameChatSession(sessionId: string, title: string): Promi
 
 export async function deleteChatSession(sessionId: string): Promise<void> {
   await api.delete(`/chat/sessions/${sessionId}`)
+}
+
+export async function persistChatSessionTurn(payload: ChatSessionPersistTurnPayload): Promise<ChatSessionSummary> {
+  const { data } = await api.post<ChatSessionSummary>('/chat/sessions/persist-turn', payload)
+  return data
 }
 
 export async function streamChatCompletion(

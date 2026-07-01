@@ -195,3 +195,15 @@ export type ChoiceEndpointDraftState = {
   current: { x: number; y: number }
   targetSceneId?: string
 }
+
+export type CanvasAgentToolCall = {
+  name: string
+  arguments?: Record<string, unknown>
+}
+
+export type CanvasAgentToolResult = {
+  ok: boolean
+  name: string
+  message: string
+  data?: unknown
+}

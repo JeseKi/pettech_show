@@ -4,12 +4,43 @@ import { App, Input } from 'antd'
 import { closeInteractiveMoviePublication, createInteractiveMovieProject, deleteInteractiveMovieProject, getInteractiveMovieProject, getInteractiveMoviePromptTemplate, getInteractiveMovieSyncState, listInteractiveMovieReleases, listInteractiveMovieProjects, patchInteractiveMovieProject, publishInteractiveMovieProject, renameInteractiveMovieProject, setInteractiveMoviePublishedRelease, uploadInteractiveMovieImage, uploadInteractiveMovieVideo } from '../../../lib/interactiveMovie'
 import type { InteractiveMovieProjectDetail, InteractiveMovieRelease, PromptTemplate } from '../../../lib/interactiveMovie'
 import { resolveErrorMessage } from '../../../lib/errorMessage'
-import type { AssetNode, AssetNodeType, AssetUploadState, CanvasContextMenuState, CanvasViewport, ChoiceEdge, ChoiceEndpointDraftState, ConnectableNodeType, InteractionState, InteractiveMovieProject, LinkDraftState, NodeHandleSide, NodeLink, NodeLinkEndpoint, SceneNode, SelectedObject, StoredWorkspace } from '../interactiveMovieTypes'
+import type { AssetNode, AssetNodeType, AssetUploadState, CanvasAgentToolCall, CanvasAgentToolResult, CanvasContextMenuState, CanvasViewport, ChoiceEdge, ChoiceEndpointDraftState, ConnectableNodeType, InteractionState, InteractiveMovieProject, LinkDraftState, NodeHandleSide, NodeLink, NodeLinkEndpoint, SceneNode, SelectedObject, StoredWorkspace } from '../interactiveMovieTypes'
 import { LINK_SNAP_RADIUS, MAX_ZOOM, MIN_ZOOM, NODE_HEIGHT, NODE_WIDTH, clamp, uniqueId } from '../interactiveMovieConstants'
 import { createDefaultProject, createDraftAssetNode, createDraftScene, firstSelectableObject, normalizeProjectChoices } from '../interactiveMovieProject'
 import { cleanupProjectReplicasOutside, cloudReplicaKey, draftReplicaKey, hasCloudCopy, isMissingCloudProjectError, loadScenePanelState, loadWorkspace, persistScenePanelState, persistWorkspaceLocally, readProjectReplica, removeProjectReplicas, withCloudMeta, writeProjectReplica } from '../interactiveMovieStorage'
 import { buildProjectPatch, localDraftIsNewer, mergeDraftWithCloudMeta, patchHasChanges } from '../interactiveMoviePatch'
 import { getScenePosterUrl, getSceneVideoUrl, handleAnchor, nodeBounds, nodeDimensions, projectHasNodePairLink, resolveFloatingEndpoint, sameNodeEndpoint } from '../interactiveMovieCanvas'
+
+const CANVAS_AGENT_UNAVAILABLE_MESSAGE = '请在画布中调用智能体, 而非在聊天栏调用.'
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+)
+
+const stringValue = (value: unknown) => (typeof value === 'string' ? value : undefined)
+
+const numberValue = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
+
+const positionValue = (value: unknown, fallback?: { x: number; y: number }) => {
+  if (!isRecord(value)) return fallback
+  const x = numberValue(value.x)
+  const y = numberValue(value.y)
+  return x === undefined || y === undefined ? fallback : { x, y }
+}
+
+const assetNodeTypeValue = (value: unknown): AssetNodeType | null => (
+  value === 'text' || value === 'image' || value === 'video' ? value : null
+)
+
+const connectableNodeTypeValue = (value: unknown): ConnectableNodeType | null => (
+  value === 'scene' || value === 'text' || value === 'image' || value === 'video' ? value : null
+)
+
+const handleValue = (value: unknown): NodeHandleSide => (
+  value === 'top' || value === 'right' || value === 'bottom' || value === 'left' ? value : 'right'
+)
+
+const selectedObjectForNode = (type: ConnectableNodeType, id: string): SelectedObject => ({ type, id })
 
 export function useInteractiveMoviePageModel() {
   const { message, modal } = App.useApp()
@@ -43,6 +74,8 @@ export function useInteractiveMoviePageModel() {
   const [scenePanelState, setScenePanelState] = useState<Record<string, string[]>>(() => loadScenePanelState())
 
   const activeProject = workspace.projects.find((project) => project.id === workspace.activeProjectId) ?? workspace.projects[0]
+  const activeProjectRef = useRef(activeProject)
+  activeProjectRef.current = activeProject
   const scenes = activeProject.scenes
   const choices = activeProject.choices
   const assetNodes = activeProject.assetNodes
@@ -203,11 +236,12 @@ export function useInteractiveMoviePageModel() {
   const updateActiveProject = useCallback((updater: (project: InteractiveMovieProject) => InteractiveMovieProject) => {
     setWorkspace((current) => ({
       ...current,
-      projects: current.projects.map((project) => (
-        project.id === current.activeProjectId
-          ? { ...updater(project), updatedAt: new Date().toISOString() }
-          : project
-      )),
+      projects: current.projects.map((project) => {
+        if (project.id !== current.activeProjectId) return project
+        const nextProject = { ...updater(project), updatedAt: new Date().toISOString() }
+        activeProjectRef.current = nextProject
+        return nextProject
+      }),
     }))
   }, [])
 
@@ -900,6 +934,10 @@ export function useInteractiveMoviePageModel() {
     setCanvasContextMenu(null)
   }
 
+  const closeCanvasContextMenu = useCallback(() => {
+    setCanvasContextMenu(null)
+  }, [])
+
   const deleteNodeLink = useCallback((linkId: string) => {
     updateActiveProject((project) => {
       const nextNodeLinks = project.nodeLinks.filter((link) => link.id !== linkId)
@@ -1110,6 +1148,334 @@ export function useInteractiveMoviePageModel() {
         message.success('场景已删除')
       },
     })
+  }
+
+  const buildCanvasAgentOverview = () => {
+    const project = activeProjectRef.current
+    return {
+      project: {
+        id: project.id,
+        title: project.title,
+      },
+      nodes: [
+        ...project.scenes.map((scene) => ({
+          id: scene.id,
+          title: scene.title,
+          type: 'scene',
+        })),
+        ...project.assetNodes.map((asset) => ({
+          id: asset.id,
+          title: asset.title,
+          type: asset.type,
+        })),
+      ],
+      relations: [
+        ...project.choices.map((choice) => ({
+          id: choice.id,
+          title: choice.label,
+          type: 'choice',
+          from: { type: 'scene', id: choice.fromSceneId },
+          to: { type: 'scene', id: choice.toSceneId },
+        })),
+        ...project.nodeLinks.map((link) => ({
+          id: link.id,
+          title: '节点连接',
+          type: 'nodeLink',
+          from: { type: link.from.type, id: link.from.id },
+          to: { type: link.to.type, id: link.to.id },
+        })),
+      ],
+    }
+  }
+
+  const getCanvasAgentNodeDetail = (args: Record<string, unknown>): CanvasAgentToolResult => {
+    const project = activeProjectRef.current
+    const id = stringValue(args.id)
+    const type = stringValue(args.type)
+    if (!id || !type) {
+      return { ok: false, name: 'canvas_get_node_detail', message: '需要提供 type 和 id' }
+    }
+    if (type === 'scene') {
+      const scene = project.scenes.find((item) => item.id === id)
+      return scene
+        ? { ok: true, name: 'canvas_get_node_detail', message: '已获取场景详情', data: scene }
+        : { ok: false, name: 'canvas_get_node_detail', message: `找不到场景 ${id}` }
+    }
+    if (type === 'choice') {
+      const choice = project.choices.find((item) => item.id === id)
+      return choice
+        ? { ok: true, name: 'canvas_get_node_detail', message: '已获取选择详情', data: choice }
+        : { ok: false, name: 'canvas_get_node_detail', message: `找不到选择 ${id}` }
+    }
+    if (type === 'nodeLink') {
+      const link = project.nodeLinks.find((item) => item.id === id)
+      return link
+        ? { ok: true, name: 'canvas_get_node_detail', message: '已获取连接详情', data: link }
+        : { ok: false, name: 'canvas_get_node_detail', message: `找不到连接 ${id}` }
+    }
+    const asset = project.assetNodes.find((item) => item.id === id && (type === 'asset' || item.type === type))
+    return asset
+      ? { ok: true, name: 'canvas_get_node_detail', message: '已获取素材详情', data: asset }
+      : { ok: false, name: 'canvas_get_node_detail', message: `找不到素材 ${id}` }
+  }
+
+  const canvasAgentEndpoint = (
+    value: unknown,
+    fallbackHandle: NodeHandleSide,
+    project: InteractiveMovieProject,
+  ): NodeLinkEndpoint | null => {
+    if (!isRecord(value)) return null
+    const type = connectableNodeTypeValue(value.type)
+    const id = stringValue(value.id)
+    if (!type || !id) return null
+    const exists = type === 'scene'
+      ? project.scenes.some((scene) => scene.id === id)
+      : project.assetNodes.some((asset) => asset.type === type && asset.id === id)
+    if (!exists) return null
+    return { type, id, handle: handleValue(value.handle) || fallbackHandle }
+  }
+
+  const applyScenePatch = (scene: SceneNode, rawPatch: unknown): SceneNode => {
+    if (!isRecord(rawPatch)) return scene
+    const scriptPatch = isRecord(rawPatch.script) ? rawPatch.script : null
+    const mediaPatch = isRecord(rawPatch.media) ? rawPatch.media : null
+    return {
+      ...scene,
+      title: stringValue(rawPatch.title)?.trim() || scene.title,
+      role: rawPatch.role === 'start' || rawPatch.role === 'middle' || rawPatch.role === 'ending'
+        ? rawPatch.role
+        : scene.role,
+      position: positionValue(rawPatch.position, scene.position) ?? scene.position,
+      script: scriptPatch
+        ? {
+          ...scene.script,
+          synopsis: stringValue(scriptPatch.synopsis) ?? scene.script.synopsis,
+          visualDescription: stringValue(scriptPatch.visualDescription) ?? scene.script.visualDescription,
+          videoPrompt: stringValue(scriptPatch.videoPrompt) ?? scene.script.videoPrompt,
+          lines: Array.isArray(scriptPatch.lines) ? scriptPatch.lines as SceneNode['script']['lines'] : scene.script.lines,
+        }
+        : scene.script,
+      media: mediaPatch ? { ...scene.media, ...mediaPatch } : scene.media,
+    }
+  }
+
+  const applyAssetPatch = (asset: AssetNode, rawPatch: unknown): AssetNode => {
+    if (!isRecord(rawPatch)) return asset
+    return {
+      ...asset,
+      title: stringValue(rawPatch.title)?.trim() || asset.title,
+      position: positionValue(rawPatch.position, asset.position) ?? asset.position,
+      text: stringValue(rawPatch.text) ?? asset.text,
+      media: isRecord(rawPatch.media) ? { ...asset.media, ...rawPatch.media } : asset.media,
+    }
+  }
+
+  const executeCanvasAgentTool = (call: CanvasAgentToolCall): CanvasAgentToolResult => {
+    const rawName = stringValue(call.name)
+    const name = rawName?.startsWith('frontend_canvas__')
+      ? rawName.replace('frontend_canvas__', 'canvas_')
+      : rawName
+    const args = isRecord(call.arguments) ? call.arguments : {}
+    if (!name) {
+      return { ok: false, name: 'unknown', message: '工具名不能为空' }
+    }
+    const project = activeProjectRef.current
+
+    if (name === 'canvas_get_overview') {
+      return { ok: true, name, message: '已获取画布概括', data: buildCanvasAgentOverview() }
+    }
+    if (name === 'canvas_get_node_detail') {
+      return getCanvasAgentNodeDetail(args)
+    }
+    if (name === 'canvas_create_node') {
+      const rawType = args.type
+      const title = stringValue(args.title)?.trim()
+      const position = positionValue(args.position, defaultNewScenePosition()) ?? defaultNewScenePosition()
+      if (rawType === 'scene') {
+        const scene = applyScenePatch(
+          createDraftScene(title || `新场景 ${project.scenes.length + 1}`, position),
+          { ...args, position },
+        )
+        updateActiveProject((current) => ({
+          ...current,
+          scenes: [...current.scenes, scene],
+          selectedObject: { type: 'scene', id: scene.id },
+        }))
+        return { ok: true, name, message: `已创建场景 ${scene.title}`, data: { id: scene.id, type: 'scene', title: scene.title } }
+      }
+      const assetType = assetNodeTypeValue(rawType)
+      if (!assetType) {
+        return { ok: false, name, message: 'type 必须是 scene、text、image 或 video' }
+      }
+      const fallbackTitle = assetType === 'text' ? '文本' : assetType === 'image' ? '图片' : '视频'
+      const asset = applyAssetPatch(
+        createDraftAssetNode(assetType, title || `${fallbackTitle} ${project.assetNodes.filter((item) => item.type === assetType).length + 1}`, position),
+        { ...args, position },
+      )
+      updateActiveProject((current) => ({
+        ...current,
+        assetNodes: [...current.assetNodes, asset],
+        selectedObject: selectedObjectForNode(asset.type, asset.id),
+      }))
+      return { ok: true, name, message: `已创建${fallbackTitle}节点 ${asset.title}`, data: { id: asset.id, type: asset.type, title: asset.title } }
+    }
+    if (name === 'canvas_update_node') {
+      const id = stringValue(args.id)
+      const type = connectableNodeTypeValue(args.type)
+      const patch = isRecord(args.patch) ? args.patch : args
+      if (!id || !type) return { ok: false, name, message: '需要提供 type 和 id' }
+      if (type === 'scene') {
+        const scene = project.scenes.find((item) => item.id === id)
+        if (!scene) return { ok: false, name, message: `找不到场景 ${id}` }
+        updateActiveProject((current) => ({
+          ...current,
+          scenes: current.scenes.map((item) => (item.id === id ? applyScenePatch(item, patch) : item)),
+          selectedObject: { type: 'scene', id },
+        }))
+        return { ok: true, name, message: `已更新场景 ${id}` }
+      }
+      const asset = project.assetNodes.find((item) => item.type === type && item.id === id)
+      if (!asset) return { ok: false, name, message: `找不到素材 ${id}` }
+      updateActiveProject((current) => ({
+        ...current,
+        assetNodes: current.assetNodes.map((item) => (item.id === id && item.type === type ? applyAssetPatch(item, patch) : item)),
+        selectedObject: selectedObjectForNode(type, id),
+      }))
+      return { ok: true, name, message: `已更新${type}节点 ${id}` }
+    }
+    if (name === 'canvas_delete_node') {
+      const id = stringValue(args.id)
+      const type = connectableNodeTypeValue(args.type)
+      if (!id || !type) return { ok: false, name, message: '需要提供 type 和 id' }
+      if (type === 'scene') {
+        if (!project.scenes.some((scene) => scene.id === id)) return { ok: false, name, message: `找不到场景 ${id}` }
+        deleteScene(id)
+        return { ok: true, name, message: `已删除场景 ${id}` }
+      }
+      if (!project.assetNodes.some((asset) => asset.type === type && asset.id === id)) return { ok: false, name, message: `找不到素材 ${id}` }
+      deleteAssetNode(id)
+      return { ok: true, name, message: `已删除${type}节点 ${id}` }
+    }
+    if (name === 'canvas_create_relation') {
+      const relationType = stringValue(args.type)
+      if (relationType === 'choice') {
+        const fromSceneId = stringValue(args.fromSceneId)
+        const toSceneId = stringValue(args.toSceneId)
+        if (!fromSceneId || !toSceneId) return { ok: false, name, message: '创建 choice 需要 fromSceneId 和 toSceneId' }
+        if (fromSceneId === toSceneId) return { ok: false, name, message: 'choice 的来源和目标场景不能相同' }
+        if (!project.scenes.some((scene) => scene.id === fromSceneId) || !project.scenes.some((scene) => scene.id === toSceneId)) {
+          return { ok: false, name, message: 'choice 的来源或目标场景不存在' }
+        }
+        const choice: ChoiceEdge = {
+          id: uniqueId('choice'),
+          fromSceneId,
+          toSceneId,
+          label: stringValue(args.label)?.trim() || '新的选择',
+          trigger: 'after_scene',
+        }
+        updateActiveProject((current) => ({
+          ...current,
+          choices: [...current.choices, choice],
+          selectedObject: { type: 'choice', id: choice.id },
+        }))
+        return { ok: true, name, message: `已创建选择 ${choice.label}`, data: { id: choice.id, type: 'choice' } }
+      }
+      if (relationType === 'nodeLink') {
+        const from = canvasAgentEndpoint(args.from, 'right', project)
+        const to = canvasAgentEndpoint(args.to, 'left', project)
+        if (!from || !to) return { ok: false, name, message: '创建 nodeLink 需要有效的 from 和 to 端点' }
+        if (sameNodeEndpoint(from, to)) return { ok: false, name, message: 'nodeLink 两端不能是同一节点' }
+        const nextFrom = resolveFloatingEndpoint(from, to, sceneMap, assetMap)
+        const nextTo = resolveFloatingEndpoint(to, from, sceneMap, assetMap)
+        if (projectHasNodePairLink(project, nextFrom, nextTo)) return { ok: false, name, message: '这两个节点之间已经存在连接' }
+        const link: NodeLink = { id: uniqueId('link'), from: nextFrom, to: nextTo }
+        updateActiveProject((current) => ({
+          ...current,
+          nodeLinks: [...current.nodeLinks, link],
+          selectedObject: { type: 'nodeLink', id: link.id },
+        }))
+        return { ok: true, name, message: '已创建节点连接', data: { id: link.id, type: 'nodeLink' } }
+      }
+      return { ok: false, name, message: 'type 必须是 choice 或 nodeLink' }
+    }
+    if (name === 'canvas_update_relation') {
+      const id = stringValue(args.id)
+      const relationType = stringValue(args.type)
+      const patch = isRecord(args.patch) ? args.patch : args
+      if (!id || !relationType) return { ok: false, name, message: '需要提供 type 和 id' }
+      if (relationType === 'choice') {
+        const choice = project.choices.find((item) => item.id === id)
+        if (!choice) return { ok: false, name, message: `找不到选择 ${id}` }
+        const nextFromSceneId = stringValue(patch.fromSceneId) ?? choice.fromSceneId
+        const nextToSceneId = stringValue(patch.toSceneId) ?? choice.toSceneId
+        if (nextFromSceneId === nextToSceneId) return { ok: false, name, message: 'choice 的来源和目标场景不能相同' }
+        if (!project.scenes.some((scene) => scene.id === nextFromSceneId) || !project.scenes.some((scene) => scene.id === nextToSceneId)) {
+          return { ok: false, name, message: 'choice 的来源或目标场景不存在' }
+        }
+        updateActiveProject((current) => ({
+          ...current,
+          choices: current.choices.map((item) => (
+            item.id === id
+              ? {
+                ...item,
+                fromSceneId: nextFromSceneId,
+                toSceneId: nextToSceneId,
+                label: stringValue(patch.label)?.trim() || item.label,
+                offsetX: numberValue(patch.offsetX) ?? item.offsetX,
+                offsetY: numberValue(patch.offsetY) ?? item.offsetY,
+              }
+              : item
+          )),
+          selectedObject: { type: 'choice', id },
+        }))
+        return { ok: true, name, message: `已更新选择 ${id}` }
+      }
+      if (relationType === 'nodeLink') {
+        const link = project.nodeLinks.find((item) => item.id === id)
+        if (!link) return { ok: false, name, message: `找不到连接 ${id}` }
+        const from = patch.from === undefined ? link.from : canvasAgentEndpoint(patch.from, 'right', project)
+        const to = patch.to === undefined ? link.to : canvasAgentEndpoint(patch.to, 'left', project)
+        if (!from || !to) return { ok: false, name, message: 'nodeLink 的 from 或 to 端点无效' }
+        if (sameNodeEndpoint(from, to)) return { ok: false, name, message: 'nodeLink 两端不能是同一节点' }
+        const nextFrom = resolveFloatingEndpoint(from, to, sceneMap, assetMap)
+        const nextTo = resolveFloatingEndpoint(to, from, sceneMap, assetMap)
+        if (projectHasNodePairLink(project, nextFrom, nextTo, id)) return { ok: false, name, message: '这两个节点之间已经存在连接' }
+        updateActiveProject((current) => ({
+          ...current,
+          nodeLinks: current.nodeLinks.map((item) => (
+            item.id === id
+              ? {
+                ...item,
+                from: nextFrom,
+                to: nextTo,
+                offsetX: numberValue(patch.offsetX) ?? item.offsetX,
+                offsetY: numberValue(patch.offsetY) ?? item.offsetY,
+              }
+              : item
+          )),
+          selectedObject: { type: 'nodeLink', id },
+        }))
+        return { ok: true, name, message: `已更新连接 ${id}` }
+      }
+      return { ok: false, name, message: 'type 必须是 choice 或 nodeLink' }
+    }
+    if (name === 'canvas_delete_relation') {
+      const id = stringValue(args.id)
+      const relationType = stringValue(args.type)
+      if (!id || !relationType) return { ok: false, name, message: '需要提供 type 和 id' }
+      if (relationType === 'choice') {
+        if (!project.choices.some((choice) => choice.id === id)) return { ok: false, name, message: `找不到选择 ${id}` }
+        deleteChoice(id)
+        return { ok: true, name, message: `已删除选择 ${id}` }
+      }
+      if (relationType === 'nodeLink') {
+        if (!project.nodeLinks.some((link) => link.id === id)) return { ok: false, name, message: `找不到连接 ${id}` }
+        deleteNodeLink(id)
+        return { ok: true, name, message: `已删除连接 ${id}` }
+      }
+      return { ok: false, name, message: 'type 必须是 choice 或 nodeLink' }
+    }
+    return { ok: false, name, message: `未知画布工具 ${name}。${CANVAS_AGENT_UNAVAILABLE_MESSAGE}` }
   }
 
   const addLine = (sceneId: string) => {
@@ -1521,10 +1887,12 @@ export function useInteractiveMoviePageModel() {
     beginNodeLinkRouteDrag,
     beginPan,
     bottomToolbarCollapsed,
+    buildCanvasAgentOverview,
     canvasContextMenu,
     canvasRef,
     choices,
     choiceEndpointDraft,
+    closeCanvasContextMenu,
     closePublishedProject,
     confirmDeleteAssetNode,
     confirmDeleteChoice,
@@ -1538,6 +1906,7 @@ export function useInteractiveMoviePageModel() {
     deleteLine,
     deleteNodeLink,
     endPointerInteraction,
+    executeCanvasAgentTool,
     fitView,
     finishPreviewScene,
     handlePointerMove,

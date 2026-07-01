@@ -17,6 +17,7 @@ from .schemas import (
     ChatCompletionIn,
     ChatCompletionOut,
     ChatMessageOut,
+    ChatSessionPersistIn,
     ChatSessionRenameIn,
     ChatSessionStreamIn,
     ChatSessionSummaryOut,
@@ -26,6 +27,7 @@ from .service import (
     delete_chat_session,
     list_chat_messages,
     list_chat_sessions,
+    persist_frontend_chat_turn,
     rename_chat_session,
     stream_chat_completion,
     stream_persistent_chat_session,
@@ -117,6 +119,19 @@ async def delete_session(
 ):
     await run_in_thread(lambda: delete_chat_session(db, current_user, session_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/sessions/persist-turn",
+    response_model=ChatSessionSummaryOut,
+    summary="持久化前端工具会话消息",
+)
+async def persist_frontend_turn(
+    payload: ChatSessionPersistIn,
+    db: Session = Depends(get_db),
+    current_user: User = Security(get_current_user, scopes=[SCOPE_PROFILE_READ]),
+):
+    return await run_in_thread(lambda: persist_frontend_chat_turn(db, current_user, payload))
 
 
 @router.post(

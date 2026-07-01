@@ -33,6 +33,7 @@ from .sessions import (
     delete_chat_session,
     list_chat_messages,
     list_chat_sessions,
+    persist_frontend_chat_turn,
     rename_chat_session,
     stream_persistent_chat_session,
 )
@@ -64,6 +65,7 @@ __all__ = [
     "delete_chat_session",
     "list_chat_messages",
     "list_chat_sessions",
+    "persist_frontend_chat_turn",
     "rename_chat_session",
     "stream_chat_completion",
     "stream_persistent_chat_session",

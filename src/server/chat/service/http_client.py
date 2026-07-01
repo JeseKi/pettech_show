@@ -74,7 +74,8 @@ def _parse_completion(data: dict[str, Any], requested_model: str) -> ChatComplet
         if isinstance(raw_content, str):
             content = raw_content
 
-    if not content:
+    tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
+    if not content and not tool_calls:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Chat API 返回缺少 assistant content")
 
     raw_id = data.get("id")
@@ -86,6 +87,7 @@ def _parse_completion(data: dict[str, Any], requested_model: str) -> ChatComplet
         model=raw_model if isinstance(raw_model, str) else requested_model,
         content=content,
         usage=parsed_usage,
+        raw=data,
     )
 
 

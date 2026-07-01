@@ -1,11 +1,14 @@
 import type { CSSProperties } from 'react'
-import { BorderOuterOutlined, BranchesOutlined, DownOutlined, EditOutlined, FileTextOutlined, FullscreenOutlined, PictureOutlined, PlusOutlined, UpOutlined, VideoCameraOutlined, ZoomInOutlined, ZoomOutOutlined } from '@ant-design/icons'
+import { useState } from 'react'
+import { BorderOuterOutlined, BranchesOutlined, DownOutlined, EditOutlined, FileTextOutlined, FullscreenOutlined, MessageOutlined, PictureOutlined, PlusOutlined, UpOutlined, VideoCameraOutlined, ZoomInOutlined, ZoomOutOutlined } from '@ant-design/icons'
 import { Button, Tooltip, Typography } from 'antd'
 import { useInteractiveMoviePageContext } from './useInteractiveMoviePageContext'
 import { CanvasStage } from './CanvasStage'
+import { CanvasAgentChat } from './CanvasAgentChat'
 import { EditorFloatingPanel } from './EditorFloatingPanel'
 
 export function MovieCanvas() {
+  const [agentChatOpen, setAgentChatOpen] = useState(false)
   const {
     addAssetNode,
     addChoice,
@@ -83,6 +86,7 @@ export function MovieCanvas() {
       )}
 
       <EditorFloatingPanel />
+      <CanvasAgentChat open={agentChatOpen} onClose={() => setAgentChatOpen(false)} />
 
       <div
         className={bottomToolbarCollapsed ? 'movie-bottom-dock is-collapsed' : 'movie-bottom-dock'}
@@ -115,6 +119,15 @@ export function MovieCanvas() {
           </Tooltip>
           <Tooltip title="添加视频">
             <Button shape="circle" icon={<VideoCameraOutlined />} onClick={() => addAssetNode('video')} />
+          </Tooltip>
+          <span className="movie-bottom-divider" />
+          <Tooltip title={agentChatOpen ? '关闭画布智能体' : '打开画布智能体'}>
+            <Button
+              shape="circle"
+              type={agentChatOpen ? 'primary' : 'default'}
+              icon={<MessageOutlined />}
+              onClick={() => setAgentChatOpen((value) => !value)}
+            />
           </Tooltip>
           <span className="movie-bottom-divider" />
           <Tooltip title="缩小">
