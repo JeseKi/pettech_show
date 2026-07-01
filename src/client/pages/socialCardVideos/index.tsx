@@ -70,7 +70,7 @@ export default function SocialCardVideosPage() {
   const loadSourceJobs = useCallback(async () => {
     setLoadingSources(true)
     try {
-      const data = await listSocialCardJobs({ limit: 100, offset: 0 })
+      const data = await listSocialCardJobs({ limit: 10, offset: 0 })
       const completed = data.items.filter((item) => item.status === 'completed')
       setSourceJobs(completed)
       setSelectedSourceJobId((current) => current ?? completed[0]?.id ?? null)
@@ -85,7 +85,7 @@ export default function SocialCardVideosPage() {
   const loadVideoJobs = useCallback(async () => {
     setLoadingHistory(true)
     try {
-      const data = await listSocialCardVideoJobs({ limit: 50, offset: 0 })
+      const data = await listSocialCardVideoJobs({ limit: 10, offset: 0 })
       setVideoJobs(data.items)
       setError(null)
     } catch (err) {

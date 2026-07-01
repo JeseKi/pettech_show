@@ -78,7 +78,7 @@ export default function SeedMatrixPage({
   const loadAiwikiJobs = useCallback(async () => {
     setLoadingInputs(true)
     try {
-      const data = await listAiwikiJobs({ limit: 100, offset: 0, status: 'completed' })
+      const data = await listAiwikiJobs({ limit: 10, offset: 0, status: 'completed' })
       setAiwikiJobs(data.items)
       setSelectedAiwikiJobId((current) => current ?? data.items[0]?.id ?? null)
     } catch (err) {
@@ -92,7 +92,7 @@ export default function SeedMatrixPage({
     setLoadingHistory(true)
     try {
       const data = await listSeedMatrixJobs({
-        limit: 50,
+        limit: 10,
         offset: 0,
         source_aiwiki_job_id: sourceAiwikiJobId ?? undefined,
       })

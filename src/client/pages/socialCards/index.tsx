@@ -76,7 +76,7 @@ export default function SocialCardsPage() {
   const loadWriterJobs = useCallback(async () => {
     setLoadingWriters(true)
     try {
-      const data = await listDailyWriterJobs({ limit: 100, offset: 0 })
+      const data = await listDailyWriterJobs({ limit: 10, offset: 0 })
       const completed = data.items.filter((item) => item.status === 'completed' || item.status === 'partial_failed')
       setWriterJobs(completed)
       setSelectedWriterJobId((current) => current ?? completed[0]?.id ?? null)
@@ -91,7 +91,7 @@ export default function SocialCardsPage() {
   const loadCardJobs = useCallback(async () => {
     setLoadingHistory(true)
     try {
-      const data = await listSocialCardJobs({ limit: 50, offset: 0 })
+      const data = await listSocialCardJobs({ limit: 10, offset: 0 })
       setCardJobs(data.items)
       setError(null)
     } catch (err) {

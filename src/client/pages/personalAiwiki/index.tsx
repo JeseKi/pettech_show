@@ -85,7 +85,7 @@ export default function PersonalAiwikiPage() {
   const loadHistory = useCallback(async (showLoading = true) => {
     if (showLoading) setHistoryLoading(true)
     try {
-      const list = await listPersonalAiwikiJobs({ limit: 80, offset: 0 })
+      const list = await listPersonalAiwikiJobs({ limit: 10, offset: 0 })
       setHistory(list.items)
     } catch (err) {
       message.error(resolveErrorMessage(err))

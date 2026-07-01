@@ -122,9 +122,9 @@ export default function DistributionStagePage() {
     setLoadingSources(true)
     try {
       const [dailyWriters, socialCards, socialCardVideos] = await Promise.all([
-        listDailyWriterJobs({ limit: 100, offset: 0 }),
-        listSocialCardJobs({ limit: 100, offset: 0 }),
-        listSocialCardVideoJobs({ limit: 100, offset: 0 }),
+        listDailyWriterJobs({ limit: 10, offset: 0 }),
+        listSocialCardJobs({ limit: 10, offset: 0 }),
+        listSocialCardVideoJobs({ limit: 10, offset: 0 }),
       ])
       setDailyWriterJobs(dailyWriters.items.filter((item) => item.status === 'completed' || item.status === 'partial_failed'))
       setSocialCardJobs(socialCards.items.filter((item) => item.status === 'completed'))
@@ -140,7 +140,7 @@ export default function DistributionStagePage() {
     if (user?.role !== 'admin') return
     setLoadingHistory(true)
     try {
-      const list = await listDistributionUploads({ limit: 20, offset: 0 })
+      const list = await listDistributionUploads({ limit: 10, offset: 0 })
       setUploadJobs(list.items)
     } catch (err) {
       message.error(resolveErrorMessage(err))

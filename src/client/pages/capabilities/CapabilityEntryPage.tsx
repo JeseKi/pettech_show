@@ -97,7 +97,7 @@ export default function CapabilityEntryPage({ entry }: { entry: CapabilityEntryC
   const loadJobs = useCallback(async () => {
     setLoadingHistory(true)
     try {
-      const data = await listCapabilityJobs({ limit: 50, offset: 0, capability_key: entry.key })
+      const data = await listCapabilityJobs({ limit: 10, offset: 0, capability_key: entry.key })
       setJobs(data.items)
     } catch (err) {
       setError(resolveErrorMessage(err))

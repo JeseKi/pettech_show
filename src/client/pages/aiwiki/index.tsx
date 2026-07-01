@@ -186,7 +186,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
     try {
-      const list = await listAiwikiJobs({ limit: 100, offset: 0 })
+      const list = await listAiwikiJobs({ limit: 10, offset: 0 })
       setHistory(list.items)
     } catch (err) {
       message.error(resolveErrorMessage(err))
@@ -199,9 +199,9 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     if (!isContentGrowthWorkbench) return
     try {
       const [seedMatrices, dailyWriters, socialCards] = await Promise.all([
-        listSeedMatrixJobs({ limit: 100, offset: 0 }),
-        listDailyWriterJobs({ limit: 100, offset: 0 }),
-        listSocialCardJobs({ limit: 100, offset: 0 }),
+        listSeedMatrixJobs({ limit: 10, offset: 0 }),
+        listDailyWriterJobs({ limit: 10, offset: 0 }),
+        listSocialCardJobs({ limit: 10, offset: 0 }),
       ])
       setWorkflowReadiness({
         completedSeedMatrices: seedMatrices.items.filter((item) => item.status === 'completed').length,

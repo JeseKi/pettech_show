@@ -101,7 +101,7 @@ export default function DailyWriterPage({
     setLoadingMatrices(true)
     try {
       const data = await listSeedMatrixJobs({
-        limit: 100,
+        limit: 10,
         offset: 0,
         source_aiwiki_job_id: sourceAiwikiJobId ?? undefined,
       })
@@ -118,7 +118,7 @@ export default function DailyWriterPage({
   const loadWriterJobs = useCallback(async () => {
     setLoadingHistory(true)
     try {
-      const data = await listDailyWriterJobs({ limit: 50, offset: 0 })
+      const data = await listDailyWriterJobs({ limit: 10, offset: 0 })
       setWriterJobs(sourceAiwikiJobId
         ? data.items.filter((item) => item.source_aiwiki_job_id === sourceAiwikiJobId)
         : data.items)
