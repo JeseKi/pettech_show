@@ -328,6 +328,89 @@ def test_persistent_chat_stream_stores_server_messages_and_uses_server_history(
     assert test_client.get("/api/chat/sessions", headers=headers).json() == []
 
 
+def test_persistent_chat_canvas_frontend_tools_return_unavailable_outside_canvas(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = _create_user(test_db_session, "chat_canvas_frontend_tool_owner")
+    headers = _auth_headers(user)
+    captured_payloads: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(global_config, "chat_api_key", "test-key")
+    monkeypatch.setattr(global_config, "chat_model", "persistent-model")
+    monkeypatch.setattr(global_config, "chat_system_prompt", "系统提示")
+
+    async def fake_post_chat_completion(_config, payload: dict[str, Any]) -> dict[str, Any]:
+        captured_payloads.append(payload)
+        if len(captured_payloads) == 1:
+            return {
+                "id": "chatcmpl-canvas-tool-plan",
+                "model": payload["model"],
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "call_canvas_overview",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "frontend_canvas__get_overview",
+                                        "arguments": "{}",
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ],
+            }
+        return {
+            "id": "chatcmpl-canvas-tool-final",
+            "model": payload["model"],
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "请在画布中和智能体进行对话, 当前环境无法直接操作画布.",
+                    }
+                }
+            ],
+        }
+
+    monkeypatch.setattr(chat_service, "_post_chat_completion", fake_post_chat_completion)
+
+    resp = test_client.post(
+        "/api/chat/sessions/stream",
+        headers=headers,
+        json={
+            "content": "你可以通过 Tool Call 来看看我们画布吗？不要直接根据上下文来看。",
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "frontend_canvas__get_overview",
+                        "description": "获取当前互动电影画布概括。",
+                        "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert 'event: delta\ndata: {"content": "请在画布中和智能体进行对话, 当前环境无法直接操作画布."}' in resp.text
+    assert captured_payloads[0]["tools"][1]["function"]["name"] == "frontend_canvas__get_overview"
+    tool_message = next(message for message in captured_payloads[1]["messages"] if message["role"] == "tool")
+    assert tool_message == {
+        "role": "tool",
+        "tool_call_id": "call_canvas_overview",
+        "name": "frontend_canvas__get_overview",
+        "content": "请在画布中和智能体进行对话, 当前环境无法直接操作画布.",
+    }
+
+
 def test_persistent_chat_injects_personal_aiwiki_index_as_user_context(
     test_client,
     test_db_session,

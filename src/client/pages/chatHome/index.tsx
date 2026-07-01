@@ -36,6 +36,7 @@ import {
   type ChatMessageRecord,
   type ChatSessionSummary,
 } from '../../lib/chat'
+import { canvasToolDefinitions } from '../../lib/canvasAgentTools'
 import {
   getPersonalAiwikiEntryPage,
   type PersonalAiwikiEntryPage,
@@ -1117,6 +1118,7 @@ export default function ChatHomePage() {
           agent_id: selectedAgentId ?? undefined,
           content: prompt,
           session_id: activeSessionId ?? undefined,
+          tools: canvasToolDefinitions,
         },
         {
           onSession: (session) => {

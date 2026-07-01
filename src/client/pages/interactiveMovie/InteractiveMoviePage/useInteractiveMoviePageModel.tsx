@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
 import { App, Input } from 'antd'
+import { FRONTEND_CANVAS_UNAVAILABLE_MESSAGE } from '../../../lib/canvasAgentTools'
 import { closeInteractiveMoviePublication, createInteractiveMovieProject, deleteInteractiveMovieProject, getInteractiveMovieProject, getInteractiveMoviePromptTemplate, getInteractiveMovieSyncState, listInteractiveMovieReleases, listInteractiveMovieProjects, patchInteractiveMovieProject, publishInteractiveMovieProject, renameInteractiveMovieProject, setInteractiveMoviePublishedRelease, uploadInteractiveMovieImage, uploadInteractiveMovieVideo } from '../../../lib/interactiveMovie'
 import type { InteractiveMovieProjectDetail, InteractiveMovieRelease, PromptTemplate } from '../../../lib/interactiveMovie'
 import { resolveErrorMessage } from '../../../lib/errorMessage'
@@ -11,7 +12,7 @@ import { cleanupProjectReplicasOutside, cloudReplicaKey, draftReplicaKey, hasClo
 import { buildProjectPatch, localDraftIsNewer, mergeDraftWithCloudMeta, patchHasChanges } from '../interactiveMoviePatch'
 import { getScenePosterUrl, getSceneVideoUrl, handleAnchor, nodeBounds, nodeDimensions, projectHasNodePairLink, resolveFloatingEndpoint, sameNodeEndpoint } from '../interactiveMovieCanvas'
 
-const CANVAS_AGENT_UNAVAILABLE_MESSAGE = '请在画布中调用智能体, 而非在聊天栏调用.'
+const CANVAS_AGENT_UNAVAILABLE_MESSAGE = FRONTEND_CANVAS_UNAVAILABLE_MESSAGE
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)

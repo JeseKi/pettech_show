@@ -23,6 +23,8 @@ from .streaming import _sse_event
 
 PERSONAL_AIWIKI_TRIGGER = "$知识库"
 PERSONAL_AIWIKI_TOOL_NAME = "get_personal_aiwiki_entry"
+FRONTEND_CANVAS_TOOL_PREFIX = "frontend_canvas__"
+FRONTEND_CANVAS_UNAVAILABLE_MESSAGE = "请在画布中和智能体进行对话, 当前环境无法直接操作画布."
 MAX_INDEX_CONTEXT_CHARS = 20_000
 MAX_TOOL_CONTENT_CHARS = 60_000
 MAX_AUTO_ENTRY_CONTEXT_CHARS = 60_000
@@ -167,13 +169,27 @@ async def stream_personal_aiwiki_tool_events(
     config: GlobalConfig,
     payload: dict[str, Any],
     user: User,
+    *,
+    frontend_canvas_mode: str = "passthrough",
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     post = service_attr("_post_chat_completion", _post_chat_completion)
     current_payload = without_stream(payload)
+    handled_frontend_canvas_unavailable = False
     for step in range(1, MAX_TOOL_CALL_STEPS + 1):
         response = await post(config, current_payload)
         tool_calls = extract_tool_calls(response)
         if tool_calls:
+            if has_frontend_canvas_tool_call(tool_calls) and frontend_canvas_mode == "unavailable":
+                handled_frontend_canvas_unavailable = True
+                current_payload = build_payload_after_tool_calls(
+                    current_payload,
+                    response,
+                    tool_calls,
+                    user,
+                    stream=False,
+                    frontend_canvas_mode="unavailable",
+                )
+                continue
             if has_frontend_tool_call(tool_calls):
                 yield "frontend_tool_calls", {"tool_calls": tool_calls}
                 yield "done", {}
@@ -190,7 +206,11 @@ async def stream_personal_aiwiki_tool_events(
         yield "done", {}
         return
 
-    limit_response = tool_loop_limit_response(payload)
+    limit_response = (
+        frontend_canvas_unavailable_response(payload)
+        if handled_frontend_canvas_unavailable
+        else tool_loop_limit_response(payload)
+    )
     yield "delta", {"content": extract_message_content(limit_response)}
     yield "done", {}
 
@@ -230,10 +250,11 @@ def build_payload_after_tool_calls(
     user: User,
     *,
     stream: bool,
+    frontend_canvas_mode: str = "passthrough",
 ) -> dict[str, Any]:
     messages = [dict(message) for message in payload.get("messages", []) if isinstance(message, dict)]
     messages.append(assistant_tool_message(first_response, tool_calls))
-    messages.extend(tool_result_messages(user, tool_calls))
+    messages.extend(tool_result_messages(user, tool_calls, frontend_canvas_mode=frontend_canvas_mode))
     final_payload = {
         key: value
         for key, value in payload.items()
@@ -268,6 +289,21 @@ def tool_loop_limit_response(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def frontend_canvas_unavailable_response(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": None,
+        "model": str(payload.get("model") or ""),
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": FRONTEND_CANVAS_UNAVAILABLE_MESSAGE,
+                }
+            }
+        ],
+    }
+
+
 def assistant_tool_message(first_response: dict[str, Any], tool_calls: list[dict[str, Any]]) -> dict[str, Any]:
     message = first_message(first_response)
     content = message.get("content") if isinstance(message, dict) else ""
@@ -278,13 +314,21 @@ def assistant_tool_message(first_response: dict[str, Any], tool_calls: list[dict
     }
 
 
-def tool_result_messages(user: User, tool_calls: list[dict[str, Any]]) -> list[dict[str, str]]:
+def tool_result_messages(
+    user: User,
+    tool_calls: list[dict[str, Any]],
+    *,
+    frontend_canvas_mode: str = "passthrough",
+) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
     for index, tool_call in enumerate(tool_calls, start=1):
         function = tool_call.get("function") if isinstance(tool_call, dict) else None
         name = function.get("name") if isinstance(function, dict) else None
         call_id = tool_call.get("id") if isinstance(tool_call, dict) else None
-        result = execute_personal_aiwiki_tool(user, tool_call)
+        if frontend_canvas_mode == "unavailable" and is_frontend_canvas_tool_call(tool_call):
+            result = FRONTEND_CANVAS_UNAVAILABLE_MESSAGE
+        else:
+            result = execute_personal_aiwiki_tool(user, tool_call)
         messages.append(
             {
                 "role": "tool",
@@ -555,6 +599,16 @@ def has_frontend_tool_call(tool_calls: list[dict[str, Any]]) -> bool:
         if isinstance(name, str) and name.startswith("frontend_"):
             return True
     return False
+
+
+def has_frontend_canvas_tool_call(tool_calls: list[dict[str, Any]]) -> bool:
+    return any(is_frontend_canvas_tool_call(tool_call) for tool_call in tool_calls)
+
+
+def is_frontend_canvas_tool_call(tool_call: dict[str, Any]) -> bool:
+    function = tool_call.get("function") if isinstance(tool_call, dict) else None
+    name = function.get("name") if isinstance(function, dict) else None
+    return isinstance(name, str) and name.startswith(FRONTEND_CANVAS_TOOL_PREFIX)
 
 
 def extract_message_content(data: dict[str, Any]) -> str:

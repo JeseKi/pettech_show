@@ -150,7 +150,7 @@ async def stream_persistent_chat_session(
     assistant_completed = False
     try:
         event_stream = (
-            stream_personal_aiwiki_tool_events(config, upstream_payload, user)
+            stream_personal_aiwiki_tool_events(config, upstream_payload, user, frontend_canvas_mode="unavailable")
             if personal_aiwiki_context.enabled
             else _configured_stream_chat_events(config, upstream_payload)
         )
