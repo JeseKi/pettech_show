@@ -68,9 +68,9 @@ The target directory must contain:
 ## Server Rendering Rules
 
 - Do not generate temporary scripts that import Playwright through a relative `node_modules/playwright/index.js` path.
-- Prefer licensed project fonts from `.agents/assets/fonts/` when rendering Chinese text. Common allowed filenames include `msyh.ttc`, `msyh.ttf`, `msyhbd.ttc`, and `MicrosoftYaHei.ttf`.
+- Prefer licensed project fonts from `.agents/assets/fonts/` when rendering Chinese text. Common allowed filenames include `msyh.ttc`, `msyh.ttf`, `msyhbd.ttc`, `MicrosoftYaHei.ttf`, `NotoSansSC-Regular.otf`, and `NotoSansSC-Bold.otf`.
 - Do not recursively glob `/usr/share/fonts` or any system font directory. If a system font is needed, use CSS system font fallbacks or query a single concrete path with `fc-match`/`fc-list`; if that fails, continue with the default Pillow/browser font.
-- If browser screenshots are needed, use the system browser path from `CHROME_BIN` or `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`, falling back to `/usr/bin/chromium`, `/usr/bin/chromium-browser`, or `/usr/bin/google-chrome`.
+- PNG rendering must try the browser screenshot path first. Read `CHROME_BIN` or `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`, then probe `/usr/bin/chromium`, `/usr/bin/chromium-browser`, and `/usr/bin/google-chrome`. If any executable browser is found, render the Guizang HTML with Chrome/Chromium headless screenshot instead of jumping directly to Pillow.
 - Do not rely on Playwright's cached browser under `/root/.cache/ms-playwright/`; production images may set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`.
 - If importing Playwright from ESM, use CommonJS-compatible default import:
 
@@ -79,7 +79,7 @@ The target directory must contain:
   const { chromium } = playwright;
   ```
 
-- If no browser is available, use local Python/Pillow rendering while still preserving Guizang `index.html`, `manifest.json`, and `plan.md` or `prompts.md` as design source files.
+- Use local Python/Pillow rendering only after all browser paths are missing, or after the Chrome/Chromium headless screenshot command has actually failed. When using Pillow fallback, write `artwork/guizang/render_notes.md` with the browser paths checked, the failed command if any, and the fallback reason, while still preserving Guizang `index.html`, `manifest.json`, and `plan.md` or `prompts.md` as design source files.
 
 ## Local Path Contract
 

@@ -59,7 +59,7 @@ For each page, decide:
 
 ## Local Font Rules
 
-- Prefer licensed project fonts from `.agents/assets/fonts/` for Chinese text. Common allowed filenames include `msyh.ttc`, `msyh.ttf`, `msyhbd.ttc`, and `MicrosoftYaHei.ttf`.
+- Prefer licensed project fonts from `.agents/assets/fonts/` for Chinese text. Common allowed filenames include `msyh.ttc`, `msyh.ttf`, `msyhbd.ttc`, `MicrosoftYaHei.ttf`, `NotoSansSC-Regular.otf`, and `NotoSansSC-Bold.otf`.
 - When writing HTML/CSS, use `@font-face` for an available project font and place that family first in the Chinese `font-family` stack.
 - Do not recursively glob `/usr/share/fonts` or any system font directory. If a system font is needed, use CSS system fallbacks or query a single concrete path with `fc-match`/`fc-list`.
 - If no project font is available, continue with browser/system fallback fonts rather than failing the image task.

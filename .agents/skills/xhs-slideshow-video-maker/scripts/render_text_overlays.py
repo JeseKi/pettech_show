@@ -13,6 +13,8 @@ DEFAULT_FONT_CANDIDATES = [
     ".agents/assets/fonts/msyh.ttf",
     ".agents/assets/fonts/msyhbd.ttc",
     ".agents/assets/fonts/MicrosoftYaHei.ttf",
+    ".agents/assets/fonts/NotoSansSC-Regular.otf",
+    ".agents/assets/fonts/NotoSansSC-Bold.otf",
     "/System/Library/Fonts/STHeiti Medium.ttc",
     "/System/Library/Fonts/PingFang.ttc",
     "/Library/Fonts/Arial Unicode.ttf",
