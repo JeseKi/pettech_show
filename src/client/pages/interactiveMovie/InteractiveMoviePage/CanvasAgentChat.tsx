@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
-import { Button, Input, Select, Typography } from 'antd'
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
+import { Button, Input, Select, Tag, Typography } from 'antd'
 import { CloseOutlined, DragOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -12,6 +12,8 @@ import {
   type ChatMessagePayload,
   type ChatSessionSummary,
 } from '../../../lib/chat'
+import { listMyAgents, type UserAgent } from '../../../lib/agentMarket'
+import { listMyAgentSkills, type UserAgentSkill } from '../../../lib/agentSkills'
 import { resolveErrorMessage } from '../../../lib/errorMessage'
 import type { CanvasAgentToolCall } from '../interactiveMovieTypes'
 import { useInteractiveMoviePageContext } from './useInteractiveMoviePageContext'
@@ -43,11 +45,27 @@ type PanelInteraction =
     startGeometry: PanelGeometry
   }
 
+type MentionKind = 'agent' | 'knowledge' | 'skill'
+
+type MentionOption = {
+  agentId?: string
+  id: string
+  insertText: string
+  kind: MentionKind
+  label: string
+  subtitle: string
+  tag: string
+}
+
 const FRONTEND_CANVAS_PREFIX = 'frontend_canvas__'
 const FRONTEND_CANVAS_UNAVAILABLE_MESSAGE = '请在画布中调用智能体, 而非在聊天栏调用.'
 const MAX_TOOL_STEPS = 4
 const PANEL_GEOMETRY_KEY = 'interactiveMovie.canvasAgent.panelGeometry'
 const PANEL_SESSION_KEY = 'interactiveMovie.canvasAgent.sessionId'
+const KNOWLEDGE_MENTION = '$知识库'
+const CAPABILITY_MENTION_TRIGGER_PATTERN = /(^|\s)@([\u4e00-\u9fa5A-Za-z0-9_-]*)$/
+const KNOWLEDGE_MENTION_TRIGGER_PATTERN = /(^|\s)\$([\u4e00-\u9fa5A-Za-z0-9_-]*)$/
+const MENTION_PAGE_SIZE = 6
 
 const defaultPanelGeometry = (): PanelGeometry => {
   const width = 420
@@ -266,6 +284,14 @@ const toolCallId = (toolCall: Record<string, unknown>, index: number) => (
 
 const sessionLabel = (session: ChatSessionSummary) => `${session.title || '新对话'} · ${session.message_count}`
 
+const agentMentionText = (agent: UserAgent) => `@${agent.slug || agent.id}`
+
+const mentionMatches = (values: string[], query: string) => {
+  if (!query) return true
+  const normalizedQuery = query.toLowerCase()
+  return values.some((value) => value.toLowerCase().includes(normalizedQuery))
+}
+
 export function CanvasAgentChat({
   open,
   onClose,
@@ -279,11 +305,83 @@ export function CanvasAgentChat({
   const [messages, setMessages] = useState<CanvasAgentMessage[]>([])
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(() => localStorage.getItem(PANEL_SESSION_KEY))
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
+  const [mentionAgents, setMentionAgents] = useState<UserAgent[]>([])
+  const [mentionSkills, setMentionSkills] = useState<UserAgentSkill[]>([])
+  const [mentionLoading, setMentionLoading] = useState(false)
+  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0)
   const [loading, setLoading] = useState(false)
   const interactionRef = useRef<PanelInteraction | null>(null)
   const messageListRef = useRef<HTMLDivElement>(null)
 
   const latestMessages = useMemo(() => messages.slice(-10), [messages])
+  const activeCapabilityMentionQuery = useMemo(() => {
+    const match = input.match(CAPABILITY_MENTION_TRIGGER_PATTERN)
+    return match ? match[2].toLowerCase() : null
+  }, [input])
+  const activeKnowledgeMentionQuery = useMemo(() => {
+    if (activeCapabilityMentionQuery !== null) return null
+    const match = input.match(KNOWLEDGE_MENTION_TRIGGER_PATTERN)
+    return match ? match[2] : null
+  }, [activeCapabilityMentionQuery, input])
+  const mentionOptions = useMemo<MentionOption[]>(() => {
+    if (activeCapabilityMentionQuery !== null) {
+      const agentOptions = mentionAgents
+        .filter((agent) => mentionMatches([
+          agent.id,
+          agent.slug,
+          agent.name,
+          agent.title,
+          agent.category_label,
+          ...agent.tags,
+        ], activeCapabilityMentionQuery))
+        .map((agent): MentionOption => ({
+          agentId: agent.id,
+          id: `agent-${agent.id}`,
+          insertText: agentMentionText(agent),
+          kind: 'agent',
+          label: agent.name,
+          subtitle: agent.category_label || agentMentionText(agent),
+          tag: '智能体',
+        }))
+      const skillOptions = mentionSkills
+        .filter((skill) => mentionMatches([
+          skill.id,
+          skill.slug,
+          skill.mention,
+          skill.name,
+          skill.title,
+          skill.category_label,
+          ...skill.tags,
+        ], activeCapabilityMentionQuery))
+        .map((skill): MentionOption => ({
+          id: `skill-${skill.id}`,
+          insertText: skill.mention,
+          kind: 'skill',
+          label: skill.name,
+          subtitle: skill.mention,
+          tag: '技能',
+        }))
+      return [...agentOptions, ...skillOptions].slice(0, MENTION_PAGE_SIZE * 2)
+    }
+    if (activeKnowledgeMentionQuery !== null && '知识库'.startsWith(activeKnowledgeMentionQuery)) {
+      return [{
+        id: 'knowledge-personal-aiwiki',
+        insertText: KNOWLEDGE_MENTION,
+        kind: 'knowledge',
+        label: '个人 AI Wiki',
+        subtitle: KNOWLEDGE_MENTION,
+        tag: '知识库',
+      }]
+    }
+    return []
+  }, [activeCapabilityMentionQuery, activeKnowledgeMentionQuery, mentionAgents, mentionSkills])
+  const activeMentionKind: MentionKind | null = activeCapabilityMentionQuery !== null
+    ? 'agent'
+    : activeKnowledgeMentionQuery !== null
+      ? 'knowledge'
+      : null
+  const hasSelectableMention = !mentionLoading && mentionOptions.length > 0
 
   useEffect(() => {
     localStorage.setItem(PANEL_GEOMETRY_KEY, JSON.stringify(geometry))
@@ -305,13 +403,57 @@ export function CanvasAgentChat({
     messageListRef.current?.scrollTo({ top: messageListRef.current.scrollHeight })
   }, [messages, open])
 
+  useEffect(() => {
+    if (activeCapabilityMentionQuery === null || !open) {
+      setMentionAgents([])
+      setMentionSkills([])
+      setSelectedMentionIndex(0)
+      setMentionLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setMentionLoading(true)
+    void Promise.all([
+      listMyAgents({ page: 1, pageSize: MENTION_PAGE_SIZE, search: activeCapabilityMentionQuery }),
+      listMyAgentSkills({ page: 1, pageSize: MENTION_PAGE_SIZE, search: activeCapabilityMentionQuery }),
+    ])
+      .then(([agentPage, skillPage]) => {
+        if (cancelled) return
+        setMentionAgents(agentPage.items)
+        setMentionSkills(skillPage.items)
+        setSelectedMentionIndex(0)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setMentionAgents([])
+        setMentionSkills([])
+      })
+      .finally(() => {
+        if (!cancelled) setMentionLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeCapabilityMentionQuery, open])
+
+  useEffect(() => {
+    setSelectedMentionIndex((current) => {
+      if (mentionOptions.length === 0) return 0
+      return Math.min(current, mentionOptions.length - 1)
+    })
+  }, [mentionOptions.length])
+
   const refreshSessions = async (sessionId = activeSessionId) => {
     const nextSessions = await listChatSessions()
     setSessions(nextSessions)
-    const nextActiveId = sessionId && nextSessions.some((item) => item.id === sessionId)
+    const nextActiveSession = sessionId ? nextSessions.find((item) => item.id === sessionId) : null
+    const nextActiveId = nextActiveSession
       ? sessionId
       : null
     setActiveSessionId(nextActiveId)
+    setSelectedAgentId(nextActiveSession?.agent_id ?? null)
     if (!nextActiveId) {
       setMessages([])
       return
@@ -333,6 +475,7 @@ export function CanvasAgentChat({
         '当前 system context 只包含画布概括。需要完整字段时先调用 get_node_detail，不要凭旧上下文猜测。',
         '完成工具调用后，用简洁中文说明你做了什么。回复支持 Markdown。',
         `当前项目：${activeProject.title}`,
+        selectedAgentId ? `本轮指定智能体 id：${selectedAgentId}` : '',
         `当前画布概括：${JSON.stringify(buildCanvasAgentOverview())}`,
       ].join('\n'),
     },
@@ -343,6 +486,7 @@ export function CanvasAgentChat({
   const requestWithTools = async (baseMessages: ChatMessagePayload[], step = 1): Promise<string> => {
     const response = await createChatCompletion({
       messages: baseMessages,
+      agent_id: selectedAgentId ?? undefined,
       tools: canvasToolDefinitions,
       temperature: 0.2,
       max_tokens: 2200,
@@ -382,6 +526,7 @@ export function CanvasAgentChat({
       setMessages((current) => [...current, { id: messageId('assistant'), role: 'assistant', content: assistantContent }])
       const session = await persistChatSessionTurn({
         session_id: activeSessionId ?? undefined,
+        agent_id: selectedAgentId ?? undefined,
         user_content: content,
         assistant_content: assistantContent,
       })
@@ -390,6 +535,50 @@ export function CanvasAgentChat({
       setMessages((current) => [...current, { id: messageId('assistant'), role: 'assistant', content: resolveErrorMessage(error) }])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const selectMentionOption = (option: MentionOption) => {
+    setInput((current) => {
+      const pattern = option.kind === 'knowledge' ? KNOWLEDGE_MENTION_TRIGGER_PATTERN : CAPABILITY_MENTION_TRIGGER_PATTERN
+      if (!pattern.test(current)) {
+        const prefix = current.trimEnd()
+        return prefix ? `${prefix} ${option.insertText} ` : `${option.insertText} `
+      }
+      return current.replace(pattern, `$1${option.insertText} `)
+    })
+    if (option.kind === 'agent' && option.agentId) {
+      const activeSession = sessions.find((session) => session.id === activeSessionId)
+      if (activeSessionId && activeSession?.agent_id !== option.agentId) {
+        setActiveSessionId(null)
+        setMessages([])
+      }
+      setSelectedAgentId(option.agentId)
+    }
+  }
+
+  const confirmSelectedMentionCandidate = () => {
+    if (!hasSelectableMention) return false
+    const option = mentionOptions[selectedMentionIndex] ?? mentionOptions[0]
+    if (!option) return false
+    selectMentionOption(option)
+    return true
+  }
+
+  const handleInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (!hasSelectableMention) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      event.stopPropagation()
+      setSelectedMentionIndex((current) => (current + 1) % mentionOptions.length)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      event.stopPropagation()
+      setSelectedMentionIndex((current) => (current - 1 < 0 ? mentionOptions.length - 1 : current - 1))
+    } else if (event.key === 'Tab' || event.key === 'Enter') {
+      event.preventDefault()
+      event.stopPropagation()
+      confirmSelectedMentionCandidate()
     }
   }
 
@@ -478,6 +667,7 @@ export function CanvasAgentChat({
         </div>
         <Button icon={<PlusOutlined />} disabled={loading} onClick={() => {
           setActiveSessionId(null)
+          setSelectedAgentId(null)
           setMessages([])
         }} aria-label="新建对话" />
         <Button icon={<CloseOutlined />} onClick={onClose} aria-label="关闭智能体栏" />
@@ -494,20 +684,71 @@ export function CanvasAgentChat({
       </div>
 
       <div className="movie-agent-form">
-        <Input.TextArea
-          value={input}
-          autoSize={{ minRows: 2, maxRows: 5 }}
-          disabled={loading}
-          placeholder="让智能体调整当前画布"
-          onChange={(event) => setInput(event.target.value)}
-          onPressEnter={(event) => {
-            if (!event.shiftKey) {
-              event.preventDefault()
-              void sendMessage()
+        <div className="movie-agent-input-shell">
+          {activeMentionKind !== null && (
+            <div className="movie-agent-mention-popover" role="listbox">
+              {mentionLoading ? (
+                <p className="movie-agent-mention-empty">搜索中...</p>
+              ) : mentionOptions.length > 0 ? (
+                mentionOptions.map((option, index) => (
+                  <button
+                    aria-selected={index === selectedMentionIndex}
+                    className={index === selectedMentionIndex ? 'movie-agent-mention-option is-active' : 'movie-agent-mention-option'}
+                    key={option.id}
+                    onMouseDown={(event) => {
+                      event.preventDefault()
+                      selectMentionOption(option)
+                    }}
+                    onMouseEnter={() => setSelectedMentionIndex(index)}
+                    role="option"
+                    type="button"
+                  >
+                    <span>
+                      <strong>{option.label}</strong>
+                      <small>{option.subtitle}</small>
+                    </span>
+                    <Tag color={option.kind === 'knowledge' ? 'success' : option.kind === 'agent' ? 'processing' : 'info'}>{option.tag}</Tag>
+                  </button>
+                ))
+              ) : (
+                <p className="movie-agent-mention-empty">
+                  {activeKnowledgeMentionQuery !== null ? '没有匹配的知识库' : '没有匹配的智能体或技能'}
+                </p>
+              )}
+            </div>
+          )}
+          <Input.TextArea
+            value={input}
+            autoSize={{ minRows: 2, maxRows: 5 }}
+            disabled={loading}
+            placeholder="输入 @ 调用智能体/技能，输入 $ 选择知识库"
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={handleInputKeyDown}
+            onPressEnter={(event) => {
+              if (activeMentionKind !== null) {
+                event.preventDefault()
+                return
+              }
+              if (!event.shiftKey) {
+                event.preventDefault()
+                void sendMessage()
+              }
+            }}
+          />
+        </div>
+        <Button
+          type="primary"
+          icon={<SendOutlined />}
+          loading={loading}
+          onClick={() => {
+            if (activeMentionKind !== null && hasSelectableMention) {
+              confirmSelectedMentionCandidate()
+              return
             }
+            void sendMessage()
           }}
+          aria-label="发送"
         />
-        <Button type="primary" icon={<SendOutlined />} loading={loading} onClick={() => void sendMessage()} aria-label="发送" />
       </div>
       <button type="button" className="movie-agent-resize" onPointerDown={beginResize} aria-label="调整智能体栏大小" />
     </div>
