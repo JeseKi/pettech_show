@@ -33,11 +33,16 @@ def test_prepare_skill_copies_agent_assets_for_artwork(
 
     prepare_skill(workdir, include_artwork=True)
 
-    assert (workdir / ".agents" / "skills" / "wechat-daily-writer").is_symlink()
+    assert (workdir / ".agents" / "skills" / "wechat-daily-writer").is_dir()
+    assert not (workdir / ".agents" / "skills" / "wechat-daily-writer").is_symlink()
     assert (
         workdir / ".agents" / "skills" / "wechat-main-artwork-coordinator"
+    ).is_dir()
+    assert not (
+        workdir / ".agents" / "skills" / "wechat-main-artwork-coordinator"
     ).is_symlink()
-    assert (workdir / ".agents" / "assets").is_symlink()
+    assert (workdir / ".agents" / "assets").is_dir()
+    assert not (workdir / ".agents" / "assets").is_symlink()
     assert (workdir / ".agents" / "assets" / "fonts" / "README.md").is_file()
 
 
@@ -70,11 +75,18 @@ def test_ensure_artwork_artifacts_repairs_existing_workdir(
     assert (existing_skill / "SKILL.md").is_file()
     assert (
         workdir / ".agents" / "skills" / "wechat-main-artwork-coordinator"
+    ).is_dir()
+    assert not (
+        workdir / ".agents" / "skills" / "wechat-main-artwork-coordinator"
     ).is_symlink()
     assert (
         workdir / ".agents" / "skills" / "guizang-social-card-skill"
+    ).is_dir()
+    assert not (
+        workdir / ".agents" / "skills" / "guizang-social-card-skill"
     ).is_symlink()
-    assert (workdir / ".agents" / "assets").is_symlink()
+    assert (workdir / ".agents" / "assets").is_dir()
+    assert not (workdir / ".agents" / "assets").is_symlink()
     assert (
         workdir
         / ".agents"
