@@ -9,6 +9,7 @@ import {
   Input,
   InputNumber,
   List,
+  Pagination,
   Popconfirm,
   Progress,
   Space,
@@ -53,6 +54,7 @@ import { StepWizard } from '../../components/workflow/StepWizard'
 import '../seedMatrix/GrowthWorkflow.css'
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
+const TASK_PAGE_SIZE = 5
 const SOCIAL_CARD_IMAGE_PREFIX = 'social-card-image:'
 
 type WorkflowRunJob = Pick<SocialCardJob, 'status' | 'queue_position' | 'message' | 'progress' | 'log_tail'>
@@ -60,7 +62,11 @@ type WorkflowRunJob = Pick<SocialCardJob, 'status' | 'queue_position' | 'message
 export default function SocialCardsPage() {
   const { message, modal } = App.useApp()
   const [writerJobs, setWriterJobs] = useState<DailyWriterJobSummary[]>([])
+  const [writerJobsPage, setWriterJobsPage] = useState(1)
+  const [writerJobsTotal, setWriterJobsTotal] = useState(0)
   const [cardJobs, setCardJobs] = useState<SocialCardJobSummary[]>([])
+  const [cardJobsPage, setCardJobsPage] = useState(1)
+  const [cardJobsTotal, setCardJobsTotal] = useState(0)
   const [selectedWriterJobId, setSelectedWriterJobId] = useState<string | null>(null)
   const [activeJob, setActiveJob] = useState<SocialCardJob | null>(null)
   const [result, setResult] = useState<SocialCardResult | null>(null)
@@ -73,12 +79,16 @@ export default function SocialCardsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const loadWriterJobs = useCallback(async () => {
+  const loadWriterJobs = useCallback(async (page = writerJobsPage) => {
     setLoadingWriters(true)
     try {
-      const data = await listDailyWriterJobs({ limit: 10, offset: 0 })
+      const data = await listDailyWriterJobs({
+        limit: TASK_PAGE_SIZE,
+        offset: (page - 1) * TASK_PAGE_SIZE,
+      })
       const completed = data.items.filter((item) => item.status === 'completed' || item.status === 'partial_failed')
       setWriterJobs(completed)
+      setWriterJobsTotal(data.total)
       setSelectedWriterJobId((current) => current ?? completed[0]?.id ?? null)
       setError(null)
     } catch (err) {
@@ -86,20 +96,24 @@ export default function SocialCardsPage() {
     } finally {
       setLoadingWriters(false)
     }
-  }, [])
+  }, [writerJobsPage])
 
-  const loadCardJobs = useCallback(async () => {
+  const loadCardJobs = useCallback(async (page = cardJobsPage) => {
     setLoadingHistory(true)
     try {
-      const data = await listSocialCardJobs({ limit: 10, offset: 0 })
+      const data = await listSocialCardJobs({
+        limit: TASK_PAGE_SIZE,
+        offset: (page - 1) * TASK_PAGE_SIZE,
+      })
       setCardJobs(data.items)
+      setCardJobsTotal(data.total)
       setError(null)
     } catch (err) {
       setError(resolveErrorMessage(err))
     } finally {
       setLoadingHistory(false)
     }
-  }, [])
+  }, [cardJobsPage])
 
   const refreshJob = useCallback(async (jobId: string, silent = false) => {
     if (!silent) setRefreshing(true)
@@ -251,8 +265,15 @@ export default function SocialCardsPage() {
         activeJobId={creating ? null : activeJob?.id ?? null}
         jobs={cardJobs}
         loading={loadingHistory}
+        page={cardJobsPage}
+        pageSize={TASK_PAGE_SIZE}
+        total={cardJobsTotal}
         onCreate={startCreate}
         onDelete={(jobId) => void deleteJob(jobId)}
+        onPageChange={(page) => {
+          setCardJobsPage(page)
+          void loadCardJobs(page)
+        }}
         onRefresh={() => void loadCardJobs()}
         onRename={renameCardJob}
         onSelect={(jobId) => void selectCardJob(jobId)}
@@ -261,6 +282,9 @@ export default function SocialCardsPage() {
         {creating ? (
           <CreateSocialCardTask
             writerJobs={writerJobs}
+            writerJobsPage={writerJobsPage}
+            writerJobsPageSize={TASK_PAGE_SIZE}
+            writerJobsTotal={writerJobsTotal}
             selectedWriterJob={selectedWriterJob}
             selectedWriterJobId={selectedWriterJobId}
             postCount={postCount}
@@ -270,6 +294,10 @@ export default function SocialCardsPage() {
             error={error}
             onCardsPerPostChange={setCardsPerPost}
             onPostCountChange={setPostCount}
+            onWriterJobsPageChange={(page) => {
+              setWriterJobsPage(page)
+              void loadWriterJobs(page)
+            }}
             onRefreshWriters={() => void loadWriterJobs()}
             onSelectWriterJob={setSelectedWriterJobId}
             onSubmit={() => void submit()}
@@ -310,8 +338,12 @@ function SocialCardTaskRail({
   activeJobId,
   jobs,
   loading,
+  page,
+  pageSize,
+  total,
   onCreate,
   onDelete,
+  onPageChange,
   onRefresh,
   onRename,
   onSelect,
@@ -319,8 +351,12 @@ function SocialCardTaskRail({
   activeJobId: string | null
   jobs: SocialCardJobSummary[]
   loading: boolean
+  page: number
+  pageSize: number
+  total: number
   onCreate: () => void
   onDelete: (jobId: string) => void
+  onPageChange: (page: number) => void
   onRefresh: () => void
   onRename: (job: SocialCardJobSummary) => void
   onSelect: (jobId: string) => void
@@ -396,12 +432,25 @@ function SocialCardTaskRail({
           </List.Item>
         )}
       />
+      {total > pageSize && (
+        <Pagination
+          size="small"
+          simple
+          current={page}
+          pageSize={pageSize}
+          total={total}
+          onChange={onPageChange}
+        />
+      )}
     </aside>
   )
 }
 
 function CreateSocialCardTask({
   writerJobs,
+  writerJobsPage,
+  writerJobsPageSize,
+  writerJobsTotal,
   selectedWriterJob,
   selectedWriterJobId,
   postCount,
@@ -411,11 +460,15 @@ function CreateSocialCardTask({
   error,
   onCardsPerPostChange,
   onPostCountChange,
+  onWriterJobsPageChange,
   onRefreshWriters,
   onSelectWriterJob,
   onSubmit,
 }: {
   writerJobs: DailyWriterJobSummary[]
+  writerJobsPage: number
+  writerJobsPageSize: number
+  writerJobsTotal: number
   selectedWriterJob: DailyWriterJobSummary | null
   selectedWriterJobId: string | null
   postCount: number
@@ -425,6 +478,7 @@ function CreateSocialCardTask({
   error: string | null
   onCardsPerPostChange: (value: number) => void
   onPostCountChange: (value: number) => void
+  onWriterJobsPageChange: (page: number) => void
   onRefreshWriters: () => void
   onSelectWriterJob: (jobId: string) => void
   onSubmit: () => void
@@ -467,6 +521,16 @@ function CreateSocialCardTask({
                     </List.Item>
                   )}
                 />
+                {writerJobsTotal > writerJobsPageSize && (
+                  <Pagination
+                    size="small"
+                    simple
+                    current={writerJobsPage}
+                    pageSize={writerJobsPageSize}
+                    total={writerJobsTotal}
+                    onChange={onWriterJobsPageChange}
+                  />
+                )}
                 {selectedWriterJob && (
                   <div className="growth-config-summary">
                     <ConfigItem label="稿件任务" value={shortId(selectedWriterJob.id)} />

@@ -9,6 +9,7 @@ import {
   Input,
   InputNumber,
   List,
+  Pagination,
   Popconfirm,
   Progress,
   Segmented,
@@ -60,6 +61,7 @@ import '../seedMatrix/GrowthWorkflow.css'
 type MatrixRow = Record<string, string>
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
+const TASK_PAGE_SIZE = 5
 const ARTWORK_IMAGE_PREFIX = 'daily-writer-artwork:'
 const WRITER_MODE_IDS = Object.keys(DAILY_WRITER_MODES) as DailyWriterModeId[]
 export default function DailyWriterPage({
@@ -75,7 +77,11 @@ export default function DailyWriterPage({
   const [draftMode, setDraftMode] = useState<DailyWriterModeId>(mode)
   const draftModeConfig = DAILY_WRITER_MODES[draftMode]
   const [matrixJobs, setMatrixJobs] = useState<SeedMatrixJobSummary[]>([])
+  const [matrixJobsPage, setMatrixJobsPage] = useState(1)
+  const [matrixJobsTotal, setMatrixJobsTotal] = useState(0)
   const [writerJobs, setWriterJobs] = useState<DailyWriterJobSummary[]>([])
+  const [writerJobsPage, setWriterJobsPage] = useState(1)
+  const [writerJobsTotal, setWriterJobsTotal] = useState(0)
   const [selectedMatrixId, setSelectedMatrixId] = useState<string | null>(null)
   const [matrixResult, setMatrixResult] = useState<SeedMatrixResult | null>(null)
   const [selectedSeedId, setSelectedSeedId] = useState<string | null>(null)
@@ -92,42 +98,48 @@ export default function DailyWriterPage({
   const [generateArtwork, setGenerateArtwork] = useState(false)
   const [creating, setCreating] = useState(true)
 
-  const loadMatrices = useCallback(async () => {
+  const loadMatrices = useCallback(async (page = matrixJobsPage) => {
     if (sourceAiwikiJobId === null) {
       setMatrixJobs([])
+      setMatrixJobsTotal(0)
       setSelectedMatrixId(null)
       return
     }
     setLoadingMatrices(true)
     try {
       const data = await listSeedMatrixJobs({
-        limit: 10,
-        offset: 0,
+        limit: TASK_PAGE_SIZE,
+        offset: (page - 1) * TASK_PAGE_SIZE,
         source_aiwiki_job_id: sourceAiwikiJobId ?? undefined,
       })
       const completed = data.items.filter((item) => item.status === 'completed')
       setMatrixJobs(completed)
+      setMatrixJobsTotal(data.total)
       setSelectedMatrixId((current) => current ?? completed[0]?.id ?? null)
     } catch (err) {
       setError(resolveErrorMessage(err))
     } finally {
       setLoadingMatrices(false)
     }
-  }, [sourceAiwikiJobId])
+  }, [matrixJobsPage, sourceAiwikiJobId])
 
-  const loadWriterJobs = useCallback(async () => {
+  const loadWriterJobs = useCallback(async (page = writerJobsPage) => {
     setLoadingHistory(true)
     try {
-      const data = await listDailyWriterJobs({ limit: 10, offset: 0 })
+      const data = await listDailyWriterJobs({
+        limit: TASK_PAGE_SIZE,
+        offset: (page - 1) * TASK_PAGE_SIZE,
+      })
       setWriterJobs(sourceAiwikiJobId
         ? data.items.filter((item) => item.source_aiwiki_job_id === sourceAiwikiJobId)
         : data.items)
+      setWriterJobsTotal(data.total)
     } catch (err) {
       setError(resolveErrorMessage(err))
     } finally {
       setLoadingHistory(false)
     }
-  }, [sourceAiwikiJobId])
+  }, [sourceAiwikiJobId, writerJobsPage])
 
   const loadMatrixRows = useCallback(async (matrixId: string) => {
     setLoadingRows(true)
@@ -353,8 +365,15 @@ export default function DailyWriterPage({
         activeJobId={creating ? null : activeJob?.id ?? null}
         jobs={writerJobs}
         loading={loadingHistory}
+        page={writerJobsPage}
+        pageSize={TASK_PAGE_SIZE}
+        total={writerJobsTotal}
         onCreate={startCreate}
         onDelete={(jobId) => void deleteWriterJob(jobId)}
+        onPageChange={(page) => {
+          setWriterJobsPage(page)
+          void loadWriterJobs(page)
+        }}
         onRefresh={() => void loadWriterJobs()}
         onRename={renameWriterJob}
         onSelect={(jobId) => void selectWriterJob(jobId)}
@@ -365,6 +384,9 @@ export default function DailyWriterPage({
           <CreateWriterTask
             mode={draftMode}
             matrixJobs={matrixJobs}
+            matrixJobsPage={matrixJobsPage}
+            matrixJobsPageSize={TASK_PAGE_SIZE}
+            matrixJobsTotal={matrixJobsTotal}
             matrixResult={matrixResult}
             selectedMatrix={selectedMatrix}
             selectedMatrixId={selectedMatrixId}
@@ -383,6 +405,10 @@ export default function DailyWriterPage({
             onArticleTotalChange={(value) => setArticleTotal(value)}
             onGenerateArtworkChange={setGenerateArtwork}
             onModeChange={setDraftMode}
+            onMatrixJobsPageChange={(page) => {
+              setMatrixJobsPage(page)
+              void loadMatrices(page)
+            }}
             onQueryChange={setQuery}
             onRefreshMatrices={() => void loadMatrices()}
             onSelectMatrix={setSelectedMatrixId}
@@ -426,8 +452,12 @@ function WriterTaskRail({
   activeJobId,
   jobs,
   loading,
+  page,
+  pageSize,
+  total,
   onCreate,
   onDelete,
+  onPageChange,
   onRefresh,
   onRename,
   onSelect,
@@ -435,8 +465,12 @@ function WriterTaskRail({
   activeJobId: string | null
   jobs: DailyWriterJobSummary[]
   loading: boolean
+  page: number
+  pageSize: number
+  total: number
   onCreate: () => void
   onDelete: (jobId: string) => void
+  onPageChange: (page: number) => void
   onRefresh: () => void
   onRename: (job: DailyWriterJobSummary) => void
   onSelect: (jobId: string) => void
@@ -514,6 +548,16 @@ function WriterTaskRail({
           </List.Item>
         )}
       />
+      {total > pageSize && (
+        <Pagination
+          size="small"
+          simple
+          current={page}
+          pageSize={pageSize}
+          total={total}
+          onChange={onPageChange}
+        />
+      )}
     </aside>
   )
 }
@@ -521,6 +565,9 @@ function WriterTaskRail({
 function CreateWriterTask({
   mode,
   matrixJobs,
+  matrixJobsPage,
+  matrixJobsPageSize,
+  matrixJobsTotal,
   matrixResult,
   selectedMatrix,
   selectedMatrixId,
@@ -539,6 +586,7 @@ function CreateWriterTask({
   onArticleTotalChange,
   onGenerateArtworkChange,
   onModeChange,
+  onMatrixJobsPageChange,
   onQueryChange,
   onRefreshMatrices,
   onSelectMatrix,
@@ -547,6 +595,9 @@ function CreateWriterTask({
 }: {
   mode: DailyWriterModeId
   matrixJobs: SeedMatrixJobSummary[]
+  matrixJobsPage: number
+  matrixJobsPageSize: number
+  matrixJobsTotal: number
   matrixResult: SeedMatrixResult | null
   selectedMatrix: SeedMatrixJobSummary | null
   selectedMatrixId: string | null
@@ -565,6 +616,7 @@ function CreateWriterTask({
   onArticleTotalChange: (value: number) => void
   onGenerateArtworkChange: (value: boolean) => void
   onModeChange: (mode: DailyWriterModeId) => void
+  onMatrixJobsPageChange: (page: number) => void
   onQueryChange: (value: string) => void
   onRefreshMatrices: () => void
   onSelectMatrix: (matrixId: string) => void
@@ -610,6 +662,16 @@ function CreateWriterTask({
                     </List.Item>
                   )}
                 />
+                {matrixJobsTotal > matrixJobsPageSize && (
+                  <Pagination
+                    size="small"
+                    simple
+                    current={matrixJobsPage}
+                    pageSize={matrixJobsPageSize}
+                    total={matrixJobsTotal}
+                    onChange={onMatrixJobsPageChange}
+                  />
+                )}
                 {selectedMatrix && (
                   <div className="growth-config-summary">
                     <ConfigItem label="选题任务" value={shortId(selectedMatrix.id)} />

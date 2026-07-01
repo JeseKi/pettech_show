@@ -10,6 +10,7 @@ import {
   Input,
   List,
   Modal,
+  Pagination,
   Progress,
   Space,
   Statistic,
@@ -53,6 +54,7 @@ type FormValues = {
 }
 
 const ACCEPTED_TYPES = '.md,.markdown,.txt,.xlsx,.csv,.pdf'
+const TASK_PAGE_SIZE = 5
 const PERSONAL_ENTRY_FILTER_OPTIONS = ['全部', '实体', '概念', '对比', '问答', '笔记']
 
 const operationLabels: Record<string, string> = {
@@ -67,6 +69,8 @@ export default function PersonalAiwikiPage() {
   const [form] = Form.useForm<FormValues>()
   const [fileList, setFileList] = useState<UploadFile[]>([])
   const [history, setHistory] = useState<PersonalAiwikiJobSummary[]>([])
+  const [historyPage, setHistoryPage] = useState(1)
+  const [historyTotal, setHistoryTotal] = useState(0)
   const [detailJob, setDetailJob] = useState<PersonalAiwikiJob | null>(null)
   const [workspaceResult, setWorkspaceResult] = useState<PersonalAiwikiResult | null>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -82,17 +86,21 @@ export default function PersonalAiwikiPage() {
   const [keywordModalOpen, setKeywordModalOpen] = useState(false)
   const [keywordSearch, setKeywordSearch] = useState('')
 
-  const loadHistory = useCallback(async (showLoading = true) => {
+  const loadHistory = useCallback(async (showLoading = true, page = historyPage) => {
     if (showLoading) setHistoryLoading(true)
     try {
-      const list = await listPersonalAiwikiJobs({ limit: 10, offset: 0 })
+      const list = await listPersonalAiwikiJobs({
+        limit: TASK_PAGE_SIZE,
+        offset: (page - 1) * TASK_PAGE_SIZE,
+      })
       setHistory(list.items)
+      setHistoryTotal(list.total)
     } catch (err) {
       message.error(resolveErrorMessage(err))
     } finally {
       if (showLoading) setHistoryLoading(false)
     }
-  }, [message])
+  }, [historyPage, message])
 
   const loadWorkspace = useCallback(async (showLoading = false) => {
     if (showLoading) setWorkspaceLoading(true)
@@ -380,6 +388,19 @@ export default function PersonalAiwikiPage() {
               </List.Item>
             )}
           />
+          {historyTotal > TASK_PAGE_SIZE && (
+            <Pagination
+              size="small"
+              simple
+              current={historyPage}
+              pageSize={TASK_PAGE_SIZE}
+              total={historyTotal}
+              onChange={(page) => {
+                setHistoryPage(page)
+                void loadHistory(true, page)
+              }}
+            />
+          )}
         </Flex>
       </Modal>
 

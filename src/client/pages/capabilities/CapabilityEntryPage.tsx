@@ -10,6 +10,7 @@ import {
   Input,
   List,
   Modal,
+  Pagination,
   Popconfirm,
   Progress,
   Row,
@@ -39,12 +40,15 @@ import { formatDateTime, progressEventColor, statusMeta } from '../aiwiki/helper
 import type { CapabilityEntryConfig } from '../../lib/workflowModes'
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
+const TASK_PAGE_SIZE = 5
 
 export default function CapabilityEntryPage({ entry }: { entry: CapabilityEntryConfig }) {
   const { token } = theme.useToken()
   const { message, modal } = App.useApp()
   const [form] = Form.useForm<Record<string, string>>()
   const [jobs, setJobs] = useState<CapabilityJobSummary[]>([])
+  const [jobsPage, setJobsPage] = useState(1)
+  const [jobsTotal, setJobsTotal] = useState(0)
   const [activeJob, setActiveJob] = useState<CapabilityJob | null>(null)
   const [result, setResult] = useState<CapabilityResult | null>(null)
   const [loadingHistory, setLoadingHistory] = useState(false)
@@ -94,11 +98,16 @@ export default function CapabilityEntryPage({ entry }: { entry: CapabilityEntryC
     ),
   }
 
-  const loadJobs = useCallback(async () => {
+  const loadJobs = useCallback(async (page: number) => {
     setLoadingHistory(true)
     try {
-      const data = await listCapabilityJobs({ limit: 10, offset: 0, capability_key: entry.key })
+      const data = await listCapabilityJobs({
+        limit: TASK_PAGE_SIZE,
+        offset: (page - 1) * TASK_PAGE_SIZE,
+        capability_key: entry.key,
+      })
       setJobs(data.items)
+      setJobsTotal(data.total)
     } catch (err) {
       setError(resolveErrorMessage(err))
     } finally {
@@ -114,10 +123,10 @@ export default function CapabilityEntryPage({ entry }: { entry: CapabilityEntryC
       setError(null)
       if (job.status === 'completed') {
         setResult(await getCapabilityResult(jobId))
-        void loadJobs()
+        void loadJobs(jobsPage)
       } else if (job.status === 'failed') {
         setResult(null)
-        void loadJobs()
+        void loadJobs(jobsPage)
       }
     } catch (err) {
       const text = resolveErrorMessage(err)
@@ -126,15 +135,16 @@ export default function CapabilityEntryPage({ entry }: { entry: CapabilityEntryC
     } finally {
       if (!silent) setRefreshing(false)
     }
-  }, [loadJobs, message])
+  }, [jobsPage, loadJobs, message])
 
   useEffect(() => {
     setActiveJob(null)
     setResult(null)
     setError(null)
     setExampleOpen(false)
+    setJobsPage(1)
     form.resetFields()
-    void loadJobs()
+    void loadJobs(1)
   }, [entry.key, form, loadJobs])
 
   useEffect(() => {
@@ -157,7 +167,7 @@ export default function CapabilityEntryPage({ entry }: { entry: CapabilityEntryC
       })
       setActiveJob(created)
       message.success('任务已提交')
-      void loadJobs()
+      void loadJobs(jobsPage)
       void refreshJob(created.id, true)
     } catch (err) {
       const text = resolveErrorMessage(err)
@@ -195,7 +205,7 @@ export default function CapabilityEntryPage({ entry }: { entry: CapabilityEntryC
         setActiveJob(null)
         setResult(null)
       }
-      void loadJobs()
+      void loadJobs(jobsPage)
     } catch (err) {
       const text = resolveErrorMessage(err)
       setError(text)
@@ -335,9 +345,16 @@ export default function CapabilityEntryPage({ entry }: { entry: CapabilityEntryC
         <TaskPanel
           activeJob={activeJob}
           jobs={jobs}
+          jobsPage={jobsPage}
+          jobsPageSize={TASK_PAGE_SIZE}
+          jobsTotal={jobsTotal}
           loading={loadingHistory}
           refreshing={refreshing}
-          onRefreshHistory={loadJobs}
+          onJobsPageChange={(page) => {
+            setJobsPage(page)
+            void loadJobs(page)
+          }}
+          onRefreshHistory={() => void loadJobs(jobsPage)}
           onRefreshActive={() => activeJob && void refreshJob(activeJob.id)}
           onSelectJob={(jobId) => void selectJob(jobId)}
           onDeleteJob={(jobId) => void deleteJob(jobId)}
@@ -396,9 +413,13 @@ export default function CapabilityEntryPage({ entry }: { entry: CapabilityEntryC
 function TaskPanel({
   activeJob,
   jobs,
+  jobsPage,
+  jobsPageSize,
+  jobsTotal,
   loading,
   refreshing,
   onRefreshHistory,
+  onJobsPageChange,
   onRefreshActive,
   onSelectJob,
   onDeleteJob,
@@ -407,9 +428,13 @@ function TaskPanel({
 }: {
   activeJob: CapabilityJob | null
   jobs: CapabilityJobSummary[]
+  jobsPage: number
+  jobsPageSize: number
+  jobsTotal: number
   loading: boolean
   refreshing: boolean
   onRefreshHistory: () => void
+  onJobsPageChange: (page: number) => void
   onRefreshActive: () => void
   onSelectJob: (jobId: string) => void
   onDeleteJob: (jobId: string) => void
@@ -482,6 +507,16 @@ function TaskPanel({
             </List.Item>
           )}
         />
+        {jobsTotal > jobsPageSize && (
+          <Pagination
+            size="small"
+            simple
+            current={jobsPage}
+            pageSize={jobsPageSize}
+            total={jobsTotal}
+            onChange={onJobsPageChange}
+          />
+        )}
         <Typography.Text type="secondary">progress.json 进度事件</Typography.Text>
         <List
           size="small"

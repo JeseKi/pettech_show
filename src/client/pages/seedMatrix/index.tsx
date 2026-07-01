@@ -9,6 +9,7 @@ import {
   Form,
   Input,
   List,
+  Pagination,
   Popconfirm,
   Progress,
   Segmented,
@@ -43,6 +44,7 @@ import './GrowthWorkflow.css'
 type MatrixRow = Record<string, string>
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
+const TASK_PAGE_SIZE = 5
 const STRATEGY_MODE_IDS = Object.keys(SEED_MATRIX_MODES) as SeedMatrixModeId[]
 
 export default function SeedMatrixPage({
@@ -60,7 +62,11 @@ export default function SeedMatrixPage({
   const [draftMode, setDraftMode] = useState<SeedMatrixModeId>(mode)
   const draftModeConfig = SEED_MATRIX_MODES[draftMode]
   const [aiwikiJobs, setAiwikiJobs] = useState<AiwikiJobSummary[]>([])
+  const [aiwikiJobsPage, setAiwikiJobsPage] = useState(1)
+  const [aiwikiJobsTotal, setAiwikiJobsTotal] = useState(0)
   const [matrixJobs, setMatrixJobs] = useState<SeedMatrixJobSummary[]>([])
+  const [matrixJobsPage, setMatrixJobsPage] = useState(1)
+  const [matrixJobsTotal, setMatrixJobsTotal] = useState(0)
   const [selectedAiwikiJobId, setSelectedAiwikiJobId] = useState<string | null>(sourceAiwikiJobId ?? null)
   const [activeJob, setActiveJob] = useState<SeedMatrixJob | null>(null)
   const [result, setResult] = useState<SeedMatrixResult | null>(null)
@@ -75,34 +81,40 @@ export default function SeedMatrixPage({
   const [dayFilter, setDayFilter] = useState<string>('全部')
   const [accountFilter, setAccountFilter] = useState<string>('全部')
 
-  const loadAiwikiJobs = useCallback(async () => {
+  const loadAiwikiJobs = useCallback(async (page = aiwikiJobsPage) => {
     setLoadingInputs(true)
     try {
-      const data = await listAiwikiJobs({ limit: 10, offset: 0, status: 'completed' })
+      const data = await listAiwikiJobs({
+        limit: TASK_PAGE_SIZE,
+        offset: (page - 1) * TASK_PAGE_SIZE,
+        status: 'completed',
+      })
       setAiwikiJobs(data.items)
+      setAiwikiJobsTotal(data.total)
       setSelectedAiwikiJobId((current) => current ?? data.items[0]?.id ?? null)
     } catch (err) {
       setError(resolveErrorMessage(err))
     } finally {
       setLoadingInputs(false)
     }
-  }, [])
+  }, [aiwikiJobsPage])
 
-  const loadMatrixJobs = useCallback(async () => {
+  const loadMatrixJobs = useCallback(async (page = matrixJobsPage) => {
     setLoadingHistory(true)
     try {
       const data = await listSeedMatrixJobs({
-        limit: 10,
-        offset: 0,
+        limit: TASK_PAGE_SIZE,
+        offset: (page - 1) * TASK_PAGE_SIZE,
         source_aiwiki_job_id: sourceAiwikiJobId ?? undefined,
       })
       setMatrixJobs(data.items)
+      setMatrixJobsTotal(data.total)
     } catch (err) {
       setError(resolveErrorMessage(err))
     } finally {
       setLoadingHistory(false)
     }
-  }, [sourceAiwikiJobId])
+  }, [matrixJobsPage, sourceAiwikiJobId])
 
   const refreshJob = useCallback(async (jobId: string, silent = false) => {
     if (!silent) setRefreshing(true)
@@ -312,8 +324,15 @@ export default function SeedMatrixPage({
         activeJobId={creating ? null : activeJob?.id ?? null}
         jobs={matrixJobs}
         loading={loadingHistory}
+        page={matrixJobsPage}
+        pageSize={TASK_PAGE_SIZE}
+        total={matrixJobsTotal}
         onCreate={startCreate}
         onDelete={(jobId) => void deleteMatrixJob(jobId)}
+        onPageChange={(page) => {
+          setMatrixJobsPage(page)
+          void loadMatrixJobs(page)
+        }}
         onRefresh={() => void loadMatrixJobs()}
         onRename={renameMatrixJob}
         onSelect={(jobId) => void selectMatrixJob(jobId)}
@@ -324,6 +343,9 @@ export default function SeedMatrixPage({
           <CreateMatrixTask
             form={form}
             aiwikiJobs={aiwikiJobs}
+            aiwikiJobsPage={aiwikiJobsPage}
+            aiwikiJobsPageSize={TASK_PAGE_SIZE}
+            aiwikiJobsTotal={aiwikiJobsTotal}
             loadingInputs={loadingInputs}
             mode={draftMode}
             selectedAiwikiJob={selectedAiwikiJob}
@@ -332,6 +354,10 @@ export default function SeedMatrixPage({
             error={error}
             onModeChange={(nextMode) => setDraftMode(nextMode)}
             onRefreshInputs={() => void loadAiwikiJobs()}
+            onAiwikiJobsPageChange={(page) => {
+              setAiwikiJobsPage(page)
+              void loadAiwikiJobs(page)
+            }}
             onSelectAiwikiJob={setSelectedAiwikiJobId}
             onSubmit={() => void submit()}
           />
@@ -385,8 +411,12 @@ function TaskRail({
   activeJobId,
   jobs,
   loading,
+  page,
+  pageSize,
+  total,
   onCreate,
   onDelete,
+  onPageChange,
   onRefresh,
   onRename,
   onSelect,
@@ -394,8 +424,12 @@ function TaskRail({
   activeJobId: string | null
   jobs: SeedMatrixJobSummary[]
   loading: boolean
+  page: number
+  pageSize: number
+  total: number
   onCreate: () => void
   onDelete: (jobId: string) => void
+  onPageChange: (page: number) => void
   onRefresh: () => void
   onRename: (job: SeedMatrixJobSummary) => void
   onSelect: (jobId: string) => void
@@ -471,6 +505,16 @@ function TaskRail({
           </List.Item>
         )}
       />
+      {total > pageSize && (
+        <Pagination
+          size="small"
+          simple
+          current={page}
+          pageSize={pageSize}
+          total={total}
+          onChange={onPageChange}
+        />
+      )}
     </aside>
   )
 }
@@ -478,6 +522,9 @@ function TaskRail({
 function CreateMatrixTask({
   form,
   aiwikiJobs,
+  aiwikiJobsPage,
+  aiwikiJobsPageSize,
+  aiwikiJobsTotal,
   loadingInputs,
   mode,
   selectedAiwikiJob,
@@ -485,12 +532,16 @@ function CreateMatrixTask({
   submitting,
   error,
   onModeChange,
+  onAiwikiJobsPageChange,
   onRefreshInputs,
   onSelectAiwikiJob,
   onSubmit,
 }: {
   form: FormInstance<Omit<SeedMatrixCreatePayload, 'source_aiwiki_job_id'>>
   aiwikiJobs: AiwikiJobSummary[]
+  aiwikiJobsPage: number
+  aiwikiJobsPageSize: number
+  aiwikiJobsTotal: number
   loadingInputs: boolean
   mode: SeedMatrixModeId
   selectedAiwikiJob: AiwikiJobSummary | null
@@ -498,6 +549,7 @@ function CreateMatrixTask({
   submitting: boolean
   error: string | null
   onModeChange: (mode: SeedMatrixModeId) => void
+  onAiwikiJobsPageChange: (page: number) => void
   onRefreshInputs: () => void
   onSelectAiwikiJob: (jobId: string) => void
   onSubmit: () => void
@@ -541,6 +593,16 @@ function CreateMatrixTask({
                     </List.Item>
                   )}
                 />
+                {aiwikiJobsTotal > aiwikiJobsPageSize && (
+                  <Pagination
+                    size="small"
+                    simple
+                    current={aiwikiJobsPage}
+                    pageSize={aiwikiJobsPageSize}
+                    total={aiwikiJobsTotal}
+                    onChange={onAiwikiJobsPageChange}
+                  />
+                )}
                 {selectedAiwikiJob && (
                   <div className="growth-config-summary">
                     <ConfigItem label="知识库" value={selectedAiwikiJob.title || selectedAiwikiJob.files[0]?.filename || selectedAiwikiJob.id} />

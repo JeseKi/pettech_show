@@ -9,6 +9,7 @@ import {
   Input,
   List,
   Modal,
+  Pagination,
   Progress,
   Segmented,
   Space,
@@ -116,6 +117,7 @@ type StagePrerequisite = {
 
 const ACCEPTED_TYPES = '.md,.markdown,.txt,.xlsx,.csv,.pdf'
 const CREATE_TASK_ID = '__create_task__'
+const TASK_PAGE_SIZE = 5
 const ACCEPTED_TYPE_HINT = '文档: .md、.markdown、.txt；表格: .xlsx、.csv；PDF: .pdf'
 const STRATEGY_MODE_IDS: SeedMatrixModeId[] = ['standard', 'batch', 'high-frequency', 'hook-driven']
 const WRITER_MODE_IDS: DailyWriterModeId[] = ['single', 'batch', 'five-pack']
@@ -154,6 +156,8 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   const [editForm] = Form.useForm<{ title?: string; description?: string }>()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [history, setHistory] = useState<AiwikiJobSummary[]>([])
+  const [historyPage, setHistoryPage] = useState(1)
+  const [historyTotal, setHistoryTotal] = useState(0)
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [job, setJob] = useState<AiwikiJob | null>(null)
@@ -183,25 +187,26 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     ? '内容资产生成 / 任务管理 / 文件预览'
     : '内容资产生成 / 任务管理'
 
-  const loadHistory = useCallback(async () => {
+  const loadHistory = useCallback(async (page = historyPage) => {
     setHistoryLoading(true)
     try {
-      const list = await listAiwikiJobs({ limit: 10, offset: 0 })
+      const list = await listAiwikiJobs({ limit: TASK_PAGE_SIZE, offset: (page - 1) * TASK_PAGE_SIZE })
       setHistory(list.items)
+      setHistoryTotal(list.total)
     } catch (err) {
       message.error(resolveErrorMessage(err))
     } finally {
       setHistoryLoading(false)
     }
-  }, [message])
+  }, [historyPage, message])
 
   const loadWorkflowReadiness = useCallback(async () => {
     if (!isContentGrowthWorkbench) return
     try {
       const [seedMatrices, dailyWriters, socialCards] = await Promise.all([
-        listSeedMatrixJobs({ limit: 10, offset: 0 }),
-        listDailyWriterJobs({ limit: 10, offset: 0 }),
-        listSocialCardJobs({ limit: 10, offset: 0 }),
+        listSeedMatrixJobs({ limit: TASK_PAGE_SIZE, offset: 0 }),
+        listDailyWriterJobs({ limit: TASK_PAGE_SIZE, offset: 0 }),
+        listSocialCardJobs({ limit: TASK_PAGE_SIZE, offset: 0 }),
       ])
       setWorkflowReadiness({
         completedSeedMatrices: seedMatrices.items.filter((item) => item.status === 'completed').length,
@@ -830,6 +835,9 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
                   activeTaskId={activeTaskId}
                   displayTasks={displayTasks}
                   historyLoading={historyLoading}
+                  historyPage={historyPage}
+                  historyPageSize={TASK_PAGE_SIZE}
+                  historyTotal={historyTotal}
                   search={search}
                   taskFilter={taskFilter}
                   content={result ? (
@@ -864,6 +872,10 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
                   onDeleteJob={confirmDeleteJob}
                   onEditJob={openEditModal}
                   onRefresh={() => void loadHistory()}
+                  onHistoryPageChange={(page) => {
+                    setHistoryPage(page)
+                    void loadHistory(page)
+                  }}
                   onSearchChange={setSearch}
                   onSelectTask={(task) => void selectTask(task)}
                   onSetTaskFilter={setTaskFilter}
@@ -1024,12 +1036,16 @@ function AssetStageContent({
   content,
   displayTasks,
   historyLoading,
+  historyPage,
+  historyPageSize,
+  historyTotal,
   search,
   submitting,
   taskFilter,
   onDeleteJob,
   onEditJob,
   onRefresh,
+  onHistoryPageChange,
   onSearchChange,
   onSelectTask,
   onSetTaskFilter,
@@ -1039,12 +1055,16 @@ function AssetStageContent({
   content: ReactNode
   displayTasks: DisplayTask[]
   historyLoading: boolean
+  historyPage: number
+  historyPageSize: number
+  historyTotal: number
   search: string
   submitting: boolean
   taskFilter: TaskFilter
   onDeleteJob: (job: AiwikiJobSummary | AiwikiJob) => void
   onEditJob: (job: AiwikiJobSummary | AiwikiJob) => void
   onRefresh: () => void
+  onHistoryPageChange: (page: number) => void
   onSearchChange: (value: string) => void
   onSelectTask: (task: DisplayTask) => void
   onSetTaskFilter: (value: TaskFilter) => void
@@ -1140,6 +1160,16 @@ function AssetStageContent({
             )}
           />
         </div>
+        {historyTotal > historyPageSize && (
+          <Pagination
+            size="small"
+            simple
+            current={historyPage}
+            pageSize={historyPageSize}
+            total={historyTotal}
+            onChange={onHistoryPageChange}
+          />
+        )}
       </aside>
       <section className="aiwiki-assets-main">
         {content}

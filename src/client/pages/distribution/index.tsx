@@ -1,4 +1,4 @@
-import { Alert, App, Button, Empty, Flex, List, Segmented, Space, Statistic, Tag, Typography } from 'antd'
+import { Alert, App, Button, Empty, Flex, List, Pagination, Segmented, Space, Statistic, Tag, Typography } from 'antd'
 import { FileMarkdownOutlined, PictureOutlined, ReloadOutlined, VideoCameraOutlined } from '@ant-design/icons'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import DistributionUploadPanel from '../../components/distribution/DistributionUploadPanel'
@@ -25,6 +25,7 @@ import { formatDateTime } from '../aiwiki/helpers'
 import '../seedMatrix/GrowthWorkflow.css'
 
 type SourceIds = Record<DistributionSourceType, string | null>
+type SourcePages = Record<DistributionSourceType, number>
 type SourceItem = {
   id: string
   title: string
@@ -37,6 +38,17 @@ const initialSourceIds: SourceIds = {
   social_cards: null,
   social_card_videos: null,
 }
+const initialSourcePages: SourcePages = {
+  daily_writer: 1,
+  social_cards: 1,
+  social_card_videos: 1,
+}
+const initialSourceTotals: SourcePages = {
+  daily_writer: 0,
+  social_cards: 0,
+  social_card_videos: 0,
+}
+const TASK_PAGE_SIZE = 5
 
 function firstString(...values: unknown[]): string {
   for (const value of values) {
@@ -110,44 +122,57 @@ export default function DistributionStagePage() {
   const { user } = useAuth()
   const [sourceType, setSourceType] = useState<DistributionSourceType>('daily_writer')
   const [selectedIds, setSelectedIds] = useState<SourceIds>(initialSourceIds)
+  const [sourcePages, setSourcePages] = useState<SourcePages>(initialSourcePages)
+  const [sourceTotals, setSourceTotals] = useState<SourcePages>(initialSourceTotals)
   const [dailyWriterJobs, setDailyWriterJobs] = useState<DailyWriterJobSummary[]>([])
   const [socialCardJobs, setSocialCardJobs] = useState<SocialCardJobSummary[]>([])
   const [socialCardVideoJobs, setSocialCardVideoJobs] = useState<SocialCardVideoJobSummary[]>([])
   const [uploadJobs, setUploadJobs] = useState<DistributionUploadJob[]>([])
+  const [uploadJobsPage, setUploadJobsPage] = useState(1)
+  const [uploadJobsTotal, setUploadJobsTotal] = useState(0)
   const [loadingSources, setLoadingSources] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
 
-  const loadSources = useCallback(async () => {
+  const loadSources = useCallback(async (pages = sourcePages) => {
     if (user?.role !== 'admin') return
     setLoadingSources(true)
     try {
       const [dailyWriters, socialCards, socialCardVideos] = await Promise.all([
-        listDailyWriterJobs({ limit: 10, offset: 0 }),
-        listSocialCardJobs({ limit: 10, offset: 0 }),
-        listSocialCardVideoJobs({ limit: 10, offset: 0 }),
+        listDailyWriterJobs({ limit: TASK_PAGE_SIZE, offset: (pages.daily_writer - 1) * TASK_PAGE_SIZE }),
+        listSocialCardJobs({ limit: TASK_PAGE_SIZE, offset: (pages.social_cards - 1) * TASK_PAGE_SIZE }),
+        listSocialCardVideoJobs({ limit: TASK_PAGE_SIZE, offset: (pages.social_card_videos - 1) * TASK_PAGE_SIZE }),
       ])
       setDailyWriterJobs(dailyWriters.items.filter((item) => item.status === 'completed' || item.status === 'partial_failed'))
       setSocialCardJobs(socialCards.items.filter((item) => item.status === 'completed'))
       setSocialCardVideoJobs(socialCardVideos.items.filter((item) => item.status === 'completed'))
+      setSourceTotals({
+        daily_writer: dailyWriters.total,
+        social_cards: socialCards.total,
+        social_card_videos: socialCardVideos.total,
+      })
     } catch (err) {
       message.error(resolveErrorMessage(err))
     } finally {
       setLoadingSources(false)
     }
-  }, [message, user?.role])
+  }, [message, sourcePages, user?.role])
 
-  const loadUploadHistory = useCallback(async () => {
+  const loadUploadHistory = useCallback(async (page = uploadJobsPage) => {
     if (user?.role !== 'admin') return
     setLoadingHistory(true)
     try {
-      const list = await listDistributionUploads({ limit: 10, offset: 0 })
+      const list = await listDistributionUploads({
+        limit: TASK_PAGE_SIZE,
+        offset: (page - 1) * TASK_PAGE_SIZE,
+      })
       setUploadJobs(list.items)
+      setUploadJobsTotal(list.total)
     } catch (err) {
       message.error(resolveErrorMessage(err))
     } finally {
       setLoadingHistory(false)
     }
-  }, [message, user?.role])
+  }, [message, uploadJobsPage, user?.role])
 
   useEffect(() => {
     void loadSources()
@@ -205,6 +230,8 @@ export default function DistributionStagePage() {
   const selectedJob = sourceItems.find((item) => item.id === selectedJobId) ?? null
   const totalSourceCount = dailyWriterJobs.length + socialCardJobs.length + socialCardVideoJobs.length
   const completedUploadCount = uploadJobs.filter((item) => item.status === 'completed').length
+  const sourcePage = sourcePages[sourceType]
+  const sourceTotal = sourceTotals[sourceType]
 
   if (user?.role !== 'admin') {
     return (
@@ -269,6 +296,20 @@ export default function DistributionStagePage() {
               </List.Item>
             )}
           />
+          {sourceTotal > TASK_PAGE_SIZE && (
+            <Pagination
+              size="small"
+              simple
+              current={sourcePage}
+              pageSize={TASK_PAGE_SIZE}
+              total={sourceTotal}
+              onChange={(page) => {
+                const nextPages = { ...sourcePages, [sourceType]: page }
+                setSourcePages(nextPages)
+                void loadSources(nextPages)
+              }}
+            />
+          )}
         </div>
       </aside>
 
@@ -313,7 +354,17 @@ export default function DistributionStagePage() {
             </div>
           )}
 
-          <UploadHistory jobs={uploadJobs} loading={loadingHistory} />
+          <UploadHistory
+            jobs={uploadJobs}
+            loading={loadingHistory}
+            page={uploadJobsPage}
+            pageSize={TASK_PAGE_SIZE}
+            total={uploadJobsTotal}
+            onPageChange={(page) => {
+              setUploadJobsPage(page)
+              void loadUploadHistory(page)
+            }}
+          />
         </div>
       </main>
     </div>
@@ -329,13 +380,27 @@ function ConfigItem({ label, value }: { label: string; value: string }) {
   )
 }
 
-function UploadHistory({ jobs, loading }: { jobs: DistributionUploadJob[]; loading: boolean }) {
+function UploadHistory({
+  jobs,
+  loading,
+  page,
+  pageSize,
+  total,
+  onPageChange,
+}: {
+  jobs: DistributionUploadJob[]
+  loading: boolean
+  page: number
+  pageSize: number
+  total: number
+  onPageChange: (page: number) => void
+}) {
   return (
     <section className="growth-config-section">
       <Flex align="center" justify="space-between" gap={12} wrap="wrap">
         <div>
           <Typography.Title level={5}>上传历史</Typography.Title>
-          <Typography.Text type="secondary">最近 20 次分发任务</Typography.Text>
+          <Typography.Text type="secondary">最近分发任务</Typography.Text>
         </div>
         <Statistic title="记录" value={jobs.length} />
       </Flex>
@@ -364,6 +429,16 @@ function UploadHistory({ jobs, loading }: { jobs: DistributionUploadJob[]; loadi
           </List.Item>
         )}
       />
+      {total > pageSize && (
+        <Pagination
+          size="small"
+          simple
+          current={page}
+          pageSize={pageSize}
+          total={total}
+          onChange={onPageChange}
+        />
+      )}
     </section>
   )
 }

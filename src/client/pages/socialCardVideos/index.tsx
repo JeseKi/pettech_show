@@ -8,6 +8,7 @@ import {
   Form,
   Input,
   List,
+  Pagination,
   Popconfirm,
   Progress,
   Space,
@@ -47,11 +48,16 @@ import { StepWizard } from '../../components/workflow/StepWizard'
 import '../seedMatrix/GrowthWorkflow.css'
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
+const TASK_PAGE_SIZE = 5
 
 export default function SocialCardVideosPage() {
   const { message, modal } = App.useApp()
   const [sourceJobs, setSourceJobs] = useState<SocialCardJobSummary[]>([])
+  const [sourceJobsPage, setSourceJobsPage] = useState(1)
+  const [sourceJobsTotal, setSourceJobsTotal] = useState(0)
   const [videoJobs, setVideoJobs] = useState<SocialCardVideoJobSummary[]>([])
+  const [videoJobsPage, setVideoJobsPage] = useState(1)
+  const [videoJobsTotal, setVideoJobsTotal] = useState(0)
   const [selectedSourceJobId, setSelectedSourceJobId] = useState<string | null>(null)
   const [activeJob, setActiveJob] = useState<SocialCardVideoJob | null>(null)
   const [result, setResult] = useState<SocialCardVideoResult | null>(null)
@@ -67,12 +73,16 @@ export default function SocialCardVideosPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const loadSourceJobs = useCallback(async () => {
+  const loadSourceJobs = useCallback(async (page = sourceJobsPage) => {
     setLoadingSources(true)
     try {
-      const data = await listSocialCardJobs({ limit: 10, offset: 0 })
+      const data = await listSocialCardJobs({
+        limit: TASK_PAGE_SIZE,
+        offset: (page - 1) * TASK_PAGE_SIZE,
+      })
       const completed = data.items.filter((item) => item.status === 'completed')
       setSourceJobs(completed)
+      setSourceJobsTotal(data.total)
       setSelectedSourceJobId((current) => current ?? completed[0]?.id ?? null)
       setError(null)
     } catch (err) {
@@ -80,20 +90,24 @@ export default function SocialCardVideosPage() {
     } finally {
       setLoadingSources(false)
     }
-  }, [])
+  }, [sourceJobsPage])
 
-  const loadVideoJobs = useCallback(async () => {
+  const loadVideoJobs = useCallback(async (page = videoJobsPage) => {
     setLoadingHistory(true)
     try {
-      const data = await listSocialCardVideoJobs({ limit: 10, offset: 0 })
+      const data = await listSocialCardVideoJobs({
+        limit: TASK_PAGE_SIZE,
+        offset: (page - 1) * TASK_PAGE_SIZE,
+      })
       setVideoJobs(data.items)
+      setVideoJobsTotal(data.total)
       setError(null)
     } catch (err) {
       setError(resolveErrorMessage(err))
     } finally {
       setLoadingHistory(false)
     }
-  }, [])
+  }, [videoJobsPage])
 
   const refreshJob = useCallback(async (jobId: string, silent = false) => {
     if (!silent) setRefreshing(true)
@@ -316,12 +330,28 @@ export default function SocialCardVideosPage() {
             </List.Item>
           )}
         />
+        {videoJobsTotal > TASK_PAGE_SIZE && (
+          <Pagination
+            size="small"
+            simple
+            current={videoJobsPage}
+            pageSize={TASK_PAGE_SIZE}
+            total={videoJobsTotal}
+            onChange={(page) => {
+              setVideoJobsPage(page)
+              void loadVideoJobs(page)
+            }}
+          />
+        )}
       </aside>
 
       <main className="growth-main-stage">
         {creating ? (
           <CreateVideoTask
             sourceJobs={sourceJobs}
+            sourceJobsPage={sourceJobsPage}
+            sourceJobsPageSize={TASK_PAGE_SIZE}
+            sourceJobsTotal={sourceJobsTotal}
             selectedSourceJob={selectedSourceJob}
             selectedSourceJobId={selectedSourceJobId}
             title={title}
@@ -345,6 +375,10 @@ export default function SocialCardVideosPage() {
               }
               setBgmStartError(null)
               setBgmStartText(formatMinuteSecond(parsed))
+            }}
+            onSourceJobsPageChange={(page) => {
+              setSourceJobsPage(page)
+              void loadSourceJobs(page)
             }}
             onRefreshSources={() => void loadSourceJobs()}
             onSelectSourceJob={setSelectedSourceJobId}
@@ -386,6 +420,9 @@ export default function SocialCardVideosPage() {
 
 function CreateVideoTask({
   sourceJobs,
+  sourceJobsPage,
+  sourceJobsPageSize,
+  sourceJobsTotal,
   selectedSourceJob,
   selectedSourceJobId,
   title,
@@ -399,6 +436,7 @@ function CreateVideoTask({
   onBgmFileChange,
   onBgmStartTextChange,
   onBgmStartTextBlur,
+  onSourceJobsPageChange,
   onRefreshSources,
   onSelectSourceJob,
   onSubmit,
@@ -406,6 +444,9 @@ function CreateVideoTask({
   onVoiceTextChange,
 }: {
   sourceJobs: SocialCardJobSummary[]
+  sourceJobsPage: number
+  sourceJobsPageSize: number
+  sourceJobsTotal: number
   selectedSourceJob: SocialCardJobSummary | null
   selectedSourceJobId: string | null
   title: string
@@ -419,6 +460,7 @@ function CreateVideoTask({
   onBgmFileChange: (file: File | null) => void
   onBgmStartTextChange: (value: string) => void
   onBgmStartTextBlur: () => void
+  onSourceJobsPageChange: (page: number) => void
   onRefreshSources: () => void
   onSelectSourceJob: (jobId: string) => void
   onSubmit: () => void
@@ -463,6 +505,16 @@ function CreateVideoTask({
                     </List.Item>
                   )}
                 />
+                {sourceJobsTotal > sourceJobsPageSize && (
+                  <Pagination
+                    size="small"
+                    simple
+                    current={sourceJobsPage}
+                    pageSize={sourceJobsPageSize}
+                    total={sourceJobsTotal}
+                    onChange={onSourceJobsPageChange}
+                  />
+                )}
                 {selectedSourceJob && (
                   <div className="growth-config-summary">
                     <ConfigItem label="图文任务" value={shortId(selectedSourceJob.id)} />
