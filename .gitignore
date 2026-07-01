@@ -34,3 +34,7 @@ __pycache__
 
 # data
 data/*
+
+# local licensed fonts for isolated agent jobs
+.agents/assets/fonts/*
+!.agents/assets/fonts/README.md

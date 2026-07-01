@@ -48,6 +48,8 @@ def build_prompt(workdir: Path) -> str:
 要求：
 - 使用配置中的 `bgm_source` 和 `bgm_start` 处理用户上传的 BGM 起始点。
 - 用户没有填写配音文案时，必须由你生成并写回配置，不能产出静音视频。
+- 字幕和顶部标题字体优先使用当前工作目录内 `.agents/assets/fonts/` 下的已授权字体文件，例如 `msyh.ttc`、`msyh.ttf`、`msyhbd.ttc` 或 `MicrosoftYaHei.ttf`；如果找到可用字体，把相对路径写入 `video-config.json` 的 `font` 字段。
+- 不要递归 Glob `/usr/share/fonts` 或任何系统字体目录；如需系统字体，只能用脚本默认候选或 `fc-match`/`fc-list` 查询到的单个字体路径。
 - 如果 `video-config.json` 使用批量 `jobs`，必须为每个 job 都生成视频。
 - 不要修改 `source/` 中的 PNG 图文卡。
 - 如果 TTS 或 ffmpeg/ffprobe 失败，必须在 `progress.json` 和日志中写清楚失败原因。

@@ -65,6 +65,17 @@ def prepare_skill(workdir: Path) -> None:
         if target.exists():
             shutil.rmtree(target)
         shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
+    _copy_agent_assets(workdir)
+
+
+def _copy_agent_assets(workdir: Path) -> None:
+    source = Path(global_config.project_root) / ".agents" / "assets"
+    if not source.exists():
+        return
+    target = workdir / ".agents" / "assets"
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
 
 
 async def save_bgm_upload(workdir: Path, file: UploadFile | None) -> str | None:
@@ -136,4 +147,3 @@ def _safe_audio_filename(filename: str) -> str:
     if suffix not in AUDIO_EXTENSIONS:
         return f"{name[:120]}.mp3"
     return name[:160]
-

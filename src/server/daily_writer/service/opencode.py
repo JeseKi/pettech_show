@@ -56,7 +56,7 @@ def run_repair_opencode(workdir: Path, *, error: str, article_dir: str | None = 
 
 
 def _run_opencode_with_prompt(workdir: Path, *, title: str, prompt: str) -> None:
-    run_opencode_in_tmux(workdir, title=title, prompt=prompt)
+    run_opencode_in_tmux(workdir, title=title, prompt=prompt, session_key=title)
 
 
 def build_prompt(workdir: Path, params: dict[str, Any], row: dict[str, str]) -> str:
@@ -179,6 +179,8 @@ def build_artwork_prompt(workdir: Path, *, article_dir: str) -> str:
 - 不要在临时渲染脚本里从 `.agents/skills/guizang-social-card-skill/node_modules/playwright/index.js` 做相对路径 import。
 - 如果需要用浏览器截图 HTML，优先使用系统 Chromium：读取 `CHROME_BIN` 或 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`，否则尝试 `/usr/bin/chromium`、`/usr/bin/chromium-browser`、`/usr/bin/google-chrome`；不要依赖 `/root/.cache/ms-playwright/` 中的浏览器缓存。
 - 如果使用 Playwright 包，必须用默认导入兼容 CommonJS：`import playwright from "playwright"; const {{ chromium }} = playwright;`，并在 `chromium.launch()` 中传入上述 `executablePath`。
+- 字体优先使用当前工作目录内 `.agents/assets/fonts/` 下的已授权字体文件，例如 `msyh.ttc`、`msyh.ttf`、`msyhbd.ttc` 或 `MicrosoftYaHei.ttf`；如果目录不存在或没有可用字体，再使用 CSS 系统字体 fallback。
+- 不要递归 Glob `/usr/share/fonts` 或任何系统字体目录；如需系统字体，只能用 `fc-match`/`fc-list` 查询到的单个字体路径，查询失败时使用 Pillow 默认字体继续渲染。
 - 如果浏览器不可用，可以改用本地 Python/Pillow 渲染，但必须保留 Guizang 的 `index.html`、`manifest.json`、`plan.md` 或 `prompts.md` 作为设计源文件。
 - 图片最终必须保存在 `{article_dir}/artwork/cover/images/`、`{article_dir}/artwork/illustrations/images/` 或 `{article_dir}/artwork/upload_ready/` 下。
 - 如果图片生成失败，必须在 progress.json 和日志中写清楚失败原因。

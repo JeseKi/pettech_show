@@ -68,6 +68,8 @@ The target directory must contain:
 ## Server Rendering Rules
 
 - Do not generate temporary scripts that import Playwright through a relative `node_modules/playwright/index.js` path.
+- Prefer licensed project fonts from `.agents/assets/fonts/` when rendering Chinese text. Common allowed filenames include `msyh.ttc`, `msyh.ttf`, `msyhbd.ttc`, and `MicrosoftYaHei.ttf`.
+- Do not recursively glob `/usr/share/fonts` or any system font directory. If a system font is needed, use CSS system font fallbacks or query a single concrete path with `fc-match`/`fc-list`; if that fails, continue with the default Pillow/browser font.
 - If browser screenshots are needed, use the system browser path from `CHROME_BIN` or `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`, falling back to `/usr/bin/chromium`, `/usr/bin/chromium-browser`, or `/usr/bin/google-chrome`.
 - Do not rely on Playwright's cached browser under `/root/.cache/ms-playwright/`; production images may set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`.
 - If importing Playwright from ESM, use CommonJS-compatible default import:

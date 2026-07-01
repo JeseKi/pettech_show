@@ -91,6 +91,12 @@ node /Users/Admin/Projects/DailyWriting/.agents/skills/xhs-slideshow-video-maker
 - 文章类 hook 的配音文案要先点题，再接 hook。
 - 批量生成视频时，先生成一次共享配音，再复用到所有视觉变体。
 
+## 字体规则
+
+- 中文标题和字幕优先使用 `.agents/assets/fonts/` 下的已授权字体文件，常见文件名包括 `msyh.ttc`、`msyh.ttf`、`msyhbd.ttc`、`MicrosoftYaHei.ttf`。
+- 如果配置 JSON 手动设置 `font`，脚本会优先使用该路径；否则会自动尝试项目字体目录，再尝试少量固定系统候选。
+- 不要递归 Glob `/usr/share/fonts` 或任何系统字体目录。如果项目字体和固定候选都不可用，应明确报错提示设置 `config.font`。
+
 ## 脚本
 
 - `scripts/render_slideshow_video.cjs`：读取单条或批量 JSON 配置，生成或复用配音，裁剪 BGM，调用 overlay 生成和 ffmpeg 合成，并写 `video.md`。

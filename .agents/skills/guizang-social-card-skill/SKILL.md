@@ -57,6 +57,13 @@ For each page, decide:
 - Which words must be large, and which can become captions or metadata?
 - What can be removed because it belongs in the post body, not the image?
 
+## Local Font Rules
+
+- Prefer licensed project fonts from `.agents/assets/fonts/` for Chinese text. Common allowed filenames include `msyh.ttc`, `msyh.ttf`, `msyhbd.ttc`, and `MicrosoftYaHei.ttf`.
+- When writing HTML/CSS, use `@font-face` for an available project font and place that family first in the Chinese `font-family` stack.
+- Do not recursively glob `/usr/share/fonts` or any system font directory. If a system font is needed, use CSS system fallbacks or query a single concrete path with `fc-match`/`fc-list`.
+- If no project font is available, continue with browser/system fallback fonts rather than failing the image task.
+
 ## Required References
 
 Read these files as needed:

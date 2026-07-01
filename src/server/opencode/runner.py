@@ -37,19 +37,22 @@ def run_opencode_in_tmux(
     resume_prompt: str | None = None,
     max_resume_attempts: int = 1,
     opencode_dir: Path | None = None,
+    session_key: str | None = None,
 ) -> None:
     initial_prompt_path: Path | None = None
     attempt_title = title
     attempt_prompt = prompt
     run_dir = opencode_dir or workdir
+    session_scope = session_key
     for attempt in range(max_resume_attempts + 1):
-        session_id = read_session_id(workdir) if attempt > 0 else None
+        session_id = read_session_id(workdir, key=session_scope) if attempt > 0 else None
         result, prompt_path = _run_opencode_attempt(
             workdir,
             title=attempt_title,
             prompt=attempt_prompt,
             session_id=session_id,
             opencode_dir=run_dir,
+            session_key=session_scope,
         )
         if initial_prompt_path is None:
             initial_prompt_path = prompt_path
@@ -68,7 +71,7 @@ def run_opencode_in_tmux(
             summary="OpenCode 已退出但任务未完成，正在同一工作目录继续执行",
         )
         attempt_title = f"{title} resume"
-        if read_session_id(workdir):
+        if read_session_id(workdir, key=session_scope):
             attempt_prompt = "继续"
         else:
             attempt_prompt = resume_prompt or _build_generic_resume_prompt(
@@ -84,6 +87,7 @@ def _run_opencode_attempt(
     prompt: str,
     session_id: str | None = None,
     opencode_dir: Path | None = None,
+    session_key: str | None = None,
 ) -> tuple[str, Path]:
     run_dir = opencode_dir or workdir
     args = _opencode_args(run_dir, title=title, session_id=session_id)
@@ -119,12 +123,13 @@ def _run_opencode_attempt(
 
     while True:
         now = datetime.now(timezone.utc).timestamp()
-        if not read_session_id(workdir) and now >= next_session_probe:
+        if not read_session_id(workdir, key=session_key) and now >= next_session_probe:
             persist_session_id(
                 workdir,
                 title=title,
                 started_after_ms=started_after_ms,
                 session_dir=run_dir,
+                key=session_key,
             )
             next_session_probe = now + 1
 
@@ -135,6 +140,7 @@ def _run_opencode_attempt(
                 title=title,
                 started_after_ms=started_after_ms,
                 session_dir=run_dir,
+                key=session_key,
             )
             kill_tmux_session(tmux_name)
             return "completed", prompt_path
@@ -148,6 +154,7 @@ def _run_opencode_attempt(
                 started_after_ms=started_after_ms,
                 prompt_path=prompt_path,
                 session_dir=run_dir,
+                session_key=session_key,
             )
 
         if datetime.now(timezone.utc).timestamp() > deadline:
@@ -164,12 +171,14 @@ def _run_opencode_attempt(
                     started_after_ms=started_after_ms,
                     prompt_path=prompt_path,
                     session_dir=run_dir,
+                    session_key=session_key,
                 )
             persist_session_id(
                 workdir,
                 title=title,
                 started_after_ms=started_after_ms,
                 session_dir=run_dir,
+                key=session_key,
             )
             append_log(
                 workdir,
@@ -205,6 +214,7 @@ def _handle_finished_status(
     started_after_ms: int,
     prompt_path: Path,
     session_dir: Path | None = None,
+    session_key: str | None = None,
 ) -> tuple[str, Path]:
     exit_code = _coerce_exit_code(status_payload.get("exit_code"))
     persist_session_id(
@@ -212,6 +222,7 @@ def _handle_finished_status(
         title=title,
         started_after_ms=started_after_ms,
         session_dir=session_dir,
+        key=session_key,
     )
     if exit_code != 0:
         raise RuntimeError(f"OpenCode 执行失败，退出码 {exit_code}")

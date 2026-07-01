@@ -104,3 +104,52 @@ def test_session_list_uses_isolated_opencode_env(tmp_path: Path, monkeypatch):
     assert env["XDG_CACHE_HOME"] == (runtime_root / "cache").as_posix()
     assert env["XDG_STATE_HOME"] == (runtime_root / "state").as_posix()
     assert "XDG_CONFIG_HOME" not in env
+
+
+def test_session_ids_can_be_scoped_by_task_stage(tmp_path: Path):
+    workdir = tmp_path / "job"
+    workdir.mkdir()
+
+    (workdir / ".session").write_text("ses_main\n", encoding="utf-8")
+    (workdir / ".session-long-article-artwork-generation").write_text(
+        "ses_artwork\n",
+        encoding="utf-8",
+    )
+
+    assert sessions.read_session_id(workdir) == "ses_main"
+    assert (
+        sessions.read_session_id(workdir, key="Long article artwork generation")
+        == "ses_artwork"
+    )
+    assert sessions.read_session_id(workdir, key="Long article variant generation") is None
+
+
+def test_runner_resumes_with_scoped_session_id(tmp_path: Path, monkeypatch):
+    workdir = tmp_path / "job"
+    workdir.mkdir()
+    write_progress(workdir, initial_progress())
+    (workdir / ".session").write_text("ses_main\n", encoding="utf-8")
+    (workdir / ".session-long-article-artwork-generation").write_text(
+        "ses_artwork\n",
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run_opencode_attempt(workdir_arg: Path, **kwargs):
+        calls.append(kwargs)
+        return ("exited" if len(calls) == 1 else "completed", workdir_arg / "prompt.md")
+
+    monkeypatch.setattr(runner, "_run_opencode_attempt", fake_run_opencode_attempt)
+
+    runner.run_opencode_in_tmux(
+        workdir,
+        title="Long article artwork generation",
+        prompt="生成插图",
+        max_resume_attempts=1,
+        session_key="Long article artwork generation",
+    )
+
+    assert calls[0]["session_id"] is None
+    assert calls[1]["session_id"] == "ses_artwork"
+    assert calls[1]["prompt"] == "继续"
+    assert calls[1]["title"] == "Long article artwork generation resume"

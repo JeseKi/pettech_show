@@ -76,6 +76,8 @@ def build_prompt(workdir: Path, *, post_count: int, cards_per_post: int) -> str:
 - 不要使用旧的 `xhs_carousel_imagegen` 直出图片流程。
 - 不要使用 imagegen、grsai-image-generator 或任何云端图片生成服务。
 - 不要 import `playwright`、`puppeteer` 或其他当前目录没有安装的浏览器自动化包；不要运行 `npm install`。渲染 PNG 只能使用 `tools/render_social_deck.mjs` 或同等的本机 Chrome/Chromium CLI 截图方式。
+- 字体优先使用当前工作目录内 `.agents/assets/fonts/` 下的已授权字体文件，例如 `msyh.ttc`、`msyh.ttf`、`msyhbd.ttc` 或 `MicrosoftYaHei.ttf`；生成 `index.html` 时可通过 `@font-face` 引用这些本地字体，并把中文字体族放在 `font-family` 首位。
+- 不要递归 Glob `/usr/share/fonts` 或任何系统字体目录；如需系统字体，只能用 CSS 系统字体 fallback 或 `fc-match`/`fc-list` 查询到的单个字体路径。
 - 如果需要图源，可按 guizang skill 的 Web-Sourced Images 流程自行查找并记录到 `xhs_guizang/assets/SOURCES.md`。
 - 如果图文卡生成失败，必须在当前目录的 `progress.json` 和日志中写清楚失败原因。
 """.strip()

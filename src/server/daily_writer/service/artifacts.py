@@ -40,6 +40,18 @@ def prepare_skill(workdir: Path, *, include_artwork: bool = False) -> None:
         if target.exists():
             shutil.rmtree(target)
         shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
+    if include_artwork:
+        _copy_agent_assets(workdir)
+
+
+def _copy_agent_assets(workdir: Path) -> None:
+    source = Path(global_config.project_root) / ".agents" / "assets"
+    if not source.exists():
+        return
+    target = workdir / ".agents" / "assets"
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
 
 
 def _dedupe_skill_names(skill_names: list[str]) -> list[str]:

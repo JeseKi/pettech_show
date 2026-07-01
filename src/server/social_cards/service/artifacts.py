@@ -51,7 +51,18 @@ def prepare_skill(workdir: Path) -> None:
         if target.exists():
             shutil.rmtree(target)
         shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
+    _copy_agent_assets(workdir)
     write_render_helper(workdir)
+
+
+def _copy_agent_assets(workdir: Path) -> None:
+    source = Path(global_config.project_root) / ".agents" / "assets"
+    if not source.exists():
+        return
+    target = workdir / ".agents" / "assets"
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
 
 
 def write_render_helper(workdir: Path) -> None:

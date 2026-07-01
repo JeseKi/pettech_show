@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 from pathlib import Path
@@ -16,8 +17,8 @@ from .constants import SESSION_FILE_NAME, TMUX_COMMAND_TIMEOUT_SECONDS
 from .env import isolated_env
 
 
-def read_session_id(workdir: Path) -> str | None:
-    session_path = workdir / SESSION_FILE_NAME
+def read_session_id(workdir: Path, *, key: str | None = None) -> str | None:
+    session_path = _session_path(workdir, key=key)
     if not session_path.is_file():
         return None
     session_id = session_path.read_text(encoding="utf-8", errors="replace").strip()
@@ -25,9 +26,14 @@ def read_session_id(workdir: Path) -> str | None:
 
 
 def persist_session_id(
-    workdir: Path, *, title: str, started_after_ms: int, session_dir: Path | None = None
+    workdir: Path,
+    *,
+    title: str,
+    started_after_ms: int,
+    session_dir: Path | None = None,
+    key: str | None = None,
 ) -> str | None:
-    existing = read_session_id(workdir)
+    existing = read_session_id(workdir, key=key)
     if existing:
         return existing
     session = _find_latest_opencode_session(
@@ -41,9 +47,16 @@ def persist_session_id(
     session_id = str(session.get("id") or "")
     if not session_id.startswith("ses_"):
         return None
-    (workdir / SESSION_FILE_NAME).write_text(session_id + "\n", encoding="utf-8")
+    _session_path(workdir, key=key).write_text(session_id + "\n", encoding="utf-8")
     append_log(workdir, f"已记录 OpenCode session：{session_id}")
     return session_id
+
+
+def _session_path(workdir: Path, *, key: str | None = None) -> Path:
+    if not key:
+        return workdir / SESSION_FILE_NAME
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", key.strip()).strip(".-").lower()
+    return workdir / f"{SESSION_FILE_NAME}-{(slug or 'default')[:80]}"
 
 
 def _find_latest_opencode_session(
