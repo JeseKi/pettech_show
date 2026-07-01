@@ -13,6 +13,7 @@ from src.server.aiwiki.service.logs import append_log
 from src.server.config import global_config
 
 from .constants import SESSION_FILE_NAME, TMUX_COMMAND_TIMEOUT_SECONDS
+from .env import isolated_env
 
 
 def read_session_id(workdir: Path) -> str | None:
@@ -33,6 +34,7 @@ def persist_session_id(
         session_dir or workdir,
         title=title,
         started_after_ms=started_after_ms,
+        runtime_dir=workdir,
     )
     if session is None:
         return None
@@ -45,9 +47,9 @@ def persist_session_id(
 
 
 def _find_latest_opencode_session(
-    workdir: Path, *, title: str, started_after_ms: int
+    workdir: Path, *, title: str, started_after_ms: int, runtime_dir: Path | None = None
 ) -> dict[str, object] | None:
-    sessions = _list_opencode_sessions(workdir)
+    sessions = _list_opencode_sessions(workdir, runtime_dir=runtime_dir)
     if not sessions:
         return None
     workdir_text = workdir.as_posix()
@@ -73,7 +75,9 @@ def _find_latest_opencode_session(
     )
 
 
-def _list_opencode_sessions(workdir: Path) -> list[dict[str, object]]:
+def _list_opencode_sessions(
+    workdir: Path, *, runtime_dir: Path | None = None
+) -> list[dict[str, object]]:
     command = shlex.split(global_config.aiwiki_opencode_command)
     if not command:
         return []
@@ -86,7 +90,7 @@ def _list_opencode_sessions(workdir: Path) -> list[dict[str, object]]:
             check=False,
             text=True,
             timeout=TMUX_COMMAND_TIMEOUT_SECONDS,
-            env=os.environ.copy(),
+            env=isolated_env(runtime_dir or workdir, os.environ.copy()),
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return []

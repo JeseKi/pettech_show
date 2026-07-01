@@ -6,6 +6,7 @@ from pathlib import Path
 
 from src.server.aiwiki.service.progress import initial_progress, write_progress
 from src.server.config import global_config
+from src.server.opencode import sessions, tmux
 from src.server.opencode import runner
 
 
@@ -57,3 +58,49 @@ def test_recovers_when_tmux_exits_without_status(
     log_text = (workdir / "logs" / "opencode.log").read_text(encoding="utf-8")
     assert "未写入退出状态" in log_text
     assert "Capability generation resume" in log_text
+
+
+def test_tmux_script_isolates_opencode_xdg_homes(tmp_path: Path):
+    workdir = tmp_path / "job"
+    workdir.mkdir()
+
+    script = tmux.build_tmux_script(
+        args=["opencode", "run"],
+        prompt_path=workdir / "logs" / "prompt.md",
+        status_path=workdir / "logs" / "status.json",
+        log_path=workdir / "logs" / "opencode.log",
+        workdir=workdir,
+    )
+
+    runtime_root = workdir / ".opencode-runtime"
+    assert f"export XDG_DATA_HOME={runtime_root / 'data'}" in script
+    assert f"export XDG_CACHE_HOME={runtime_root / 'cache'}" in script
+    assert f"export XDG_STATE_HOME={runtime_root / 'state'}" in script
+    assert "XDG_CONFIG_HOME" not in script
+
+
+def test_session_list_uses_isolated_opencode_env(tmp_path: Path, monkeypatch):
+    workdir = tmp_path / "job"
+    workdir.mkdir()
+    captured = {}
+
+    class Result:
+        returncode = 0
+        stdout = "[]"
+
+    def fake_run(*args, **kwargs):
+        captured["env"] = kwargs["env"]
+        return Result()
+
+    monkeypatch.setattr(global_config, "aiwiki_opencode_command", "opencode")
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setattr(sessions.subprocess, "run", fake_run)
+
+    assert sessions._list_opencode_sessions(workdir) == []
+
+    runtime_root = workdir / ".opencode-runtime"
+    env = captured["env"]
+    assert env["XDG_DATA_HOME"] == (runtime_root / "data").as_posix()
+    assert env["XDG_CACHE_HOME"] == (runtime_root / "cache").as_posix()
+    assert env["XDG_STATE_HOME"] == (runtime_root / "state").as_posix()
+    assert "XDG_CONFIG_HOME" not in env

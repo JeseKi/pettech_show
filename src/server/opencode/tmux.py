@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 from .constants import TMUX_COMMAND_TIMEOUT_SECONDS
+from .env import shell_export_lines
 
 
 def session_name(workdir: Path, title: str, run_id: str) -> str:
@@ -39,6 +40,7 @@ def build_tmux_script(
             "#!/usr/bin/env bash",
             "set +e",
             f"cd {shlex.quote(workdir.as_posix())} || exit 1",
+            *shell_export_lines(workdir),
             opencode_config_line,
             f"prompt_file={shlex.quote(prompt_path.as_posix())}",
             f"status_file={shlex.quote(status_path.as_posix())}",
