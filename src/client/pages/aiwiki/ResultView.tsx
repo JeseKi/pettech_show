@@ -37,7 +37,7 @@ export default function ResultView({
   onCloseEntry,
 }: ResultViewProps) {
   const { token } = theme.useToken()
-  const [mainView, setMainView] = useState<'index' | 'graph'>('index')
+  const [mainView, setMainView] = useState<'index' | 'graph'>('graph')
   const sectionStyle = {
     background: token.colorBgContainer,
     border: `1px solid ${token.colorBorderSecondary}`,
