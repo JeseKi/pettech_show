@@ -6,9 +6,11 @@ import { useInteractiveMoviePageContext } from './useInteractiveMoviePageContext
 import { CanvasStage } from './CanvasStage'
 import { CanvasAgentChat } from './CanvasAgentChat'
 import { EditorFloatingPanel } from './EditorFloatingPanel'
+import { confirmAgentOperationLeave } from '../../../hooks/useAgentOperationLeaveGuard'
 
 export function MovieCanvas() {
   const [agentChatOpen, setAgentChatOpen] = useState(false)
+  const [agentChatBusy, setAgentChatBusy] = useState(false)
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
   const {
     addAssetNode,
@@ -51,6 +53,11 @@ export function MovieCanvas() {
   const runCreateAction = (action: () => void) => {
     action()
     setCreateMenuOpen(false)
+  }
+
+  const toggleAgentChat = () => {
+    if (agentChatOpen && agentChatBusy && !confirmAgentOperationLeave()) return
+    setAgentChatOpen((value) => !value)
   }
 
   return (
@@ -122,7 +129,7 @@ export function MovieCanvas() {
       )}
 
       <EditorFloatingPanel />
-      <CanvasAgentChat open={agentChatOpen} onClose={() => setAgentChatOpen(false)} />
+      <CanvasAgentChat open={agentChatOpen} onClose={() => setAgentChatOpen(false)} onBusyChange={setAgentChatBusy} />
 
       <div
         className={bottomToolbarCollapsed ? 'movie-bottom-dock is-collapsed' : 'movie-bottom-dock'}
@@ -186,7 +193,7 @@ export function MovieCanvas() {
               shape="circle"
               type={agentChatOpen ? 'primary' : 'default'}
               icon={<MessageOutlined />}
-              onClick={() => setAgentChatOpen((value) => !value)}
+              onClick={toggleAgentChat}
             />
           </Tooltip>
           <span className="movie-bottom-divider" />

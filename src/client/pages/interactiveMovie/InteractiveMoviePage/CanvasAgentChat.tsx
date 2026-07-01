@@ -258,9 +258,11 @@ function CanvasToolStepDetail({ detail }: { detail: string }) {
 export function CanvasAgentChat({
   open,
   onClose,
+  onBusyChange,
 }: {
   open: boolean
   onClose: () => void
+  onBusyChange?: (busy: boolean) => void
 }) {
   const { activeProject, buildCanvasAgentOverview, closeCanvasContextMenu, executeCanvasAgentTool } = useInteractiveMoviePageContext()
   const [geometry, setGeometry] = useState<PanelGeometry>(() => loadPanelGeometry())
@@ -277,6 +279,10 @@ export function CanvasAgentChat({
   const interactionRef = useRef<PanelInteraction | null>(null)
   const messageListRef = useRef<HTMLDivElement>(null)
   useAgentOperationLeaveGuard(loading)
+
+  useEffect(() => {
+    onBusyChange?.(loading)
+  }, [loading, onBusyChange])
 
   const latestMessages = useMemo(() => messages.slice(-10), [messages])
   const activeCapabilityMentionQuery = useMemo(() => {
