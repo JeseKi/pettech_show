@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import shlex
 import time
 import uuid
@@ -19,6 +20,7 @@ from src.server.aiwiki.service.progress import mark_progress_running, read_progr
 from src.server.config import global_config
 
 from .constants import POLL_INTERVAL_SECONDS
+from .env import runtime_root
 from .sessions import persist_session_id, read_session_id
 from .tmux import (
     build_tmux_script,
@@ -45,15 +47,32 @@ def run_opencode_in_tmux(
     run_dir = opencode_dir or workdir
     session_scope = session_key
     for attempt in range(max_resume_attempts + 1):
-        session_id = read_session_id(workdir, key=session_scope) if attempt > 0 else None
-        result, prompt_path = _run_opencode_attempt(
-            workdir,
-            title=attempt_title,
-            prompt=attempt_prompt,
-            session_id=session_id,
-            opencode_dir=run_dir,
-            session_key=session_scope,
-        )
+        startup_retry_count = 0
+        while True:
+            session_id = (
+                read_session_id(workdir, key=session_scope) if attempt > 0 else None
+            )
+            result, prompt_path = _run_opencode_attempt(
+                workdir,
+                title=attempt_title,
+                prompt=attempt_prompt,
+                session_id=session_id,
+                opencode_dir=run_dir,
+                session_key=session_scope,
+            )
+            if result != "retryable_startup_error":
+                break
+            if startup_retry_count >= 1:
+                raise RuntimeError(
+                    "OpenCode 执行失败，退出码 1；已因 OpenCode 数据库初始化错误重试 1 次仍失败"
+                )
+            startup_retry_count += 1
+            _reset_opencode_runtime(workdir)
+            append_log(
+                workdir,
+                "RECOVERY: OpenCode 退出码 1，日志匹配数据库初始化/建表类瞬时错误，"
+                "已清理当前工作目录的 .opencode-runtime 并重新拉起一次。",
+            )
         if initial_prompt_path is None:
             initial_prompt_path = prompt_path
         if result == "completed":
@@ -115,6 +134,7 @@ def _run_opencode_attempt(
 
     append_log(workdir, "$ " + " ".join(shlex.quote(arg) for arg in args) + " <prompt>")
     append_log(workdir, _tmux_command_log(tmux_name, script_path))
+    log_offset = _file_size(log_path)
     baseline_event_count = _progress_event_count(workdir)
     started_after_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     next_session_probe = 0.0
@@ -145,6 +165,18 @@ def _run_opencode_attempt(
             kill_tmux_session(tmux_name)
             return "completed", prompt_path
 
+        failure_summary = _progress_marked_failure_after(workdir, baseline_event_count)
+        if failure_summary:
+            persist_session_id(
+                workdir,
+                title=title,
+                started_after_ms=started_after_ms,
+                session_dir=run_dir,
+                key=session_key,
+            )
+            kill_tmux_session(tmux_name)
+            raise RuntimeError(failure_summary)
+
         status_payload = _read_status(status_path)
         if status_payload is not None:
             return _handle_finished_status(
@@ -155,6 +187,7 @@ def _run_opencode_attempt(
                 prompt_path=prompt_path,
                 session_dir=run_dir,
                 session_key=session_key,
+                log_offset=log_offset,
             )
 
         if datetime.now(timezone.utc).timestamp() > deadline:
@@ -172,6 +205,7 @@ def _run_opencode_attempt(
                     prompt_path=prompt_path,
                     session_dir=run_dir,
                     session_key=session_key,
+                    log_offset=log_offset,
                 )
             persist_session_id(
                 workdir,
@@ -215,6 +249,7 @@ def _handle_finished_status(
     prompt_path: Path,
     session_dir: Path | None = None,
     session_key: str | None = None,
+    log_offset: int = 0,
 ) -> tuple[str, Path]:
     exit_code = _coerce_exit_code(status_payload.get("exit_code"))
     persist_session_id(
@@ -224,12 +259,45 @@ def _handle_finished_status(
         session_dir=session_dir,
         key=session_key,
     )
+    if exit_code == 1 and _has_retryable_startup_error(workdir, offset=log_offset):
+        return "retryable_startup_error", prompt_path
     if exit_code != 0:
         raise RuntimeError(f"OpenCode 执行失败，退出码 {exit_code}")
     if _progress_marked_complete_after(workdir, 0):
         append_log(workdir, "progress.json 已在 OpenCode 退出时标记任务完成，后端直接解析结果。")
         return "completed", prompt_path
+    failure_summary = _progress_marked_failure_after(workdir, 0)
+    if failure_summary:
+        raise RuntimeError(failure_summary)
     return "exited", prompt_path
+
+
+def _reset_opencode_runtime(workdir: Path) -> None:
+    shutil.rmtree(runtime_root(workdir), ignore_errors=True)
+
+
+def _has_retryable_startup_error(workdir: Path, *, offset: int = 0) -> bool:
+    log_path = workdir / "logs" / "opencode.log"
+    try:
+        with log_path.open("rb") as file:
+            if offset > 0:
+                file.seek(offset)
+            text = file.read().decode("utf-8", errors="replace")[-40000:]
+    except FileNotFoundError:
+        return False
+    normalized = text.lower()
+    if "database is locked" in normalized:
+        return True
+    if "sqlite_busy" in normalized or "sqlite_locked" in normalized:
+        return True
+    return "failed query:" in normalized and "create table `workspace`" in normalized
+
+
+def _file_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except FileNotFoundError:
+        return 0
 
 
 def _tmux_command_log(tmux_name: str, script_path: Path) -> str:
@@ -271,6 +339,21 @@ def _progress_marked_complete_after(workdir: Path, baseline_event_count: int) ->
         all(events[-1].get(key) == value for key, value in complete_event.items())
         for complete_event in (PROGRESS_COMPLETE_EVENT, LEGACY_PROGRESS_COMPLETE_EVENT)
     )
+
+
+def _progress_marked_failure_after(workdir: Path, baseline_event_count: int) -> str | None:
+    progress = read_progress(workdir)
+    events = progress.get("events")
+    if (
+        progress.get("status") != "failure"
+        or progress.get("current_step") != "任务失败"
+        or not isinstance(events, list)
+        or len(events) <= baseline_event_count
+        or not isinstance(events[-1], dict)
+    ):
+        return None
+    summary = events[-1].get("summary")
+    return str(summary).strip() if summary else "OpenCode 标记任务失败"
 
 
 def _read_status(status_path: Path) -> dict[str, object] | None:

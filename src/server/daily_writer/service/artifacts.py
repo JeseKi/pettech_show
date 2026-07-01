@@ -47,9 +47,7 @@ def _copy_skills(workdir: Path, skill_names: list[str]) -> None:
         if not source.exists():
             raise RuntimeError(f"Skill 不存在：{source}")
         target = target_root / skill_name
-        if target.exists():
-            shutil.rmtree(target)
-        shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
+        _link_tree_or_copy(source, target)
 
 
 def _copy_agent_assets(workdir: Path) -> None:
@@ -57,9 +55,22 @@ def _copy_agent_assets(workdir: Path) -> None:
     if not source.exists():
         return
     target = workdir / ".agents" / "assets"
-    if target.exists():
-        shutil.rmtree(target)
-    shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
+    _link_tree_or_copy(source, target)
+
+
+def _link_tree_or_copy(source: Path, target: Path) -> None:
+    _remove_existing(target)
+    try:
+        target.symlink_to(source, target_is_directory=True)
+    except OSError:
+        shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
+
+
+def _remove_existing(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
 
 
 def _dedupe_skill_names(skill_names: list[str]) -> list[str]:

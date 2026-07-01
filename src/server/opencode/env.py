@@ -10,6 +10,7 @@ from typing import Mapping
 
 
 XDG_HOME_DIRS: tuple[tuple[str, str], ...] = (
+    ("XDG_CONFIG_HOME", "config"),
     ("XDG_DATA_HOME", "data"),
     ("XDG_CACHE_HOME", "cache"),
     ("XDG_STATE_HOME", "state"),
@@ -26,6 +27,7 @@ def xdg_home_paths(workdir: Path) -> dict[str, Path]:
 
 
 def ensure_runtime_dirs(workdir: Path) -> None:
+    (runtime_root(workdir) / "home").mkdir(parents=True, exist_ok=True)
     for path in xdg_home_paths(workdir).values():
         path.mkdir(parents=True, exist_ok=True)
 
@@ -35,6 +37,7 @@ def isolated_env(
 ) -> dict[str, str]:
     env = dict(os.environ if base is None else base)
     ensure_runtime_dirs(workdir)
+    env["HOME"] = (runtime_root(workdir) / "home").as_posix()
     for env_name, path in xdg_home_paths(workdir).items():
         env[env_name] = path.as_posix()
     return env
@@ -43,9 +46,13 @@ def isolated_env(
 def shell_export_lines(workdir: Path) -> list[str]:
     ensure_runtime_dirs(workdir)
     paths = xdg_home_paths(workdir)
-    mkdir_args = " ".join(shlex.quote(path.as_posix()) for path in paths.values())
+    home_path = runtime_root(workdir) / "home"
+    mkdir_args = " ".join(
+        shlex.quote(path.as_posix()) for path in [home_path, *paths.values()]
+    )
     return [
         f"mkdir -p {mkdir_args} || exit 1",
+        f"export HOME={shlex.quote(home_path.as_posix())}",
         *[
             f"export {env_name}={shlex.quote(path.as_posix())}"
             for env_name, path in paths.items()
