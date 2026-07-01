@@ -23,16 +23,26 @@ def copy_source_artifacts(source_workdir: Path, target_workdir: Path) -> None:
 
 
 def prepare_skill(workdir: Path, *, include_artwork: bool = False) -> None:
+    skill_names = [
+        *DAILY_WRITER_SKILL_NAMES,
+        *(ARTWORK_SKILL_NAMES if include_artwork else []),
+    ]
+    _copy_skills(workdir, skill_names)
+    if include_artwork:
+        _copy_agent_assets(workdir)
+
+
+def ensure_artwork_artifacts(workdir: Path) -> None:
+    """Repair artwork-only agent assets for existing or resumed workdirs."""
+    _copy_skills(workdir, ARTWORK_SKILL_NAMES)
+    _copy_agent_assets(workdir)
+
+
+def _copy_skills(workdir: Path, skill_names: list[str]) -> None:
     source_root = Path(global_config.project_root) / ".agents" / "skills"
     target_root = workdir / ".agents" / "skills"
     target_root.mkdir(parents=True, exist_ok=True)
-    skill_names = _dedupe_skill_names(
-        [
-            *DAILY_WRITER_SKILL_NAMES,
-            *(ARTWORK_SKILL_NAMES if include_artwork else []),
-        ]
-    )
-    for skill_name in skill_names:
+    for skill_name in _dedupe_skill_names(skill_names):
         source = source_root / skill_name
         if not source.exists():
             raise RuntimeError(f"Skill 不存在：{source}")
@@ -40,8 +50,6 @@ def prepare_skill(workdir: Path, *, include_artwork: bool = False) -> None:
         if target.exists():
             shutil.rmtree(target)
         shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
-    if include_artwork:
-        _copy_agent_assets(workdir)
 
 
 def _copy_agent_assets(workdir: Path) -> None:
