@@ -30,6 +30,7 @@ import {
 import { Button as LobeButton, Tag, ThemeProvider as LobeThemeProvider } from '@lobehub/ui'
 import { ChatInputAreaInner, ChatList, type ChatMessage, type RenderMessage } from '@lobehub/ui/chat'
 import { useAuth } from '../../hooks/useAuth'
+import { useAgentOperationLeaveGuard } from '../../hooks/useAgentOperationLeaveGuard'
 import {
   deleteChatSession,
   getChatSessionMessages,
@@ -484,6 +485,7 @@ export default function ChatHomePage() {
   const lastScrollYRef = useRef(0)
   const streamAbortRef = useRef<AbortController | null>(null)
   const streamFrameRef = useRef<number | null>(null)
+  useAgentOperationLeaveGuard(thinking)
 
   const openWikiPreview = useCallback(async (page: string) => {
     setWikiPreviewOpen(true)

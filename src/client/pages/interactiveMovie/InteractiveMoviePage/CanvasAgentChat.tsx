@@ -14,6 +14,7 @@ import {
 } from '../../../lib/chat'
 import { listMyAgents, type UserAgent } from '../../../lib/agentMarket'
 import { listMyAgentSkills, type UserAgentSkill } from '../../../lib/agentSkills'
+import { confirmAgentOperationLeave, useAgentOperationLeaveGuard } from '../../../hooks/useAgentOperationLeaveGuard'
 import {
   canvasToolDefinitions,
   FRONTEND_CANVAS_PREFIX,
@@ -275,6 +276,7 @@ export function CanvasAgentChat({
   const [loading, setLoading] = useState(false)
   const interactionRef = useRef<PanelInteraction | null>(null)
   const messageListRef = useRef<HTMLDivElement>(null)
+  useAgentOperationLeaveGuard(loading)
 
   const latestMessages = useMemo(() => messages.slice(-10), [messages])
   const activeCapabilityMentionQuery = useMemo(() => {
@@ -655,6 +657,11 @@ export function CanvasAgentChat({
     }
   }
 
+  const requestClose = () => {
+    if (loading && !confirmAgentOperationLeave()) return
+    onClose()
+  }
+
   const selectMentionOption = (option: MentionOption) => {
     setInput((current) => {
       const pattern = option.kind === 'knowledge' ? KNOWLEDGE_MENTION_TRIGGER_PATTERN : CAPABILITY_MENTION_TRIGGER_PATTERN
@@ -787,7 +794,7 @@ export function CanvasAgentChat({
           setSelectedAgentId(null)
           setMessages([])
         }} aria-label="新建对话" />
-        <Button icon={<CloseOutlined />} onClick={onClose} aria-label="关闭智能体栏" />
+        <Button icon={<CloseOutlined />} onClick={requestClose} aria-label="关闭智能体栏" />
       </div>
 
       <div ref={messageListRef} className="movie-agent-message-list">
