@@ -27,6 +27,12 @@ def test_prepare_skill_copies_agent_assets_for_artwork(
         skill_dir = skill_root / skill_name
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(f"# {skill_name}\n", encoding="utf-8")
+    artwork_scripts = skill_root / "wechat-main-artwork-coordinator" / "scripts"
+    artwork_scripts.mkdir()
+    (artwork_scripts / "init_artwork.py").write_text("# init\n", encoding="utf-8")
+    (artwork_scripts / "prepare_upload_images.py").write_text(
+        "# prepare\n", encoding="utf-8"
+    )
 
     monkeypatch.setattr(global_config, "project_root", project_root)
     workdir = tmp_path / "workdir"
@@ -63,6 +69,12 @@ def test_ensure_artwork_artifacts_repairs_existing_workdir(
         skill_dir = skill_root / skill_name
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(f"# {skill_name}\n", encoding="utf-8")
+    artwork_scripts = skill_root / "wechat-main-artwork-coordinator" / "scripts"
+    artwork_scripts.mkdir()
+    (artwork_scripts / "init_artwork.py").write_text("# init\n", encoding="utf-8")
+    (artwork_scripts / "prepare_upload_images.py").write_text(
+        "# prepare\n", encoding="utf-8"
+    )
 
     monkeypatch.setattr(global_config, "project_root", project_root)
     workdir = tmp_path / "workdir"

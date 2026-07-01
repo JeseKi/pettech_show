@@ -19,7 +19,7 @@ from src.server.aiwiki.service.progress import (
 from ...dao import DailyWriterJobDAO, parse_json_dict, parse_json_str_dict
 from ...parser import parse_daily_writer_result
 from ...schemas import DailyWriterResultOut
-from ..artifacts import ensure_artwork_artifacts
+from ..artifacts import ensure_artwork_artifacts, required_artwork_paths
 from ..opencode import run_artwork_opencode, run_opencode, run_variant_opencode
 from ..persistence import update_job, write_manifest
 from .status_updates import (
@@ -172,6 +172,11 @@ def _run_artwork_if_requested(
         return result
     try:
         ensure_artwork_artifacts(workdir)
+        append_log(
+            workdir,
+            "ARTWORK CHECK: 后端已确认封面插图 Skill 存在："
+            + "、".join(path.as_posix() for path in required_artwork_paths(workdir)),
+        )
         mark_artwork_running(session, job.id, workdir, result)
         article_dir = Path(result.metadata_path).parent.as_posix()
         artwork_progress_events = progress_events_snapshot(workdir)

@@ -174,7 +174,8 @@ def build_artwork_prompt(workdir: Path, *, article_dir: str) -> str:
 要求：
 - 不要修改 `{article_dir}/main.md` 和 `{article_dir}/metadata.json`。
 - 不要覆盖当前目录外的任何文件。
-- 如果 `.agents/skills/wechat-main-artwork-coordinator/scripts/init_artwork.py`、`.agents/skills/wechat-main-artwork-coordinator/scripts/prepare_upload_images.py` 或 `.agents/skills/guizang-social-card-skill/` 缺失，禁止自行创建 `.agents/skills` 目录、Skill 脚本或替代 Skill；必须把任务标记失败，并在 progress.json 和日志中写明“后端未预置封面插图 Skill”。
+- 检查 `.agents` 下的 Skill 文件是否存在时，必须使用 shell 命令 `test -f` / `test -d` / `ls` 判断；不要使用 Glob 工具判断 `.agents` 点目录内文件是否存在，Glob 对隐藏目录可能误报 0 matches。
+- 如果通过 shell 检查确认 `.agents/skills/wechat-main-artwork-coordinator/scripts/init_artwork.py`、`.agents/skills/wechat-main-artwork-coordinator/scripts/prepare_upload_images.py` 或 `.agents/skills/guizang-social-card-skill/` 缺失，禁止自行创建 `.agents/skills` 目录、Skill 脚本或替代 Skill；必须把任务标记失败，并在 progress.json 和日志中写明“后端未预置封面插图 Skill”。
 - 不要上传图片到 KiVault 或任何云服务。
 - 不要使用 imagegen、grsai-image-generator 或任何云端图片生成服务。
 - 不要在临时渲染脚本里从 `.agents/skills/guizang-social-card-skill/node_modules/playwright/index.js` 做相对路径 import。

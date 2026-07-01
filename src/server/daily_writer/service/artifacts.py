@@ -36,6 +36,17 @@ def ensure_artwork_artifacts(workdir: Path) -> None:
     """Repair artwork-only agent assets for existing or resumed workdirs."""
     _copy_skills(workdir, ARTWORK_SKILL_NAMES)
     _copy_agent_assets(workdir)
+    missing = [
+        path.as_posix()
+        for path in _required_artwork_paths(workdir)
+        if not path.exists()
+    ]
+    if missing:
+        raise RuntimeError("后端未预置封面插图 Skill：" + "、".join(missing))
+
+
+def required_artwork_paths(workdir: Path) -> list[Path]:
+    return _required_artwork_paths(workdir)
 
 
 def _copy_skills(workdir: Path, skill_names: list[str]) -> None:
@@ -68,6 +79,24 @@ def _remove_existing(path: Path) -> None:
         path.unlink()
     elif path.exists():
         shutil.rmtree(path)
+
+
+def _required_artwork_paths(workdir: Path) -> list[Path]:
+    return [
+        workdir
+        / ".agents"
+        / "skills"
+        / "wechat-main-artwork-coordinator"
+        / "scripts"
+        / "init_artwork.py",
+        workdir
+        / ".agents"
+        / "skills"
+        / "wechat-main-artwork-coordinator"
+        / "scripts"
+        / "prepare_upload_images.py",
+        workdir / ".agents" / "skills" / "guizang-social-card-skill",
+    ]
 
 
 def _dedupe_skill_names(skill_names: list[str]) -> list[str]:

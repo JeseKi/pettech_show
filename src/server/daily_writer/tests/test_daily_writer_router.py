@@ -224,6 +224,17 @@ write_progress("completed", "任务完成")
         PROJECT_ROOT / ".agents" / "skills" / "wechat-daily-writer" / "scripts" / "check_article_json.py",
         tmp_path / ".agents" / "skills" / "wechat-daily-writer" / "scripts" / "check_article_json.py",
     )
+    artwork_scripts = (
+        tmp_path
+        / ".agents"
+        / "skills"
+        / "wechat-main-artwork-coordinator"
+        / "scripts"
+    )
+    (artwork_scripts / "init_artwork.py").write_text("# init\n", encoding="utf-8")
+    (artwork_scripts / "prepare_upload_images.py").write_text(
+        "# prepare\n", encoding="utf-8"
+    )
     reset_queue_for_tests()
     yield tmp_path
     reset_queue_for_tests()
