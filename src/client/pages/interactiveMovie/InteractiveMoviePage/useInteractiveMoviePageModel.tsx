@@ -37,6 +37,26 @@ const connectableNodeTypeValue = (value: unknown): ConnectableNodeType | null =>
   value === 'scene' || value === 'text' || value === 'image' || value === 'video' ? value : null
 )
 
+type CanvasAgentLayoutRect = {
+  height: number
+  width: number
+  x: number
+  y: number
+}
+
+type CanvasAgentLayoutContext = {
+  occupied: CanvasAgentLayoutRect[]
+  origin: { x: number; y: number }
+  nextIndex: number
+}
+
+const CANVAS_AGENT_LAYOUT_PADDING = 44
+const CANVAS_AGENT_LAYOUT_GAP_X = 96
+const CANVAS_AGENT_LAYOUT_GAP_Y = 64
+const CANVAS_AGENT_LAYOUT_COLUMNS = 3
+const CHOICE_LABEL_WIDTH = 176
+const CHOICE_LABEL_HEIGHT = 44
+
 const handleValue = (value: unknown): NodeHandleSide => (
   value === 'top' || value === 'right' || value === 'bottom' || value === 'left' ? value : 'right'
 )
@@ -49,11 +69,170 @@ const selectedObjectIsNode = (value: SelectedObject): value is SelectedObject & 
   value.type === 'scene' || value.type === 'text' || value.type === 'image' || value.type === 'video'
 )
 
+const expandedLayoutRect = (
+  position: { x: number; y: number },
+  dimensions: { width: number; height: number },
+): CanvasAgentLayoutRect => ({
+  height: dimensions.height + CANVAS_AGENT_LAYOUT_PADDING * 2,
+  width: dimensions.width + CANVAS_AGENT_LAYOUT_PADDING * 2,
+  x: position.x - CANVAS_AGENT_LAYOUT_PADDING,
+  y: position.y - CANVAS_AGENT_LAYOUT_PADDING,
+})
+
+const expandedRect = (rect: CanvasAgentLayoutRect): CanvasAgentLayoutRect => ({
+  height: rect.height + CANVAS_AGENT_LAYOUT_PADDING * 2,
+  width: rect.width + CANVAS_AGENT_LAYOUT_PADDING * 2,
+  x: rect.x - CANVAS_AGENT_LAYOUT_PADDING,
+  y: rect.y - CANVAS_AGENT_LAYOUT_PADDING,
+})
+
+const layoutRectsOverlap = (a: CanvasAgentLayoutRect, b: CanvasAgentLayoutRect) => (
+  a.x < b.x + b.width
+  && a.x + a.width > b.x
+  && a.y < b.y + b.height
+  && a.y + a.height > b.y
+)
+
+const choiceLabelLayoutRect = (
+  choice: ChoiceEdge,
+  project: InteractiveMovieProject,
+  choices: ChoiceEdge[] = project.choices,
+): CanvasAgentLayoutRect | null => {
+  const fromScene = project.scenes.find((scene) => scene.id === choice.fromSceneId)
+  const toScene = project.scenes.find((scene) => scene.id === choice.toSceneId)
+  if (!fromScene || !toScene) return null
+  const siblingChoices = choices.filter((item) => (
+    item.fromSceneId === choice.fromSceneId && item.toSceneId === choice.toSceneId
+  ))
+  const siblingIndex = Math.max(0, siblingChoices.findIndex((item) => item.id === choice.id))
+  const siblingOffset = (siblingIndex - (siblingChoices.length - 1) / 2) * 46
+  const start = {
+    x: fromScene.position.x + NODE_WIDTH,
+    y: fromScene.position.y + NODE_HEIGHT * 0.5 + siblingOffset * 0.28,
+  }
+  const end = {
+    x: toScene.position.x,
+    y: toScene.position.y + NODE_HEIGHT * 0.5 + siblingOffset * 0.28,
+  }
+  const midX = (start.x + end.x) / 2 + (choice.offsetX ?? 0)
+  const midY = (start.y + end.y) / 2 + siblingOffset + (choice.offsetY ?? 0)
+  return {
+    height: CHOICE_LABEL_HEIGHT,
+    width: CHOICE_LABEL_WIDTH,
+    x: midX - CHOICE_LABEL_WIDTH / 2,
+    y: midY - CHOICE_LABEL_HEIGHT / 2,
+  }
+}
+
+const createCanvasAgentLayoutContext = (
+  project: InteractiveMovieProject,
+  fallbackPosition: { x: number; y: number },
+): CanvasAgentLayoutContext => {
+  const occupied = [
+    ...project.scenes.map((scene) => expandedLayoutRect(scene.position, nodeDimensions('scene'))),
+    ...project.assetNodes.map((asset) => expandedLayoutRect(asset.position, nodeDimensions(asset.type))),
+    ...project.choices
+      .map((choice) => choiceLabelLayoutRect(choice, project))
+      .filter((rect): rect is CanvasAgentLayoutRect => Boolean(rect))
+      .map(expandedRect),
+  ]
+  if (occupied.length === 0) {
+    return { occupied, origin: fallbackPosition, nextIndex: 0 }
+  }
+  const minY = Math.min(...occupied.map((rect) => rect.y))
+  const maxX = Math.max(...occupied.map((rect) => rect.x + rect.width))
+  return {
+    occupied,
+    origin: {
+      x: maxX + CANVAS_AGENT_LAYOUT_GAP_X,
+      y: minY + CANVAS_AGENT_LAYOUT_PADDING,
+    },
+    nextIndex: 0,
+  }
+}
+
+const reserveCanvasAgentNodePosition = (
+  context: CanvasAgentLayoutContext,
+  type: ConnectableNodeType,
+) => {
+  const dimensions = nodeDimensions(type)
+  const cellWidth = NODE_WIDTH + CANVAS_AGENT_LAYOUT_GAP_X
+  const cellHeight = NODE_HEIGHT + CANVAS_AGENT_LAYOUT_GAP_Y
+  for (let attempt = 0; attempt < 240; attempt += 1) {
+    const index = context.nextIndex + attempt
+    const column = index % CANVAS_AGENT_LAYOUT_COLUMNS
+    const row = Math.floor(index / CANVAS_AGENT_LAYOUT_COLUMNS)
+    const position = {
+      x: context.origin.x + column * cellWidth,
+      y: context.origin.y + row * cellHeight,
+    }
+    const rect = expandedLayoutRect(position, dimensions)
+    if (!context.occupied.some((occupied) => layoutRectsOverlap(rect, occupied))) {
+      context.occupied.push(rect)
+      context.nextIndex = index + 1
+      return position
+    }
+  }
+  const row = Math.floor(context.nextIndex / CANVAS_AGENT_LAYOUT_COLUMNS)
+  const position = {
+    x: context.origin.x,
+    y: context.origin.y + (row + 1) * cellHeight,
+  }
+  context.occupied.push(expandedLayoutRect(position, dimensions))
+  context.nextIndex += 1
+  return position
+}
+
+const choiceOffsetCandidates = () => {
+  const candidates: Array<{ x: number; y: number }> = [{ x: 0, y: 0 }]
+  for (const distance of [72, 136, 208, 288, 376, 472]) {
+    candidates.push(
+      { x: 0, y: -distance },
+      { x: 0, y: distance },
+      { x: distance, y: 0 },
+      { x: -distance, y: 0 },
+      { x: distance, y: -distance },
+      { x: distance, y: distance },
+      { x: -distance, y: -distance },
+      { x: -distance, y: distance },
+    )
+  }
+  return candidates
+}
+
+const reserveCanvasAgentChoiceOffset = (
+  context: CanvasAgentLayoutContext,
+  project: InteractiveMovieProject,
+  choice: ChoiceEdge,
+) => {
+  for (const candidate of choiceOffsetCandidates()) {
+    const candidateChoice = {
+      ...choice,
+      offsetX: candidate.x,
+      offsetY: candidate.y,
+    }
+    const rect = choiceLabelLayoutRect(candidateChoice, project, [...project.choices, candidateChoice])
+    if (!rect) return candidate
+    const expanded = expandedRect(rect)
+    if (!context.occupied.some((occupied) => layoutRectsOverlap(expanded, occupied))) {
+      context.occupied.push(expanded)
+      return candidate
+    }
+  }
+  const fallback = { x: 0, y: 560 }
+  const fallbackChoice = { ...choice, offsetX: fallback.x, offsetY: fallback.y }
+  const fallbackRect = choiceLabelLayoutRect(fallbackChoice, project, [...project.choices, fallbackChoice])
+  if (fallbackRect) context.occupied.push(expandedRect(fallbackRect))
+  return fallback
+}
+
 export function useInteractiveMoviePageModel() {
   const { message, modal } = App.useApp()
   const canvasRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<InteractionState | null>(null)
   const lastCanvasSceneIdByProjectRef = useRef<Record<string, string>>({})
+  const canvasAgentImplicitLayoutContextRef = useRef<CanvasAgentLayoutContext | null>(null)
+  const canvasAgentImplicitLayoutResetTimerRef = useRef<number | null>(null)
 
   const [workspace, setWorkspace] = useState<StoredWorkspace>(() => loadWorkspace())
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false)
@@ -1005,6 +1184,24 @@ export function useInteractiveMoviePageModel() {
     y: (-viewport.y + 180) / viewport.zoom,
   })
 
+  const canvasAgentLayoutContext = (provided?: CanvasAgentLayoutContext) => {
+    if (provided) return provided
+    if (!canvasAgentImplicitLayoutContextRef.current) {
+      canvasAgentImplicitLayoutContextRef.current = createCanvasAgentLayoutContext(
+        activeProjectRef.current,
+        defaultNewScenePosition(),
+      )
+    }
+    if (canvasAgentImplicitLayoutResetTimerRef.current !== null) {
+      window.clearTimeout(canvasAgentImplicitLayoutResetTimerRef.current)
+    }
+    canvasAgentImplicitLayoutResetTimerRef.current = window.setTimeout(() => {
+      canvasAgentImplicitLayoutContextRef.current = null
+      canvasAgentImplicitLayoutResetTimerRef.current = null
+    }, 0)
+    return canvasAgentImplicitLayoutContextRef.current
+  }
+
   const addScene = (position = defaultNewScenePosition()) => {
     const scene = createDraftScene(`新场景 ${scenes.length + 1}`, position)
     updateActiveProject((project) => ({
@@ -1456,7 +1653,10 @@ export function useInteractiveMoviePageModel() {
     }
   }
 
-  const executeCanvasAgentTool = (call: CanvasAgentToolCall): CanvasAgentToolResult => {
+  const executeCanvasAgentTool = (
+    call: CanvasAgentToolCall,
+    layoutContext?: CanvasAgentLayoutContext,
+  ): CanvasAgentToolResult => {
     const rawName = stringValue(call.name)
     const name = rawName?.startsWith('frontend_canvas__')
       ? rawName.replace('frontend_canvas__', 'canvas_')
@@ -1482,6 +1682,7 @@ export function useInteractiveMoviePageModel() {
         update_relation: 'canvas_update_relation',
         delete_relation: 'canvas_delete_relation',
       }
+      const batchLayoutContext = createCanvasAgentLayoutContext(activeProjectRef.current, defaultNewScenePosition())
       const results = operations.map((operation) => {
         const action = stringValue(operation.action)
         const toolName = action ? actionToToolName[action] : null
@@ -1490,7 +1691,7 @@ export function useInteractiveMoviePageModel() {
         }
         const { action: _action, ...operationArgs } = operation
         void _action
-        return executeCanvasAgentTool({ name: toolName, arguments: operationArgs })
+        return executeCanvasAgentTool({ name: toolName, arguments: operationArgs }, batchLayoutContext)
       })
       const failedCount = results.filter((result) => !result.ok).length
       return {
@@ -1511,8 +1712,11 @@ export function useInteractiveMoviePageModel() {
     if (name === 'canvas_create_node') {
       const rawType = args.type
       const title = stringValue(args.title)?.trim()
-      const position = positionValue(args.position, defaultNewScenePosition()) ?? defaultNewScenePosition()
       if (rawType === 'scene') {
+        const position = reserveCanvasAgentNodePosition(
+          canvasAgentLayoutContext(layoutContext),
+          'scene',
+        )
         const scene = applyScenePatch(
           createDraftScene(title || `新场景 ${project.scenes.length + 1}`, position),
           { ...args, position },
@@ -1528,6 +1732,10 @@ export function useInteractiveMoviePageModel() {
       if (!assetType) {
         return { ok: false, name, message: 'type 必须是 scene、text、image 或 video' }
       }
+      const position = reserveCanvasAgentNodePosition(
+        canvasAgentLayoutContext(layoutContext),
+        assetType,
+      )
       const fallbackTitle = assetType === 'text' ? '文本' : assetType === 'image' ? '图片' : '视频'
       const asset = applyAssetPatch(
         createDraftAssetNode(assetType, title || `${fallbackTitle} ${project.assetNodes.filter((item) => item.type === assetType).length + 1}`, position),
@@ -1587,6 +1795,7 @@ export function useInteractiveMoviePageModel() {
         if (!project.scenes.some((scene) => scene.id === fromSceneId) || !project.scenes.some((scene) => scene.id === toSceneId)) {
           return { ok: false, name, message: 'choice 的来源或目标场景不存在' }
         }
+        const layout = canvasAgentLayoutContext(layoutContext)
         const choice: ChoiceEdge = {
           id: uniqueId('choice'),
           fromSceneId,
@@ -1594,12 +1803,18 @@ export function useInteractiveMoviePageModel() {
           label: stringValue(args.label)?.trim() || '新的选择',
           trigger: 'after_scene',
         }
+        const offset = reserveCanvasAgentChoiceOffset(layout, project, choice)
+        const positionedChoice = {
+          ...choice,
+          offsetX: offset.x,
+          offsetY: offset.y,
+        }
         updateActiveProject((current) => ({
           ...current,
-          choices: [...current.choices, choice],
-          selectedObject: { type: 'choice', id: choice.id },
+          choices: [...current.choices, positionedChoice],
+          selectedObject: { type: 'choice', id: positionedChoice.id },
         }))
-        return { ok: true, name, message: `已创建选择 ${choice.label}`, data: { id: choice.id, type: 'choice' } }
+        return { ok: true, name, message: `已创建选择 ${positionedChoice.label}`, data: { id: positionedChoice.id, type: 'choice' } }
       }
       if (relationType === 'nodeLink') {
         const from = canvasAgentEndpoint(args.from, 'right', project)
