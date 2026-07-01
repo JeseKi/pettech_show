@@ -19,7 +19,12 @@ from ..schemas import (
 )
 from .access import get_owned_project
 from .documents import compute_content_hash, iso, normalize_document, project_out, snapshot
-from .persistence import apply_patch, delete_project_children, replace_project_children
+from .persistence import (
+    apply_patch,
+    delete_project_children,
+    replace_project_children,
+    sanitize_document_script_line_ids,
+)
 from .publication import delete_project_releases, publication_fields
 
 
@@ -56,6 +61,7 @@ def create_project(db: Session, user: User, payload: InteractiveMovieProjectCrea
     now = utc_now()
     document_payload = document.model_dump(by_alias=True)
     document_snapshot = normalize_document(document_payload)
+    sanitize_document_script_line_ids(db, document_snapshot)
     content_hash = compute_content_hash(document_snapshot)
     selected = document_snapshot.get("selectedObject") or {}
     project = InteractiveMovieProject(

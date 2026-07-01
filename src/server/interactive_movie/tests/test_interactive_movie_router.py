@@ -259,6 +259,79 @@ def test_project_rename_updates_title_version_and_hash(test_client, test_db_sess
     assert renamed["content_hash"] != created["content_hash"]
 
 
+def test_create_project_rekeys_ai_generated_script_line_ids(test_client, test_db_session):
+    user = _create_user(test_db_session, "interactive_movie_ai_line_create")
+    headers = _auth_headers(user)
+    document = _project_document("movie-ai-line-create")
+    document["scenes"][0]["script"]["lines"] = [
+        {"id": "line-1", "speaker": "旁白", "text": "第一句"},
+        {"id": "line-1", "speaker": "旁白", "text": "第二句"},
+        {"id": "line-2", "speaker": "旁白", "text": "第三句"},
+    ]
+
+    create_resp = test_client.post(
+        "/api/interactive-movie/projects",
+        headers=headers,
+        json={"title": document["title"], "document": document},
+    )
+
+    assert create_resp.status_code == HTTPStatus.CREATED, create_resp.text
+    lines = create_resp.json()["document"]["scenes"][0]["script"]["lines"]
+    line_ids = [line["id"] for line in lines]
+    assert len(line_ids) == len(set(line_ids))
+    assert "line-1" not in line_ids
+    assert "line-2" not in line_ids
+    assert [line["text"] for line in lines] == ["第一句", "第二句", "第三句"]
+
+
+def test_patch_project_rekeys_colliding_ai_generated_script_line_ids(test_client, test_db_session):
+    user = _create_user(test_db_session, "interactive_movie_ai_line_patch")
+    headers = _auth_headers(user)
+    document = _project_document("movie-ai-line-patch")
+
+    create_resp = test_client.post(
+        "/api/interactive-movie/projects",
+        headers=headers,
+        json={"title": document["title"], "document": document},
+    )
+    assert create_resp.status_code == HTTPStatus.CREATED, create_resp.text
+    created = create_resp.json()
+
+    patch_resp = test_client.patch(
+        "/api/interactive-movie/projects/movie-ai-line-patch",
+        headers=headers,
+        json={
+            "base_version": created["version"],
+            "base_hash": created["content_hash"],
+            "project": {},
+            "scenes": {"upsert": [], "delete": []},
+            "choices": {"upsert": [], "delete": []},
+            "asset_nodes": {"upsert": [], "delete": []},
+            "node_links": {"upsert": [], "delete": []},
+            "script_lines": {
+                "upsert": [
+                    {
+                        "id": "line-1",
+                        "sceneId": "scene-a",
+                        "speaker": "旁白",
+                        "text": "AI 新增台词",
+                        "sortOrder": 1,
+                    }
+                ],
+                "delete": [],
+            },
+            "viewport": {},
+            "selected_object": {},
+        },
+    )
+
+    assert patch_resp.status_code == HTTPStatus.OK, patch_resp.text
+    lines = patch_resp.json()["document"]["scenes"][0]["script"]["lines"]
+    added = next(line for line in lines if line["text"] == "AI 新增台词")
+    assert added["id"] != "line-1"
+    assert added["id"].startswith("line-")
+
+
 def test_public_project_requires_published_release(test_client, test_db_session):
     user = _create_user(test_db_session, "interactive_movie_unpublished_owner")
     headers = _auth_headers(user)

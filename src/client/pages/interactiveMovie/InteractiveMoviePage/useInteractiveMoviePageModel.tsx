@@ -5,7 +5,7 @@ import { FRONTEND_CANVAS_UNAVAILABLE_MESSAGE } from '../../../lib/canvasAgentToo
 import { closeInteractiveMoviePublication, createInteractiveMovieProject, deleteInteractiveMovieProject, getInteractiveMovieProject, getInteractiveMoviePromptTemplate, getInteractiveMovieSyncState, listInteractiveMovieReleases, listInteractiveMovieProjects, patchInteractiveMovieProject, publishInteractiveMovieProject, renameInteractiveMovieProject, setInteractiveMoviePublishedRelease, uploadInteractiveMovieImage, uploadInteractiveMovieVideo } from '../../../lib/interactiveMovie'
 import type { InteractiveMovieProjectDetail, InteractiveMovieRelease, PromptTemplate } from '../../../lib/interactiveMovie'
 import { resolveErrorMessage } from '../../../lib/errorMessage'
-import type { AssetNode, AssetNodeType, AssetUploadState, CanvasAgentToolCall, CanvasAgentToolResult, CanvasContextMenuState, CanvasMarqueeState, CanvasPointerMode, CanvasViewport, ChoiceEdge, ChoiceEndpointDraftState, ConnectableNodeType, InteractionState, InteractiveMovieProject, LinkDraftState, NodeHandleSide, NodeLink, NodeLinkEndpoint, SceneNode, SelectedObject, StoredWorkspace } from '../interactiveMovieTypes'
+import type { AssetNode, AssetNodeType, AssetUploadState, CanvasAgentToolCall, CanvasAgentToolResult, CanvasContextMenuState, CanvasMarqueeState, CanvasPointerMode, CanvasViewport, ChoiceEdge, ChoiceEndpointDraftState, ConnectableNodeType, InteractionState, InteractiveMovieProject, LinkDraftState, NodeHandleSide, NodeLink, NodeLinkEndpoint, SceneNode, ScriptLine, SelectedObject, StoredWorkspace } from '../interactiveMovieTypes'
 import { LINK_SNAP_RADIUS, MAX_ZOOM, MIN_ZOOM, NODE_HEIGHT, NODE_WIDTH, clamp, uniqueId } from '../interactiveMovieConstants'
 import { createDefaultProject, createDraftAssetNode, createDraftScene, firstSelectableObject, normalizeProjectChoices } from '../interactiveMovieProject'
 import { cleanupProjectReplicasOutside, cloudReplicaKey, draftReplicaKey, hasCloudCopy, isMissingCloudProjectError, loadScenePanelState, loadWorkspace, persistScenePanelState, persistWorkspaceLocally, readProjectReplica, removeProjectReplicas, withCloudMeta, writeProjectReplica } from '../interactiveMovieStorage'
@@ -68,6 +68,30 @@ const selectedNodeKey = (type: ConnectableNodeType, id: string) => `${type}:${id
 const selectedObjectIsNode = (value: SelectedObject): value is SelectedObject & { type: ConnectableNodeType } => (
   value.type === 'scene' || value.type === 'text' || value.type === 'image' || value.type === 'video'
 )
+
+const normalizeCanvasAgentScriptLines = (
+  existingLines: ScriptLine[],
+  value: unknown,
+): ScriptLine[] => {
+  if (!Array.isArray(value)) return existingLines
+  const existingById = new Map(existingLines.map((line) => [line.id, line]))
+  const usedIds = new Set<string>()
+  const normalized = value
+    .filter((line): line is Record<string, unknown> => isRecord(line))
+    .map((line) => {
+      const rawId = stringValue(line.id)
+      const canReuseId = Boolean(rawId && existingById.has(rawId) && !usedIds.has(rawId))
+      const id = canReuseId && rawId ? rawId : uniqueId('line')
+      const existing = canReuseId ? existingById.get(id) : undefined
+      usedIds.add(id)
+      return {
+        id,
+        speaker: stringValue(line.speaker) ?? existing?.speaker ?? '角色',
+        text: stringValue(line.text) ?? existing?.text ?? '',
+      }
+    })
+  return normalized.length > 0 ? normalized : existingLines
+}
 
 const expandedLayoutRect = (
   position: { x: number; y: number },
@@ -1635,7 +1659,7 @@ export function useInteractiveMoviePageModel() {
           synopsis: stringValue(scriptPatch.synopsis) ?? scene.script.synopsis,
           visualDescription: stringValue(scriptPatch.visualDescription) ?? scene.script.visualDescription,
           videoPrompt: stringValue(scriptPatch.videoPrompt) ?? scene.script.videoPrompt,
-          lines: Array.isArray(scriptPatch.lines) ? scriptPatch.lines as SceneNode['script']['lines'] : scene.script.lines,
+          lines: normalizeCanvasAgentScriptLines(scene.script.lines, scriptPatch.lines),
         }
         : scene.script,
       media: mediaPatch ? { ...scene.media, ...mediaPatch } : scene.media,
