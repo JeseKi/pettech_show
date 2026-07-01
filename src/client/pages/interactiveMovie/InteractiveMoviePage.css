@@ -1189,6 +1189,39 @@
   overflow-wrap: anywhere;
 }
 
+.movie-agent-tool-step-detail {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.movie-agent-tool-step-detail small {
+  overflow: visible;
+  color: var(--app-text-muted);
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.movie-agent-tool-step-toggle {
+  cursor: pointer;
+  display: inline-flex;
+  width: 24px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  justify-self: flex-end;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--app-text-muted);
+  font-size: 10px;
+}
+
+.movie-agent-tool-step-toggle:hover {
+  background: rgba(45, 212, 191, 0.13);
+  color: var(--app-text-primary);
+}
+
 .movie-agent-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 38px;

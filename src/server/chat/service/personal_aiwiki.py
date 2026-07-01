@@ -179,26 +179,65 @@ async def stream_personal_aiwiki_tool_events(
         response = await post(config, current_payload)
         tool_calls = extract_tool_calls(response)
         if tool_calls:
+            intermediate_content = extract_message_content(response).strip()
+            if intermediate_content:
+                yield "tool", {
+                    "kind": "model_output",
+                    "status": "done",
+                    "title": "模型中间输出",
+                    "content": truncate_tool_display(intermediate_content),
+                }
             if has_frontend_canvas_tool_call(tool_calls) and frontend_canvas_mode == "unavailable":
                 handled_frontend_canvas_unavailable = True
-                current_payload = build_payload_after_tool_calls(
+                tool_messages = tool_result_messages(
+                    user,
+                    tool_calls,
+                    frontend_canvas_mode="unavailable",
+                )
+                yield "rollout_items", {
+                    "items": rollout_items_from_tool_messages(response, tool_calls, tool_messages)
+                }
+                for tool_call, tool_message in zip(tool_calls, tool_messages, strict=False):
+                    yield "tool", tool_call_display_event(tool_call)
+                    yield "tool", tool_result_display_event(tool_call, tool_message["content"])
+                current_payload = build_payload_after_tool_messages(
                     current_payload,
                     response,
                     tool_calls,
-                    user,
+                    tool_messages,
                     stream=False,
-                    frontend_canvas_mode="unavailable",
                 )
                 continue
             if has_frontend_tool_call(tool_calls):
                 yield "frontend_tool_calls", {"tool_calls": tool_calls}
                 yield "done", {}
                 return
-            current_payload = build_payload_after_tool_calls(current_payload, response, tool_calls, user, stream=False)
+            tool_messages = tool_result_messages(user, tool_calls)
+            yield "rollout_items", {
+                "items": rollout_items_from_tool_messages(response, tool_calls, tool_messages)
+            }
+            for tool_call, tool_message in zip(tool_calls, tool_messages, strict=False):
+                yield "tool", tool_call_display_event(tool_call)
+                yield "tool", tool_result_display_event(tool_call, tool_message["content"])
+            current_payload = build_payload_after_tool_messages(
+                current_payload,
+                response,
+                tool_calls,
+                tool_messages,
+                stream=False,
+            )
             continue
 
         fallback_payload = build_payload_after_auto_entry_fallback(current_payload, response, user, stream=False)
         if fallback_payload is not None:
+            for trace_item in tool_trace_from_auto_entry_payload(fallback_payload):
+                page = str(trace_item.get("page") or "")
+                yield "tool", {
+                    "kind": "tool_call",
+                    "name": PERSONAL_AIWIKI_TOOL_NAME,
+                    "status": "done",
+                    "title": f"读取知识库词条：{page or '未指定词条'}",
+                }
             response = await post(config, fallback_payload)
         content = extract_message_content(response)
         if content:
@@ -252,9 +291,26 @@ def build_payload_after_tool_calls(
     stream: bool,
     frontend_canvas_mode: str = "passthrough",
 ) -> dict[str, Any]:
+    return build_payload_after_tool_messages(
+        payload,
+        first_response,
+        tool_calls,
+        tool_result_messages(user, tool_calls, frontend_canvas_mode=frontend_canvas_mode),
+        stream=stream,
+    )
+
+
+def build_payload_after_tool_messages(
+    payload: dict[str, Any],
+    first_response: dict[str, Any],
+    tool_calls: list[dict[str, Any]],
+    tool_messages: list[dict[str, str]],
+    *,
+    stream: bool,
+) -> dict[str, Any]:
     messages = [dict(message) for message in payload.get("messages", []) if isinstance(message, dict)]
     messages.append(assistant_tool_message(first_response, tool_calls))
-    messages.extend(tool_result_messages(user, tool_calls, frontend_canvas_mode=frontend_canvas_mode))
+    messages.extend(tool_messages)
     final_payload = {
         key: value
         for key, value in payload.items()
@@ -264,6 +320,21 @@ def build_payload_after_tool_calls(
     if stream:
         final_payload["stream"] = True
     return final_payload
+
+
+def rollout_items_from_tool_messages(
+    first_response: dict[str, Any],
+    tool_calls: list[dict[str, Any]],
+    tool_messages: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    assistant_message = dict(assistant_tool_message(first_response, tool_calls))
+    assistant_message["type"] = "message"
+    items: list[dict[str, Any]] = [assistant_message]
+    for message in tool_messages:
+        item = dict(message)
+        item["type"] = "function_call_output"
+        items.append(item)
+    return items
 
 
 def without_stream(payload: dict[str, Any]) -> dict[str, Any]:
@@ -338,6 +409,73 @@ def tool_result_messages(
             }
         )
     return messages
+
+
+def tool_call_display_event(tool_call: dict[str, Any]) -> dict[str, str]:
+    function = tool_call.get("function") if isinstance(tool_call, dict) else None
+    name = function.get("name") if isinstance(function, dict) else None
+    arguments = parse_tool_arguments(function.get("arguments") if isinstance(function, dict) else None)
+    tool_name = str(name or "unknown")
+    return {
+        "kind": "tool_call",
+        "name": tool_name,
+        "status": "done",
+        "title": tool_call_display_title(tool_name, arguments),
+        "content": truncate_tool_display(json.dumps(arguments, ensure_ascii=False)) if arguments else "",
+    }
+
+
+def tool_result_display_event(tool_call: dict[str, Any], content: str) -> dict[str, str]:
+    function = tool_call.get("function") if isinstance(tool_call, dict) else None
+    name = function.get("name") if isinstance(function, dict) else None
+    tool_name = str(name or "unknown")
+    return {
+        "kind": "tool_result",
+        "name": tool_name,
+        "status": "done",
+        "title": f"工具结果：{tool_display_name(tool_name)}",
+        "content": summarize_tool_result(content),
+    }
+
+
+def tool_call_display_title(tool_name: str, arguments: dict[str, Any]) -> str:
+    if tool_name == PERSONAL_AIWIKI_TOOL_NAME:
+        page = str(arguments.get("page") or arguments.get("slug") or arguments.get("path") or "").strip()
+        return f"读取知识库词条：{page or '未指定词条'}"
+    if tool_name.startswith(FRONTEND_CANVAS_TOOL_PREFIX):
+        return f"调用画布工具：{tool_name.removeprefix(FRONTEND_CANVAS_TOOL_PREFIX)}"
+    return f"调用工具：{tool_display_name(tool_name)}"
+
+
+def tool_display_name(tool_name: str) -> str:
+    if tool_name.startswith(FRONTEND_CANVAS_TOOL_PREFIX):
+        return tool_name.removeprefix(FRONTEND_CANVAS_TOOL_PREFIX)
+    return tool_name
+
+
+def summarize_tool_result(content: str) -> str:
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        return truncate_tool_display(content)
+
+    if isinstance(parsed, dict):
+        compact = {
+            key: value
+            for key, value in parsed.items()
+            if key not in {"markdown", "body_markdown", "content"}
+        }
+        if "markdown" in parsed and isinstance(parsed["markdown"], str):
+            compact["markdown_preview"] = truncate_tool_display(parsed["markdown"], limit=420)
+        return truncate_tool_display(json.dumps(compact, ensure_ascii=False))
+    return truncate_tool_display(json.dumps(parsed, ensure_ascii=False))
+
+
+def truncate_tool_display(content: str, *, limit: int = 900) -> str:
+    text = content.strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit].rstrip()}\n..."
 
 
 def build_payload_after_auto_entry_fallback(

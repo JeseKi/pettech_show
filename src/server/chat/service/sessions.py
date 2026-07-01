@@ -23,7 +23,7 @@ from ..schemas import ChatCompletionIn, ChatMessageIn, ChatMessageOut, ChatSessi
 from .http_client import _chat_completions_url, _upstream_error_detail
 from .payloads import _build_upstream_payload, _resolve_chat_model
 from .personal_aiwiki import build_personal_aiwiki_chat_context, stream_personal_aiwiki_tool_events
-from .serializers import _message_out, _message_role, _session_summary_out, _session_title_from_prompt
+from .serializers import _message_out, _message_outs_from_rollout_items, _message_role, _rollout_items_to_chat_message_inputs, _session_summary_out, _session_title_from_prompt
 from .streaming import _configured_stream_chat_events, _sse_event
 
 
@@ -47,6 +47,9 @@ def list_chat_messages(db: Session, user: User, session_id: str) -> list[ChatMes
     session = dao.get_session(owner_user_id=user.id, session_id=session_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
+    rollout_items = dao.list_rollout_items(owner_user_id=user.id, session_id=session_id)
+    if rollout_items:
+        return _message_outs_from_rollout_items(rollout_items)
     return [_message_out(message) for message in dao.list_messages(owner_user_id=user.id, session_id=session_id)]
 
 
@@ -78,6 +81,7 @@ def persist_frontend_chat_turn(db: Session, user: User, payload: ChatSessionPers
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="会话初始化失败")
 
     session = resolution.session
+    _ensure_rollout_items_from_messages(dao, user_id=user.id, session_id=session.id)
     dao.append_message(owner_user_id=user.id, session_id=session.id, role="user", content=user_content)
     dao.append_message(
         owner_user_id=user.id,
@@ -86,6 +90,11 @@ def persist_frontend_chat_turn(db: Session, user: User, payload: ChatSessionPers
         content=assistant_content,
         model=payload.model,
     )
+    rollout_items = payload.rollout_items or [
+        rollout_message("user", user_content),
+        rollout_message("assistant", assistant_content),
+    ]
+    dao.append_rollout_items(owner_user_id=user.id, session_id=session.id, items=rollout_items)
     session = dao.get_session(owner_user_id=user.id, session_id=session.id) or session
     return _session_summary_out(db, session, dao.count_messages(owner_user_id=user.id, session_id=session.id))
 
@@ -118,13 +127,28 @@ async def stream_persistent_chat_session(
     session = resolution.session
     agent_context = resolution.agent_context
 
+    _ensure_rollout_items_from_messages(dao, user_id=user.id, session_id=session.id)
     dao.append_message(owner_user_id=user.id, session_id=session.id, role="user", content=prompt)
+    dao.append_rollout_item(
+        owner_user_id=user.id,
+        session_id=session.id,
+        item_type="message",
+        payload=rollout_message("user", prompt),
+    )
     skill_context = build_mentioned_skill_context(db, user, prompt)
     personal_aiwiki_context = build_personal_aiwiki_chat_context(user, prompt)
     session = dao.get_session(owner_user_id=user.id, session_id=session.id) or session
-    messages = dao.list_messages(owner_user_id=user.id, session_id=session.id)
+    rollout_items = dao.list_rollout_items(owner_user_id=user.id, session_id=session.id)
+    if rollout_items:
+        history_messages = _rollout_items_to_chat_message_inputs(rollout_items)
+    else:
+        messages = dao.list_messages(owner_user_id=user.id, session_id=session.id)
+        history_messages = [
+            {"role": _message_role(message.role), "content": message.content}
+            for message in messages
+        ]
     completion_payload = ChatCompletionIn(
-        messages=[ChatMessageIn(role=_message_role(message.role), content=message.content) for message in messages[-30:]],
+        messages=[ChatMessageIn(**message) for message in tail_chat_history_preserving_tool_pairs(history_messages, limit=30)],
         agent_id=agent_context.agent_id,
         model=payload.model,
         temperature=payload.temperature,
@@ -161,6 +185,15 @@ async def stream_persistent_chat_session(
                     assistant_parts.append(content)
                 yield _sse_event(event, data)
                 continue
+            if event == "rollout_items":
+                items = data.get("items")
+                if isinstance(items, list):
+                    dao.append_rollout_items(
+                        owner_user_id=user.id,
+                        session_id=session.id,
+                        items=[item for item in items if isinstance(item, dict)],
+                    )
+                continue
             if event == "done":
                 assistant_completed = _append_assistant_message(
                     dao,
@@ -169,6 +202,14 @@ async def stream_persistent_chat_session(
                     model=model,
                     assistant_parts=assistant_parts,
                 )
+                assistant_content = "".join(assistant_parts)
+                if assistant_content.strip():
+                    dao.append_rollout_item(
+                        owner_user_id=user.id,
+                        session_id=session.id,
+                        item_type="message",
+                        payload=rollout_message("assistant", assistant_content),
+                    )
                 yield _sse_event("done", {"session_id": session.id})
                 continue
             yield _sse_event(event, data)
@@ -244,3 +285,33 @@ def _append_assistant_message(
         model=model,
     )
     return True
+
+
+def _ensure_rollout_items_from_messages(dao: ChatDAO, *, user_id: int, session_id: str) -> None:
+    if dao.list_rollout_items(owner_user_id=user_id, session_id=session_id):
+        return
+    legacy_messages = dao.list_messages(owner_user_id=user_id, session_id=session_id)
+    if not legacy_messages:
+        return
+    dao.append_rollout_items(
+        owner_user_id=user_id,
+        session_id=session_id,
+        items=[
+            rollout_message(_message_role(message.role), message.content)
+            for message in legacy_messages
+            if message.role in {"user", "assistant", "system"}
+        ],
+    )
+
+
+def rollout_message(role: str, content: str) -> dict[str, str]:
+    return {"type": "message", "role": role, "content": content}
+
+
+def tail_chat_history_preserving_tool_pairs(messages: list[dict], *, limit: int) -> list[dict]:
+    if len(messages) <= limit:
+        return messages
+    start = len(messages) - limit
+    while start > 0 and messages[start].get("role") == "tool":
+        start -= 1
+    return messages[start:]

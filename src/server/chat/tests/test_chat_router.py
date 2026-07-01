@@ -400,6 +400,8 @@ def test_persistent_chat_canvas_frontend_tools_return_unavailable_outside_canvas
     )
 
     assert resp.status_code == HTTPStatus.OK, resp.text
+    assert 'event: tool\ndata: {"kind": "tool_call", "name": "frontend_canvas__get_overview"' in resp.text
+    assert 'event: tool\ndata: {"kind": "tool_result", "name": "frontend_canvas__get_overview"' in resp.text
     assert 'event: delta\ndata: {"content": "请在画布中和智能体进行对话, 当前环境无法直接操作画布."}' in resp.text
     assert captured_payloads[0]["tools"][1]["function"]["name"] == "frontend_canvas__get_overview"
     tool_message = next(message for message in captured_payloads[1]["messages"] if message["role"] == "tool")
@@ -409,6 +411,23 @@ def test_persistent_chat_canvas_frontend_tools_return_unavailable_outside_canvas
         "name": "frontend_canvas__get_overview",
         "content": "请在画布中和智能体进行对话, 当前环境无法直接操作画布.",
     }
+
+    sessions = test_client.get("/api/chat/sessions", headers=headers).json()
+    messages_resp = test_client.get(f"/api/chat/sessions/{sessions[0]['id']}/messages", headers=headers)
+    assert messages_resp.status_code == HTTPStatus.OK, messages_resp.text
+    assistant_record = messages_resp.json()[-1]
+    assert assistant_record["content"] == "请在画布中和智能体进行对话, 当前环境无法直接操作画布."
+    assert [step["kind"] for step in assistant_record["tool_steps"]] == ["tool_call", "tool_result"]
+    assert assistant_record["tool_steps"][0]["name"] == "frontend_canvas__get_overview"
+
+    followup_resp = test_client.post(
+        "/api/chat/sessions/stream",
+        headers=headers,
+        json={"session_id": sessions[0]["id"], "content": "继续"},
+    )
+    assert followup_resp.status_code == HTTPStatus.OK, followup_resp.text
+    assert any(message.get("tool_calls") for message in captured_payloads[2]["messages"])
+    assert any(message.get("role") == "tool" for message in captured_payloads[2]["messages"])
 
 
 def test_persistent_chat_injects_personal_aiwiki_index_as_user_context(

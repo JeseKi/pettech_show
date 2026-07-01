@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { Button, Input, Select, Tag, Typography } from 'antd'
-import { CloseOutlined, DragOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons'
+import { CloseOutlined, DownOutlined, DragOutlined, PlusOutlined, SendOutlined, UpOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -71,6 +71,7 @@ type MentionOption = {
 }
 
 const MAX_TOOL_STEPS = 8
+const TOOL_CONTENT_PREVIEW_LIMIT = 300
 const PANEL_GEOMETRY_KEY = 'interactiveMovie.canvasAgent.panelGeometry'
 const PANEL_SESSION_KEY = 'interactiveMovie.canvasAgent.sessionId'
 const KNOWLEDGE_MENTION = '$知识库'
@@ -226,6 +227,31 @@ const mentionMatches = (values: string[], query: string) => {
   if (!query) return true
   const normalizedQuery = query.toLowerCase()
   return values.some((value) => value.toLowerCase().includes(normalizedQuery))
+}
+
+function CanvasToolStepDetail({ detail }: { detail: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const shouldCollapse = detail.length > TOOL_CONTENT_PREVIEW_LIMIT
+  const displayDetail = shouldCollapse && !expanded
+    ? `${detail.slice(0, TOOL_CONTENT_PREVIEW_LIMIT)}...`
+    : detail
+
+  return (
+    <span className="movie-agent-tool-step-detail">
+      <small>{displayDetail}</small>
+      {shouldCollapse && (
+        <button
+          type="button"
+          className="movie-agent-tool-step-toggle"
+          onClick={() => setExpanded((value) => !value)}
+          aria-label={expanded ? '折叠工具内容' : '展开工具内容'}
+          title={expanded ? '折叠' : '展开'}
+        >
+          {expanded ? <UpOutlined /> : <DownOutlined />}
+        </button>
+      )}
+    </span>
+  )
 }
 
 export function CanvasAgentChat({
@@ -399,6 +425,12 @@ export function CanvasAgentChat({
       id: record.id,
       role: record.role === 'user' ? 'user' : 'assistant',
       content: record.content,
+      steps: record.tool_steps?.map((step, index) => ({
+        id: `persisted-tool-${record.id}-${index}`,
+        status: step.status ?? 'done',
+        title: step.title,
+        detail: step.content,
+      })),
     })))
   }
 
@@ -471,6 +503,7 @@ export function CanvasAgentChat({
     baseMessages: ChatMessagePayload[],
     assistantMessageId: string,
     seenKnowledgeTraceKeys: Set<string>,
+    rolloutItems: Array<Record<string, unknown>>,
     step = 1,
   ): Promise<string> => {
     if (step > MAX_TOOL_STEPS) {
@@ -546,7 +579,17 @@ export function CanvasAgentChat({
         content: JSON.stringify(result),
       })),
     ]
-    return requestWithTools(nextMessages, assistantMessageId, seenKnowledgeTraceKeys, step + 1)
+    rolloutItems.push(
+      { type: 'message', role: 'assistant', content: response.content ?? '', tool_calls: toolCalls },
+      ...toolResults.map((result, index) => ({
+        type: 'function_call_output',
+        role: 'tool',
+        tool_call_id: toolCallId(toolCalls[index], index),
+        name: String(((toolCalls[index].function as { name?: unknown } | undefined)?.name) || `${FRONTEND_CANVAS_PREFIX}unknown`),
+        content: JSON.stringify(result),
+      })),
+    )
+    return requestWithTools(nextMessages, assistantMessageId, seenKnowledgeTraceKeys, rolloutItems, step + 1)
   }
 
   const sendMessage = async () => {
@@ -570,7 +613,9 @@ export function CanvasAgentChat({
     ])
     try {
       const seenKnowledgeTraceKeys = new Set<string>()
-      const assistantContent = await requestWithTools(buildBaseMessages(content), assistantMessageId, seenKnowledgeTraceKeys)
+      const rolloutItems: Array<Record<string, unknown>> = [{ type: 'message', role: 'user', content }]
+      const assistantContent = await requestWithTools(buildBaseMessages(content), assistantMessageId, seenKnowledgeTraceKeys, rolloutItems)
+      rolloutItems.push({ type: 'message', role: 'assistant', content: assistantContent })
       if (content.includes(KNOWLEDGE_MENTION)) {
         updateToolStep(assistantMessageId, initialSteps[0]?.id ?? '', {
           status: 'done',
@@ -586,6 +631,7 @@ export function CanvasAgentChat({
         agent_id: selectedAgentId ?? undefined,
         user_content: content,
         assistant_content: assistantContent,
+        rollout_items: rolloutItems,
       })
       setActiveSessionId(session.id)
       setSelectedAgentId(session.agent_id ?? selectedAgentId)
@@ -756,7 +802,7 @@ export function CanvasAgentChat({
                     <span className="movie-agent-tool-step-dot" aria-hidden />
                     <span className="movie-agent-tool-step-main">
                       <strong>{step.title}</strong>
-                      {step.detail && <small>{step.detail}</small>}
+                      {step.detail && <CanvasToolStepDetail detail={step.detail} />}
                     </span>
                   </div>
                 ))}

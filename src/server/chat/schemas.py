@@ -53,11 +53,20 @@ class ChatSessionSummaryOut(BaseModel):
     message_count: int = 0
 
 
+class ChatToolStepOut(BaseModel):
+    content: str | None = None
+    kind: Literal["model_output", "tool_call", "tool_result"]
+    name: str | None = None
+    status: Literal["done", "error", "running"] | None = None
+    title: str
+
+
 class ChatMessageOut(BaseModel):
     id: str
     role: ChatRole
     content: str
     created_at: str
+    tool_steps: list[ChatToolStepOut] = Field(default_factory=list)
 
 
 class ChatSessionRenameIn(BaseModel):
@@ -80,3 +89,4 @@ class ChatSessionPersistIn(BaseModel):
     user_content: str = Field(..., min_length=1, max_length=20_000)
     assistant_content: str = Field(..., min_length=1, max_length=20_000)
     model: str | None = Field(default=None, max_length=100)
+    rollout_items: list[dict[str, Any]] | None = None

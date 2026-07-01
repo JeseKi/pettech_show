@@ -8,9 +8,11 @@ import remarkGfm from 'remark-gfm'
 import {
   Bot,
   BookOpen,
+  ChevronDown,
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Crown,
   Film,
   Image as ImageIcon,
@@ -21,6 +23,7 @@ import {
   Search,
   Send,
   Store,
+  Wrench,
   UserRound,
   type LucideIcon,
 } from 'lucide-react'
@@ -33,6 +36,7 @@ import {
   listChatSessions,
   renameChatSession,
   streamChatSession,
+  type ChatToolEvent,
   type ChatMessageRecord,
   type ChatSessionSummary,
 } from '../../lib/chat'
@@ -95,6 +99,19 @@ type NormalizedAgentDisplay = {
   name: string
 }
 
+type ChatToolStep = {
+  content?: string
+  id: string
+  kind: ChatToolEvent['kind']
+  name?: string
+  status: ChatToolEvent['status']
+  title: string
+}
+
+type ToolAwareChatMessage = ChatMessage & {
+  toolSteps?: ChatToolStep[]
+}
+
 type SkillCenterMode = 'market' | 'my'
 type CapabilityMarketMode = 'agents' | 'skills'
 type MentionOption = {
@@ -113,6 +130,7 @@ const AGENT_PAGE_SIZE = 30
 const SKILL_PAGE_SIZE = 20
 const MENTION_SKILL_PAGE_SIZE = 6
 const KNOWLEDGE_MENTION = '$知识库'
+const TOOL_CONTENT_PREVIEW_LIMIT = 300
 
 const quickPrompts: QuickPrompt[] = [
   {
@@ -198,7 +216,7 @@ function assistantAvatar(agent?: AgentMessageDisplay | null): ReactNode {
   return <span className="chat-assistant-initial">{agentInitial(display.name)}</span>
 }
 
-function createMessage(role: ChatMessage['role'], content: string, agent?: AgentMessageDisplay | null): ChatMessage {
+function createMessage(role: ChatMessage['role'], content: string, agent?: AgentMessageDisplay | null): ToolAwareChatMessage {
   const now = Date.now()
   const isUser = role === 'user'
   const display = normalizeAgentDisplay(agent)
@@ -216,13 +234,22 @@ function createMessage(role: ChatMessage['role'], content: string, agent?: Agent
   }
 }
 
-function createMessageFromRecord(record: ChatMessageRecord, agent?: AgentMessageDisplay | null): ChatMessage {
+function createMessageFromRecord(record: ChatMessageRecord, agent?: AgentMessageDisplay | null): ToolAwareChatMessage {
   const createdAt = Date.parse(record.created_at)
   const role = record.role === 'user' ? 'user' : 'assistant'
+  const toolSteps = (record.tool_steps ?? []).map((step) => ({
+    content: step.content,
+    id: `persisted-tool-${record.id}-${step.kind}-${Math.random().toString(36).slice(2)}`,
+    kind: step.kind,
+    name: step.name,
+    status: step.status,
+    title: step.title,
+  }))
   return {
     ...createMessage(role, record.content, agent),
     createAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     id: record.id,
+    toolSteps,
     updateAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
   }
 }
@@ -230,6 +257,62 @@ function createMessageFromRecord(record: ChatMessageRecord, agent?: AgentMessage
 function sessionUpdatedAt(session: ChatSessionSummary): number {
   const updatedAt = Date.parse(session.updated_at)
   return Number.isFinite(updatedAt) ? updatedAt : 0
+}
+
+function ChatAssistantMessage({
+  content,
+  onOpenWikiPage,
+  toolSteps,
+}: {
+  content: string
+  onOpenWikiPage: (page: string) => void
+  toolSteps?: ChatToolStep[]
+}) {
+  return (
+    <div className="chat-assistant-message">
+      {toolSteps && toolSteps.length > 0 && (
+        <div className="chat-tool-trace">
+          {toolSteps.map((step) => (
+            <div className={`chat-tool-step is-${step.kind}`} key={step.id}>
+              <div className="chat-tool-step-head">
+                <Wrench size={13} />
+                <span>{step.title}</span>
+              </div>
+              {step.content && (
+                <CollapsibleToolContent content={step.content} />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <ChatMarkdownMessage content={content} onOpenWikiPage={onOpenWikiPage} />
+    </div>
+  )
+}
+
+function CollapsibleToolContent({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const shouldCollapse = content.length > TOOL_CONTENT_PREVIEW_LIMIT
+  const displayContent = shouldCollapse && !expanded
+    ? `${content.slice(0, TOOL_CONTENT_PREVIEW_LIMIT)}...`
+    : content
+
+  return (
+    <div className={expanded ? 'chat-tool-step-content is-expanded' : 'chat-tool-step-content'}>
+      <pre>{displayContent}</pre>
+      {shouldCollapse && (
+        <button
+          type="button"
+          className="chat-tool-step-toggle"
+          onClick={() => setExpanded((value) => !value)}
+          aria-label={expanded ? '折叠工具内容' : '展开工具内容'}
+          title={expanded ? '折叠' : '展开'}
+        >
+          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+      )}
+    </div>
+  )
 }
 
 function ChatMarkdownMessage({
@@ -361,7 +444,7 @@ export default function ChatHomePage() {
   const { message, modal } = App.useApp()
   const { user, logout } = useAuth()
   const [draft, setDraft] = useState('')
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<ToolAwareChatMessage[]>([])
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([])
   const [agents, setAgents] = useState<AgentMarketItem[]>([])
   const [myAgents, setMyAgents] = useState<UserAgent[]>([])
@@ -418,15 +501,25 @@ export default function ChatHomePage() {
   }, [])
 
   const renderMessages = useMemo<Record<string, RenderMessage>>(() => ({
-    default: ({ content }) => (
-      <ChatMarkdownMessage
-        content={content}
-        onOpenWikiPage={(page) => {
-          void openWikiPreview(page)
-        }}
-      />
-    ),
-  }), [openWikiPreview])
+    default: ({ content, id, role }) => {
+      const toolSteps = role === 'assistant'
+        ? messages.find((message) => message.id === id)?.toolSteps
+        : undefined
+      const onOpenWikiPage = (page: string) => {
+        void openWikiPreview(page)
+      }
+      if (role === 'assistant') {
+        return (
+          <ChatAssistantMessage
+            content={content}
+            onOpenWikiPage={onOpenWikiPage}
+            toolSteps={toolSteps}
+          />
+        )
+      }
+      return <ChatMarkdownMessage content={content} onOpenWikiPage={onOpenWikiPage} />
+    },
+  }), [messages, openWikiPreview])
   const orderedSessions = useMemo(
     () => [...sessions].sort((a, b) => sessionUpdatedAt(b) - sessionUpdatedAt(a)),
     [sessions],
@@ -1104,6 +1197,23 @@ export default function ChatHomePage() {
       streamFrameRef.current = requestAnimationFrame(flushStreamedContent)
     }
 
+    const appendToolStep = (event: ChatToolEvent) => {
+      const content = event.content?.trim()
+      const step: ChatToolStep = {
+        content: content || undefined,
+        id: `tool-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        kind: event.kind,
+        name: event.name,
+        status: event.status ?? 'done',
+        title: event.title,
+      }
+      setMessages((current) => current.map((item) => (
+        item.id === assistantMessage.id
+          ? { ...item, toolSteps: [...(item.toolSteps ?? []), step], updateAt: Date.now() }
+          : item
+      )))
+    }
+
     streamAbortRef.current = controller
     autoScrollRef.current = true
     setDraft('')
@@ -1136,6 +1246,7 @@ export default function ChatHomePage() {
             pendingContent += content
             scheduleStreamFlush()
           },
+          onTool: appendToolStep,
         },
         controller.signal,
       )

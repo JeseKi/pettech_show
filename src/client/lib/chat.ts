@@ -39,6 +39,15 @@ export interface ChatStreamHandlers {
   onSession?: (session: ChatSessionSummary) => void
   onDelta: (content: string) => void
   onDone?: () => void
+  onTool?: (event: ChatToolEvent) => void
+}
+
+export interface ChatToolEvent {
+  content?: string
+  kind: 'model_output' | 'tool_call' | 'tool_result'
+  name?: string
+  status?: 'done' | 'error' | 'running'
+  title: string
 }
 
 export interface ChatSessionSummary {
@@ -57,6 +66,7 @@ export interface ChatMessageRecord {
   role: ChatRole
   content: string
   created_at: string
+  tool_steps?: ChatToolEvent[]
 }
 
 export interface ChatSessionStreamPayload {
@@ -75,6 +85,7 @@ export interface ChatSessionPersistTurnPayload {
   user_content: string
   assistant_content: string
   model?: string
+  rollout_items?: Array<Record<string, unknown>>
 }
 
 export async function createChatCompletion(payload: ChatCompletionPayload): Promise<ChatCompletion> {
@@ -257,6 +268,22 @@ async function readSseStream(
           created_at: data.created_at,
           updated_at: data.updated_at,
           message_count: typeof data.message_count === 'number' ? data.message_count : 0,
+        })
+      }
+      return
+    }
+
+    if (event.type === 'tool') {
+      const data = parseSseData(event.data)
+      if (typeof data.title === 'string' && typeof data.kind === 'string') {
+        handlers.onTool?.({
+          content: typeof data.content === 'string' ? data.content : undefined,
+          kind: data.kind === 'tool_call' || data.kind === 'tool_result' || data.kind === 'model_output'
+            ? data.kind
+            : 'tool_result',
+          name: typeof data.name === 'string' ? data.name : undefined,
+          status: data.status === 'running' || data.status === 'error' || data.status === 'done' ? data.status : undefined,
+          title: data.title,
         })
       }
       return

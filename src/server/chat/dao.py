@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import func
@@ -10,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from src.server.dao.dao_base import BaseDAO
 
-from .models import ChatMessage, ChatSession, utc_now
+from .models import ChatMessage, ChatRolloutItem, ChatSession, utc_now
 
 
 class ChatDAO(BaseDAO):
@@ -72,6 +74,14 @@ class ChatDAO(BaseDAO):
             .all()
         )
 
+    def list_rollout_items(self, *, owner_user_id: int, session_id: str) -> list[ChatRolloutItem]:
+        return (
+            self.db_session.query(ChatRolloutItem)
+            .filter(ChatRolloutItem.owner_user_id == owner_user_id, ChatRolloutItem.session_id == session_id)
+            .order_by(ChatRolloutItem.sequence.asc(), ChatRolloutItem.created_at.asc())
+            .all()
+        )
+
     def append_message(
         self,
         *,
@@ -105,10 +115,69 @@ class ChatDAO(BaseDAO):
         self.db_session.refresh(message)
         return message
 
+    def append_rollout_item(
+        self,
+        *,
+        owner_user_id: int,
+        session_id: str,
+        item_type: str,
+        payload: dict[str, Any],
+    ) -> ChatRolloutItem:
+        now = utc_now()
+        next_sequence = self.next_rollout_sequence(session_id=session_id)
+        item = ChatRolloutItem(
+            id=f"rollout-{uuid4().hex}",
+            session_id=session_id,
+            owner_user_id=owner_user_id,
+            sequence=next_sequence,
+            item_type=item_type,
+            payload_json=json.dumps(payload, ensure_ascii=False),
+            created_at=now,
+        )
+        session = (
+            self.db_session.query(ChatSession)
+            .filter(ChatSession.id == session_id, ChatSession.owner_user_id == owner_user_id)
+            .first()
+        )
+        if session:
+            session.updated_at = now
+        self.db_session.add(item)
+        self.db_session.commit()
+        self.db_session.refresh(item)
+        return item
+
+    def append_rollout_items(
+        self,
+        *,
+        owner_user_id: int,
+        session_id: str,
+        items: list[dict[str, Any]],
+    ) -> list[ChatRolloutItem]:
+        created: list[ChatRolloutItem] = []
+        for payload in items:
+            item_type = str(payload.get("type") or "message")
+            created.append(
+                self.append_rollout_item(
+                    owner_user_id=owner_user_id,
+                    session_id=session_id,
+                    item_type=item_type,
+                    payload=payload,
+                )
+            )
+        return created
+
     def next_sequence(self, *, session_id: str) -> int:
         current_max = (
             self.db_session.query(func.max(ChatMessage.sequence))
             .filter(ChatMessage.session_id == session_id)
+            .scalar()
+        )
+        return int(current_max or 0) + 1
+
+    def next_rollout_sequence(self, *, session_id: str) -> int:
+        current_max = (
+            self.db_session.query(func.max(ChatRolloutItem.sequence))
+            .filter(ChatRolloutItem.session_id == session_id)
             .scalar()
         )
         return int(current_max or 0) + 1
@@ -129,6 +198,10 @@ class ChatDAO(BaseDAO):
         self.db_session.query(ChatMessage).filter(
             ChatMessage.owner_user_id == owner_user_id,
             ChatMessage.session_id == session_id,
+        ).delete(synchronize_session=False)
+        self.db_session.query(ChatRolloutItem).filter(
+            ChatRolloutItem.owner_user_id == owner_user_id,
+            ChatRolloutItem.session_id == session_id,
         ).delete(synchronize_session=False)
         self.db_session.delete(session)
         self.db_session.commit()
