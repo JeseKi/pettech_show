@@ -18,6 +18,7 @@ export function EditorFloatingPanel() {
     deleteLine,
     deleteNodeLink,
     imageNodes,
+    nodeLinks,
     promptTemplate,
     rightPanelCollapsed,
     sceneMap,
@@ -40,6 +41,22 @@ export function EditorFloatingPanel() {
     videoNodes,
   } = useInteractiveMoviePageContext()
 
+  const connectedVideoNodes = selectedScene
+    ? videoNodes.filter((asset) => nodeLinks.some((link) => {
+      const sceneEndpoint = { type: 'scene', id: selectedScene.id }
+      const videoEndpoint = { type: 'video', id: asset.id }
+      const fromSceneToVideo = link.from.type === sceneEndpoint.type
+        && link.from.id === sceneEndpoint.id
+        && link.to.type === videoEndpoint.type
+        && link.to.id === videoEndpoint.id
+      const fromVideoToScene = link.from.type === videoEndpoint.type
+        && link.from.id === videoEndpoint.id
+        && link.to.type === sceneEndpoint.type
+        && link.to.id === sceneEndpoint.id
+      return fromSceneToVideo || fromVideoToScene
+    }))
+    : []
+
   return (
     <div className={rightPanelCollapsed ? 'movie-floating-panel is-collapsed' : 'movie-floating-panel'}>
       <button
@@ -60,7 +77,7 @@ export function EditorFloatingPanel() {
             <SceneEditor
               scene={selectedScene}
               outgoingChoices={choices.filter((choice) => choice.fromSceneId === selectedScene.id)}
-              videoNodes={videoNodes}
+              videoNodes={connectedVideoNodes}
               imageNodes={imageNodes}
               assetMap={assetMap}
               promptTemplate={promptTemplate}

@@ -6,10 +6,12 @@ import { useInteractiveMoviePageContext } from './useInteractiveMoviePageContext
 export function EdgeLayer() {
   const {
     assetMap,
+    beginChoiceEndpointDrag,
     beginChoiceDrag,
     beginNodeLinkEndpointDrag,
     beginNodeLinkRouteDrag,
     choices,
+    choiceEndpointDraft,
     confirmDeleteChoice,
     deleteNodeLink,
     linkDraft,
@@ -21,6 +23,30 @@ export function EdgeLayer() {
 
   return (
     <svg className="movie-edge-layer">
+      <defs>
+        <marker
+          id="movie-choice-arrow"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="5"
+          markerHeight="5"
+          orient="auto"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" className="movie-choice-arrow-marker" />
+        </marker>
+        <marker
+          id="movie-choice-arrow-selected"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="5"
+          markerHeight="5"
+          orient="auto"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" className="movie-choice-arrow-marker is-selected" />
+        </marker>
+      </defs>
       {nodeLinks.map((link) => {
         const fromEndpoint = resolveFloatingEndpoint(link.from, link.to, sceneMap, assetMap)
         const toEndpoint = resolveFloatingEndpoint(link.to, link.from, sceneMap, assetMap)
@@ -131,19 +157,30 @@ export function EdgeLayer() {
         const controlOffset = Math.max(150, Math.abs(end.x - start.x) * 0.34)
         const direction = end.x >= start.x ? 1 : -1
         const selected = selectedObject.type === 'choice' && selectedObject.id === choice.id
+        const path = [
+          `M ${start.x} ${start.y}`,
+          `C ${start.x + controlOffset * direction} ${start.y}, ${midX - controlOffset * 0.28 * direction} ${midY}, ${midX} ${midY}`,
+          `C ${midX + controlOffset * 0.28 * direction} ${midY}, ${end.x - controlOffset * direction} ${end.y}, ${end.x} ${end.y}`,
+        ].join(' ')
         return (
           <g key={choice.id} className={selected ? 'movie-edge is-selected' : 'movie-edge'}>
             <path
-              d={[
-                `M ${start.x} ${start.y}`,
-                `C ${start.x + controlOffset * direction} ${start.y}, ${midX - controlOffset * 0.28 * direction} ${midY}, ${midX} ${midY}`,
-                `C ${midX + controlOffset * 0.28 * direction} ${midY}, ${end.x - controlOffset * direction} ${end.y}, ${end.x} ${end.y}`,
-              ].join(' ')}
+              d={path}
+              markerEnd={selected ? 'url(#movie-choice-arrow-selected)' : 'url(#movie-choice-arrow)'}
               onClick={(event) => {
                 event.stopPropagation()
                 setSelectedObject({ type: 'choice', id: choice.id })
               }}
             />
+            {selected && (
+              <circle
+                className="movie-choice-endpoint"
+                cx={end.x}
+                cy={end.y}
+                r={8}
+                onPointerDown={(event) => beginChoiceEndpointDrag(event, choice.id)}
+              />
+            )}
             <foreignObject x={midX - 88} y={midY - 22} width="176" height="44">
               <div className="movie-choice-pill">
                 <button
@@ -172,6 +209,35 @@ export function EdgeLayer() {
           </g>
         )
       })}
+      {choiceEndpointDraft && (() => {
+        const choice = choices.find((item) => item.id === choiceEndpointDraft.choiceId)
+        const fromScene = choice ? sceneMap.get(choice.fromSceneId) : null
+        if (!choice || !fromScene) return null
+        const siblingChoices = choices.filter((item) => (
+          item.fromSceneId === choice.fromSceneId && item.toSceneId === choice.toSceneId
+        ))
+        const siblingIndex = siblingChoices.findIndex((item) => item.id === choice.id)
+        const siblingOffset = (siblingIndex - (siblingChoices.length - 1) / 2) * 46
+        const start = {
+          x: fromScene.position.x + NODE_WIDTH,
+          y: fromScene.position.y + NODE_HEIGHT * 0.5 + siblingOffset * 0.28,
+        }
+        const end = choiceEndpointDraft.current
+        const midX = (start.x + end.x) / 2 + (choice.offsetX ?? 0)
+        const midY = (start.y + end.y) / 2 + siblingOffset + (choice.offsetY ?? 0)
+        const controlOffset = Math.max(150, Math.abs(end.x - start.x) * 0.34)
+        const direction = end.x >= start.x ? 1 : -1
+        const path = [
+          `M ${start.x} ${start.y}`,
+          `C ${start.x + controlOffset * direction} ${start.y}, ${midX - controlOffset * 0.28 * direction} ${midY}, ${midX} ${midY}`,
+          `C ${midX + controlOffset * 0.28 * direction} ${midY}, ${end.x - controlOffset * direction} ${end.y}, ${end.x} ${end.y}`,
+        ].join(' ')
+        return (
+          <g className="movie-edge is-draft">
+            <path d={path} markerEnd="url(#movie-choice-arrow-selected)" />
+          </g>
+        )
+      })()}
     </svg>
   )
 }

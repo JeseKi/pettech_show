@@ -486,6 +486,31 @@
   filter: drop-shadow(0 0 8px rgba(184, 255, 103, 0.36));
 }
 
+.movie-edge.is-draft path {
+  fill: none;
+  stroke: rgba(184, 255, 103, 0.88);
+  stroke-dasharray: 4 4;
+  stroke-linecap: round;
+  stroke-width: 3;
+  pointer-events: none;
+}
+
+.movie-choice-arrow-marker {
+  fill: rgba(148, 163, 184, 0.72);
+}
+
+.movie-choice-arrow-marker.is-selected {
+  fill: var(--app-accent);
+}
+
+.movie-choice-endpoint {
+  fill: rgba(184, 255, 103, 0.96);
+  stroke: rgba(15, 23, 42, 0.94);
+  stroke-width: 2;
+  cursor: crosshair;
+  pointer-events: all;
+}
+
 .movie-choice-pill {
   display: flex;
   width: 176px;

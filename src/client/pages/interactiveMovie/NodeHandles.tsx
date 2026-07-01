@@ -2,14 +2,18 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { NodeHandleSide, NodeLinkEndpoint } from './interactiveMovieTypes'
 
 export function NodeHandles({
+  hidden = false,
   node,
   highlightedSide,
   onBegin,
 }: {
+  hidden?: boolean
   node: Pick<NodeLinkEndpoint, 'type' | 'id'>
   highlightedSide?: NodeHandleSide
   onBegin: (event: ReactPointerEvent<HTMLButtonElement>, endpoint: NodeLinkEndpoint) => void
 }) {
+  if (hidden) return null
+
   const sides: NodeHandleSide[] = ['top', 'right', 'bottom', 'left']
   return (
     <div className="movie-node-handles" aria-hidden="true">

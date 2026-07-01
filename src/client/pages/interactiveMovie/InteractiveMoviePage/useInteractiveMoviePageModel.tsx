@@ -4,8 +4,8 @@ import { App, Input } from 'antd'
 import { closeInteractiveMoviePublication, createInteractiveMovieProject, deleteInteractiveMovieProject, getInteractiveMovieProject, getInteractiveMoviePromptTemplate, getInteractiveMovieSyncState, listInteractiveMovieReleases, listInteractiveMovieProjects, patchInteractiveMovieProject, publishInteractiveMovieProject, renameInteractiveMovieProject, setInteractiveMoviePublishedRelease, uploadInteractiveMovieImage, uploadInteractiveMovieVideo } from '../../../lib/interactiveMovie'
 import type { InteractiveMovieProjectDetail, InteractiveMovieRelease, PromptTemplate } from '../../../lib/interactiveMovie'
 import { resolveErrorMessage } from '../../../lib/errorMessage'
-import type { AssetNode, AssetNodeType, AssetUploadState, CanvasContextMenuState, CanvasViewport, ChoiceEdge, ConnectableNodeType, InteractionState, InteractiveMovieProject, LinkDraftState, NodeHandleSide, NodeLink, NodeLinkEndpoint, SceneNode, SelectedObject, StoredWorkspace } from '../interactiveMovieTypes'
-import { LINK_SNAP_RADIUS, MAX_ZOOM, MIN_ZOOM, NODE_WIDTH, clamp, uniqueId } from '../interactiveMovieConstants'
+import type { AssetNode, AssetNodeType, AssetUploadState, CanvasContextMenuState, CanvasViewport, ChoiceEdge, ChoiceEndpointDraftState, ConnectableNodeType, InteractionState, InteractiveMovieProject, LinkDraftState, NodeHandleSide, NodeLink, NodeLinkEndpoint, SceneNode, SelectedObject, StoredWorkspace } from '../interactiveMovieTypes'
+import { LINK_SNAP_RADIUS, MAX_ZOOM, MIN_ZOOM, NODE_HEIGHT, NODE_WIDTH, clamp, uniqueId } from '../interactiveMovieConstants'
 import { createDefaultProject, createDraftAssetNode, createDraftScene, firstSelectableObject, normalizeProjectChoices } from '../interactiveMovieProject'
 import { cleanupProjectReplicasOutside, cloudReplicaKey, draftReplicaKey, hasCloudCopy, isMissingCloudProjectError, loadScenePanelState, loadWorkspace, persistScenePanelState, persistWorkspaceLocally, readProjectReplica, removeProjectReplicas, withCloudMeta, writeProjectReplica } from '../interactiveMovieStorage'
 import { buildProjectPatch, localDraftIsNewer, mergeDraftWithCloudMeta, patchHasChanges } from '../interactiveMoviePatch'
@@ -38,6 +38,8 @@ export function useInteractiveMoviePageModel() {
   const [canvasContextMenu, setCanvasContextMenu] = useState<CanvasContextMenuState | null>(null)
   const [linkDraft, setLinkDraft] = useState<LinkDraftState | null>(null)
   const linkDraftRef = useRef<LinkDraftState | null>(null)
+  const [choiceEndpointDraft, setChoiceEndpointDraft] = useState<ChoiceEndpointDraftState | null>(null)
+  const choiceEndpointDraftRef = useRef<ChoiceEndpointDraftState | null>(null)
   const [scenePanelState, setScenePanelState] = useState<Record<string, string[]>>(() => loadScenePanelState())
 
   const activeProject = workspace.projects.find((project) => project.id === workspace.activeProjectId) ?? workspace.projects[0]
@@ -85,6 +87,11 @@ export function useInteractiveMoviePageModel() {
   const updateLinkDraftState = (draft: LinkDraftState | null) => {
     linkDraftRef.current = draft
     setLinkDraft(draft)
+  }
+
+  const updateChoiceEndpointDraftState = (draft: ChoiceEndpointDraftState | null) => {
+    choiceEndpointDraftRef.current = draft
+    setChoiceEndpointDraft(draft)
   }
 
   useEffect(() => {
@@ -489,6 +496,45 @@ export function useInteractiveMoviePageModel() {
     }
   }
 
+  const choiceEndpointAnchor = (scene: SceneNode) => ({
+    x: scene.position.x,
+    y: scene.position.y + NODE_HEIGHT * 0.5,
+  })
+
+  const snapChoiceTargetSceneFromCanvasPoint = (point: { x: number; y: number }, fromSceneId: string) => {
+    const radius = LINK_SNAP_RADIUS / viewport.zoom
+    let bestScene: SceneNode | null = null
+    let bestDistance = Number.POSITIVE_INFINITY
+    for (const scene of scenes) {
+      if (scene.id === fromSceneId) continue
+      const bounds = nodeBounds({ type: 'scene', id: scene.id }, sceneMap, assetMap)
+      if (!bounds) continue
+      const insideExpandedBounds = (
+        point.x >= bounds.x - radius
+        && point.x <= bounds.x + bounds.width + radius
+        && point.y >= bounds.y - radius
+        && point.y <= bounds.y + bounds.height + radius
+      )
+      const anchor = choiceEndpointAnchor(scene)
+      const distance = Math.hypot(point.x - anchor.x, point.y - anchor.y)
+      if (!insideExpandedBounds && distance > radius) continue
+      if (distance < bestDistance) {
+        bestScene = scene
+        bestDistance = distance
+      }
+    }
+    return bestScene
+  }
+
+  const draftChoiceEndpointPoint = (point: { x: number; y: number }, fromSceneId: string) => {
+    const targetScene = snapChoiceTargetSceneFromCanvasPoint(point, fromSceneId)
+    if (!targetScene) return { current: point, targetSceneId: undefined }
+    return {
+      current: choiceEndpointAnchor(targetScene),
+      targetSceneId: targetScene.id,
+    }
+  }
+
   const beginLinkDrag = (
     event: ReactPointerEvent<HTMLButtonElement>,
     endpoint: NodeLinkEndpoint,
@@ -553,6 +599,31 @@ export function useInteractiveMoviePageModel() {
       fixedEndpoint,
       current: snap.current,
       target: snap.target,
+    })
+  }
+
+  const beginChoiceEndpointDrag = (
+    event: ReactPointerEvent<SVGCircleElement>,
+    choiceId: string,
+  ) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const choice = choices.find((item) => item.id === choiceId)
+    if (!choice) return
+    const point = canvasPointFromEvent(event)
+    const snap = draftChoiceEndpointPoint(point, choice.fromSceneId)
+    interactionRef.current = {
+      type: 'choiceEndpoint',
+      pointerId: event.pointerId,
+      choiceId,
+    }
+    setSelectedObject({ type: 'choice', id: choiceId })
+    updateChoiceEndpointDraftState({
+      choiceId,
+      current: snap.current,
+      targetSceneId: snap.targetSceneId,
     })
   }
 
@@ -690,6 +761,18 @@ export function useInteractiveMoviePageModel() {
         offsetX: interaction.startOffsetX + dx,
         offsetY: interaction.startOffsetY + dy,
       }))
+      return
+    }
+    if (interaction.type === 'choiceEndpoint') {
+      const choice = choices.find((item) => item.id === interaction.choiceId)
+      if (!choice) return
+      const point = canvasPointFromEvent(event)
+      const snap = draftChoiceEndpointPoint(point, choice.fromSceneId)
+      updateChoiceEndpointDraftState({
+        choiceId: choice.id,
+        current: snap.current,
+        targetSceneId: snap.targetSceneId,
+      })
     }
   }
 
@@ -710,8 +793,21 @@ export function useInteractiveMoviePageModel() {
           return
         }
       }
+      if (interaction.type === 'choiceEndpoint') {
+        const choice = choices.find((item) => item.id === interaction.choiceId)
+        if (choice) {
+          const targetScene = snapChoiceTargetSceneFromCanvasPoint(canvasPointFromEvent(event), choice.fromSceneId)
+          if (targetScene) {
+            updateChoice(interaction.choiceId, (current) => ({ ...current, toSceneId: targetScene.id }))
+          }
+        }
+        interactionRef.current = null
+        updateChoiceEndpointDraftState(null)
+        return
+      }
       interactionRef.current = null
       updateLinkDraftState(null)
+      updateChoiceEndpointDraftState(null)
     }
   }
 
@@ -1376,9 +1472,15 @@ export function useInteractiveMoviePageModel() {
           status: 'ready',
         },
       }
+      const newLink: NodeLink = {
+        id: uniqueId('link'),
+        from: { type: 'scene', id: scene.id, handle: 'right' },
+        to: { type: 'video', id: uploadedAsset.id, handle: 'left' },
+      }
       updateActiveProject((project) => ({
         ...project,
         assetNodes: [...project.assetNodes, uploadedAsset],
+        nodeLinks: [...project.nodeLinks, newLink],
         scenes: project.scenes.map((item) => (
           item.id === scene.id
             ? {
@@ -1412,6 +1514,7 @@ export function useInteractiveMoviePageModel() {
     assetMap,
     assetNodes,
     beginChoiceDrag,
+    beginChoiceEndpointDrag,
     beginLinkDrag,
     beginNodeDrag,
     beginNodeLinkEndpointDrag,
@@ -1421,6 +1524,7 @@ export function useInteractiveMoviePageModel() {
     canvasContextMenu,
     canvasRef,
     choices,
+    choiceEndpointDraft,
     closePublishedProject,
     confirmDeleteAssetNode,
     confirmDeleteChoice,

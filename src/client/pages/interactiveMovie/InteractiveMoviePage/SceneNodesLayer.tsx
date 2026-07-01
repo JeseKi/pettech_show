@@ -67,6 +67,7 @@ export function SceneNodesLayer() {
               node={{ type: 'scene', id: scene.id }}
               highlightedSide={linkDraft?.target?.type === 'scene' && linkDraft.target.id === scene.id ? linkDraft.target.handle : undefined}
               onBegin={beginLinkDrag}
+              hidden={selectedObject.type === 'choice'}
             />
           </div>
         )

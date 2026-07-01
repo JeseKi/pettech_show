@@ -146,6 +146,11 @@ export type InteractionState =
     startOffsetY: number
   }
   | {
+    type: 'choiceEndpoint'
+    pointerId: number
+    choiceId: string
+  }
+  | {
     type: 'link'
     pointerId: number
     source: NodeLinkEndpoint
@@ -183,4 +188,10 @@ export type LinkDraftState = {
   fixedEndpoint: NodeLinkEndpoint
   current: { x: number; y: number }
   target?: NodeLinkEndpoint
+}
+
+export type ChoiceEndpointDraftState = {
+  choiceId: string
+  current: { x: number; y: number }
+  targetSceneId?: string
 }

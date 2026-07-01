@@ -326,7 +326,7 @@ export function SceneEditor({
       >
         <AssetPickerList
           assets={assetPickerType === 'video' ? videoNodes : imageNodes}
-          emptyText={assetPickerType === 'video' ? '还没有视频素材' : '还没有图片素材'}
+          emptyText={assetPickerType === 'video' ? '还没有连接的视频素材' : '还没有图片素材'}
           onSelect={(assetId) => {
             onChange((current) => ({
               ...current,
