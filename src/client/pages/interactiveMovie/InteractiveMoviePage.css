@@ -999,6 +999,85 @@
   color: var(--app-text-primary);
 }
 
+.movie-create-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.movie-create-menu-trigger {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 220ms ease;
+}
+
+.movie-create-menu-trigger.is-open {
+  transform: rotate(45deg);
+}
+
+.movie-create-menu {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  display: grid;
+  width: 148px;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 10px;
+  background: rgba(12, 14, 18, 0.94);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
+  opacity: 0;
+  transform: translate(-50%, 10px) scale(0.94);
+  transform-origin: bottom center;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.2, 0.85, 0.2, 1),
+    visibility 180ms ease;
+  visibility: hidden;
+}
+
+.movie-create-menu.is-open {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.movie-create-menu button {
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(247, 247, 248, 0.82);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.movie-create-menu button:hover,
+.movie-create-menu button:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--app-text-primary);
+  transform: translateX(2px);
+}
+
+.movie-create-menu button svg {
+  justify-self: center;
+}
+
 .movie-bottom-divider {
   width: 1px;
   height: 24px;
