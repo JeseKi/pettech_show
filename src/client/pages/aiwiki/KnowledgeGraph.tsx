@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import Sigma from 'sigma'
+import type { NodeHoverDrawingFunction } from 'sigma/rendering'
 import { Empty, Flex, Space, Tag, Typography, theme } from 'antd'
 import type { AiwikiResult } from '../../lib/aiwiki'
 import { buildKnowledgeGraph, type KnowledgeGraphNodeAttributes } from './graphData'
@@ -11,6 +12,87 @@ interface KnowledgeGraphProps {
   onOpenEntry: (slug: string) => void
 }
 
+function roundedRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  const safeRadius = Math.min(radius, width / 2, height / 2)
+  context.beginPath()
+  context.moveTo(x + safeRadius, y)
+  context.lineTo(x + width - safeRadius, y)
+  context.quadraticCurveTo(x + width, y, x + width, y + safeRadius)
+  context.lineTo(x + width, y + height - safeRadius)
+  context.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height)
+  context.lineTo(x + safeRadius, y + height)
+  context.quadraticCurveTo(x, y + height, x, y + height - safeRadius)
+  context.lineTo(x, y + safeRadius)
+  context.quadraticCurveTo(x, y, x + safeRadius, y)
+  context.closePath()
+}
+
+function createGraphNodeHoverRenderer(colors: {
+  chipBackground: string
+  chipBorder: string
+  labelText: string
+  nodeHalo: string
+}): NodeHoverDrawingFunction<KnowledgeGraphNodeAttributes> {
+  return (context, data, settings) => {
+    const label =
+      typeof data.hoverLabel === 'string'
+        ? data.hoverLabel
+        : typeof data.label === 'string'
+          ? data.label
+          : ''
+    const fontSize = settings.labelSize
+    const paddingX = 8
+    const paddingY = 4
+    const chipGap = 6
+    const chipHeight = fontSize + paddingY * 2
+    const chipRadius = 5
+    const haloRadius = data.size + 5
+
+    context.save()
+    context.font = `${settings.labelWeight} ${fontSize}px ${settings.labelFont}`
+    context.textBaseline = 'middle'
+
+    context.fillStyle = colors.nodeHalo
+    context.strokeStyle = colors.chipBorder
+    context.lineWidth = 1
+    context.beginPath()
+    context.arc(data.x, data.y, haloRadius, 0, Math.PI * 2)
+    context.fill()
+    context.stroke()
+
+    if (label) {
+      const textWidth = context.measureText(label).width
+      const chipWidth = Math.ceil(textWidth + paddingX * 2)
+      const chipX = data.x + haloRadius + chipGap
+      const chipY = data.y - chipHeight / 2
+
+      context.shadowOffsetX = 0
+      context.shadowOffsetY = 2
+      context.shadowBlur = 8
+      context.shadowColor = 'rgba(0, 0, 0, 0.34)'
+      context.fillStyle = colors.chipBackground
+      roundedRect(context, chipX, chipY, chipWidth, chipHeight, chipRadius)
+      context.fill()
+
+      context.shadowBlur = 0
+      context.strokeStyle = colors.chipBorder
+      context.stroke()
+
+      context.fillStyle = colors.labelText
+      context.fillText(label, chipX + paddingX, data.y)
+    }
+
+    context.restore()
+  }
+}
+
 export default function KnowledgeGraph({ result, onOpenEntry }: KnowledgeGraphProps) {
   const { token } = theme.useToken()
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -19,6 +101,16 @@ export default function KnowledgeGraph({ result, onOpenEntry }: KnowledgeGraphPr
     const model = buildKnowledgeGraph(result)
     return model
   }, [result])
+  const drawGraphNodeHover = useMemo(
+    () =>
+      createGraphNodeHoverRenderer({
+        chipBackground: token.colorBgElevated,
+        chipBorder: token.colorBorderSecondary,
+        labelText: token.colorText,
+        nodeHalo: token.colorBgContainer,
+      }),
+    [token.colorBgContainer, token.colorBgElevated, token.colorBorderSecondary, token.colorText],
+  )
 
   useEffect(() => {
     const container = containerRef.current
@@ -32,6 +124,7 @@ export default function KnowledgeGraph({ result, onOpenEntry }: KnowledgeGraphPr
       defaultEdgeColor: '#cbd5e1',
       defaultEdgeType: 'line',
       defaultNodeColor: '#0891b2',
+      defaultDrawNodeHover: drawGraphNodeHover,
       edgeReducer: (_, data) => ({ ...data, hidden: false }),
       enableEdgeEvents: false,
       hideEdgesOnMove: false,
@@ -46,10 +139,13 @@ export default function KnowledgeGraph({ result, onOpenEntry }: KnowledgeGraphPr
         const attrs = data as KnowledgeGraphNodeAttributes
         const active = node === hoveredNodeRef.current
         const related = highlightedNodes.has(node)
+        const highlighted = active || related
         return {
           ...attrs,
-          forceLabel: active || Boolean(attrs.forceLabel),
-          highlighted: active || related,
+          label: highlighted ? null : attrs.label,
+          hoverLabel: attrs.label,
+          forceLabel: !highlighted && Boolean(attrs.forceLabel),
+          highlighted,
           size: active ? attrs.size * 1.45 : related ? attrs.size * 1.18 : attrs.size,
           zIndex: active ? 3 : related ? 2 : attrs.kind === 'entry' ? 1 : 0,
         }
@@ -136,7 +232,7 @@ export default function KnowledgeGraph({ result, onOpenEntry }: KnowledgeGraphPr
       simulation.stop()
       renderer.kill()
     }
-  }, [entryCount, graph, onOpenEntry, token.colorText])
+  }, [drawGraphNodeHover, entryCount, graph, onOpenEntry, token.colorText])
 
   if (!entryCount) {
     return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可展示的词条关系" />

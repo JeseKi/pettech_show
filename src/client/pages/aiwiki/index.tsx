@@ -187,8 +187,8 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     ? '内容资产生成 / 任务管理 / 文件预览'
     : '内容资产生成 / 任务管理'
 
-  const loadHistory = useCallback(async (page = historyPage) => {
-    setHistoryLoading(true)
+  const loadHistory = useCallback(async (page = historyPage, showLoading = true) => {
+    if (showLoading) setHistoryLoading(true)
     try {
       const list = await listAiwikiJobs({ limit: TASK_PAGE_SIZE, offset: (page - 1) * TASK_PAGE_SIZE })
       setHistory(list.items)
@@ -196,7 +196,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     } catch (err) {
       message.error(resolveErrorMessage(err))
     } finally {
-      setHistoryLoading(false)
+      if (showLoading) setHistoryLoading(false)
     }
   }, [historyPage, message])
 
@@ -249,7 +249,7 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     if (!job?.id || !ACTIVE_STATUSES.has(job.status)) return
     const timer = window.setInterval(() => {
       void loadJob(job.id, true)
-      void loadHistory()
+      void loadHistory(undefined, false)
     }, 2200)
     return () => window.clearInterval(timer)
   }, [job?.id, job?.status, loadHistory, loadJob])

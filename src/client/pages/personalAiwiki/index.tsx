@@ -95,8 +95,10 @@ export default function PersonalAiwikiPage() {
       })
       setHistory(list.items)
       setHistoryTotal(list.total)
+      return list.items
     } catch (err) {
       message.error(resolveErrorMessage(err))
+      return null
     } finally {
       if (showLoading) setHistoryLoading(false)
     }
@@ -138,18 +140,27 @@ export default function PersonalAiwikiPage() {
     history.some((item) => ACTIVE_STATUSES.has(item.status))
     || (detailJob ? ACTIVE_STATUSES.has(detailJob.status) : false)
   ), [detailJob, history])
+  const activeJobIds = useMemo(() => (
+    history.filter((item) => ACTIVE_STATUSES.has(item.status)).map((item) => item.id)
+  ), [history])
 
   useEffect(() => {
     if (!hasActiveJob) return
     const timer = window.setInterval(() => {
-      void loadHistory(false)
-      void loadWorkspace(false)
+      void loadHistory(false).then((items) => {
+        if (!items) return
+        const completedActiveJob = items.some((item) => (
+          activeJobIds.includes(item.id) && item.status === 'completed'
+          && item.id !== detailJob?.id
+        ))
+        if (completedActiveJob) void loadWorkspace(false)
+      })
       if (detailJob?.id) {
         void loadJob(detailJob.id, true)
       }
     }, 2200)
     return () => window.clearInterval(timer)
-  }, [detailJob?.id, hasActiveJob, loadHistory, loadJob, loadWorkspace])
+  }, [activeJobIds, detailJob?.id, hasActiveJob, loadHistory, loadJob, loadWorkspace])
 
   const activeJob = useMemo(() => (
     history.find((item) => ACTIVE_STATUSES.has(item.status))
