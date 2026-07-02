@@ -321,7 +321,7 @@ export default function DailyWriterPage({
           autoFocus
           defaultValue={nextTitle}
           maxLength={255}
-          placeholder={String(job.summary.title || job.row.topic || `选题 ${job.seed_id}`)}
+          placeholder={String(job.summary.title || job.row.topic || `选题ID ${job.seed_id}`)}
           onChange={(event) => {
             nextTitle = event.target.value
           }}
@@ -343,7 +343,7 @@ export default function DailyWriterPage({
   }
 
   const columns: ColumnsType<MatrixRow> = [
-    { title: '选题', dataIndex: 'seed_id', width: 96, fixed: 'left' },
+    { title: '选题ID', dataIndex: 'seed_id', width: 96, fixed: 'left' },
     { title: '选题', dataIndex: 'topic', width: 280, ellipsis: true },
     { title: '痛点', dataIndex: 'pain_point', width: 260, ellipsis: true },
     { title: '解决方案', dataIndex: 'solution', width: 260, ellipsis: true },
@@ -499,7 +499,7 @@ function WriterTaskRail({
             >
               <span className="growth-task-card-title">{writerJobTitle(job)}</span>
               <span className="growth-task-card-meta">
-                选题 {job.seed_id} · {formatDateTime(job.created_at)}
+                选题ID {job.seed_id} · {formatDateTime(job.created_at)}
               </span>
               <span className="growth-task-card-tags">
                 <Tag color={statusColor(job.status)}>{statusMeta(job.status).label}</Tag>
@@ -657,7 +657,7 @@ function CreateWriterTask({
                         onClick={() => onSelectMatrix(job.id)}
                       >
                         <span>{seedMatrixTaskTitle(job)}</span>
-                        <small>选题 {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)} · {formatDateTime(job.created_at)}</small>
+                        <small>选题数量 {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)} · {formatDateTime(job.created_at)}</small>
                       </button>
                     </List.Item>
                   )}
@@ -716,7 +716,7 @@ function CreateWriterTask({
                 />
                 {matrixResult && (
                   <div className="growth-config-summary">
-                    <ConfigItem label="当前选题" value={selectedSeedId ?? '-'} />
+                    <ConfigItem label="当前选题ID" value={selectedSeedId ?? '-'} />
                     <ConfigItem label="选题" value={selectedRow?.topic ?? '-'} />
                     <ConfigItem label="预计篇数" value={selectedRow?.expected_article_count ?? '-'} />
                   </div>
@@ -804,7 +804,7 @@ function WriterGenerationStatus({
         <Space wrap>
           <Tag color="blue">{statusMeta(job.status).label}</Tag>
           {job.queue_position !== null && <Tag>排队 {job.queue_position}</Tag>}
-          <Tag>选题 {job.seed_id}</Tag>
+          <Tag>选题ID {job.seed_id}</Tag>
           <Tag>{dailyWriterModeLabel(job.params)}</Tag>
         </Space>
         <Button icon={<ReloadOutlined />} loading={refreshing} onClick={onRefresh}>刷新状态</Button>
@@ -848,7 +848,7 @@ function WriterTaskDetail({
 
       <div className="growth-readonly-summary">
         <ConfigItem label="输入选题任务" value={shortId(job.source_seed_matrix_job_id)} />
-        <ConfigItem label="选题" value={job.seed_id} />
+        <ConfigItem label="选题ID" value={job.seed_id} />
         <ConfigItem label="生产模式" value={dailyWriterModeLabel(job.params)} />
         <ConfigItem label="稿件数量" value={`${articleCountFromParams(job.params)} 篇`} />
         <ConfigItem label="插图" value={artworkStatus} />
@@ -939,7 +939,7 @@ function shortId(value: string): string {
 }
 
 function writerJobTitle(job: Pick<DailyWriterJobSummary, 'id' | 'seed_id' | 'summary' | 'row' | 'title'>): string {
-  return job.title || String(job.summary.title || job.row.topic || `选题 ${job.seed_id}` || job.id)
+  return job.title || String(job.summary.title || job.row.topic || `选题ID ${job.seed_id}` || job.id)
 }
 
 function seedMatrixTaskTitle(job: Pick<SeedMatrixJobSummary, 'title' | 'params'>): string {

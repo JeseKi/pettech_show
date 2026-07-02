@@ -176,7 +176,7 @@ export default function SeedMatrixPage({
   const columns: ColumnsType<MatrixRow> = [
     { title: '天', dataIndex: 'day', width: 72, fixed: 'left' },
     { title: '每日文章数', dataIndex: 'slot', width: 112 },
-    { title: '选题', dataIndex: 'seed_id', width: 96 },
+    { title: '选题ID', dataIndex: 'seed_id', width: 96 },
     { title: '内容池', dataIndex: 'content_pool', width: 180, ellipsis: true },
     { title: '选题', dataIndex: 'topic', width: 280, ellipsis: true },
     { title: '痛点', dataIndex: 'pain_point', width: 260, ellipsis: true },
@@ -440,7 +440,7 @@ function TaskRail({
               </span>
               <span className="growth-task-card-tags">
                 <Tag color={statusColor(job.status)}>{statusMeta(job.status).label}</Tag>
-                <Tag>选题 {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)}</Tag>
+                <Tag>选题数量 {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)}</Tag>
                 <Tag>每日文章数 {Number(job.params.slots_per_day ?? 0)}</Tag>
               </span>
               <Popconfirm
@@ -670,7 +670,7 @@ function MatrixTaskDetail({
             </Space>
           </Flex>
           <div className="growth-readonly-summary is-compact">
-            <ConfigItem label="选题" value={String(Number(result.summary.seed_count ?? 0))} />
+            <ConfigItem label="选题数量" value={String(Number(result.summary.seed_count ?? 0))} />
             <ConfigItem label="覆盖天数" value={String(Number(result.summary.day_count ?? 0))} />
             <ConfigItem label="预计文章" value={String(Number(result.summary.expected_article_total ?? 0))} />
             <ConfigItem label="账号类型" value={String(Number(result.summary.account_type_count ?? 0))} />
@@ -773,7 +773,7 @@ function ConfigItem({ label, value }: { label: string; value: string }) {
 
 function SeedDetail({ row }: { row: MatrixRow }) {
   const fields = [
-    ['seed_id', '选题'],
+    ['seed_id', '选题ID'],
     ['day', '天'],
     ['slot', '每日文章数'],
     ['content_pool', '内容池'],
