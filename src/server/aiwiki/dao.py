@@ -35,7 +35,7 @@ class AiwikiJobDAO(BaseDAO):
         owner_user_id: int | None = None,
         status: str | None = None,
     ) -> List[AiwikiJob]:
-        query = self.db_session.query(AiwikiJob)
+        query = self.db_session.query(AiwikiJob).filter(AiwikiJob.deleted_at.is_(None))
         if owner_user_id is not None:
             query = query.filter(AiwikiJob.owner_user_id == owner_user_id)
         if status is not None:
@@ -53,7 +53,7 @@ class AiwikiJobDAO(BaseDAO):
         owner_user_id: int | None = None,
         status: str | None = None,
     ) -> List[AiwikiJob]:
-        query = self.db_session.query(AiwikiJob)
+        query = self.db_session.query(AiwikiJob).filter(AiwikiJob.deleted_at.is_(None))
         if owner_user_id is not None:
             query = query.filter(AiwikiJob.owner_user_id == owner_user_id)
         if status is not None:
@@ -61,7 +61,7 @@ class AiwikiJobDAO(BaseDAO):
         return query.all()
 
     def count(self, *, owner_user_id: int | None = None, status: str | None = None) -> int:
-        query = self.db_session.query(AiwikiJob)
+        query = self.db_session.query(AiwikiJob).filter(AiwikiJob.deleted_at.is_(None))
         if owner_user_id is not None:
             query = query.filter(AiwikiJob.owner_user_id == owner_user_id)
         if status is not None:
@@ -106,6 +106,13 @@ class AiwikiJobDAO(BaseDAO):
         self.db_session.delete(job)
         self.db_session.commit()
 
+    def mark_deleted(self, job: AiwikiJob, *, deleted_at: datetime | None = None) -> AiwikiJob:
+        job.deleted_at = deleted_at or datetime.now(timezone.utc)
+        job.updated_at = datetime.now(timezone.utc)
+        self.db_session.commit()
+        self.db_session.refresh(job)
+        return job
+
     def apply_payload(self, job: AiwikiJob, payload: dict[str, Any]) -> None:
         if "owner_user_id" in payload:
             job.owner_user_id = _coerce_int(payload.get("owner_user_id"))
@@ -123,6 +130,8 @@ class AiwikiJobDAO(BaseDAO):
         job.created_at = _coerce_datetime(payload.get("created_at")) or job.created_at
         job.started_at = _coerce_datetime(payload.get("started_at"))
         job.finished_at = _coerce_datetime(payload.get("finished_at"))
+        if "deleted_at" in payload:
+            job.deleted_at = _coerce_datetime(payload.get("deleted_at"))
         job.updated_at = datetime.now(timezone.utc)
 
     def default_admin_user_id(self) -> int | None:

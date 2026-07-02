@@ -18,6 +18,7 @@ from src.server.auth import service as auth_service
 from src.server.auth.models import User
 from src.server.auth.schemas import UserRole
 from src.server.config import global_config
+from src.server.seed_matrix.models import SeedMatrixJob
 
 
 @pytest.fixture
@@ -533,6 +534,52 @@ def test_delete_completed_aiwiki_job(
     messages = [item["message"] for item in logs_resp.json()["items"]]
     assert any("删除了知识库任务" in item for item in messages)
     assert any(item == f"{user.username} 上传了 sample.md" for item in messages)
+
+
+def test_soft_delete_aiwiki_job_preserves_downstream_seed_matrix(
+    test_client, test_db_session, fake_aiwiki_runtime, tmp_path: Path
+):
+    user = _create_user(test_db_session, "aiwiki_soft_delete")
+    headers = _auth_headers(user)
+    create_resp = test_client.post(
+        "/api/aiwiki/jobs",
+        headers=headers,
+        files=[("files", ("sample.md", b"# Sample", "text/markdown"))],
+    )
+    assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
+    job_id = create_resp.json()["id"]
+    finished = _wait_for_terminal_status(test_client, job_id, headers)
+    assert finished["status"] == "completed"
+
+    matrix = SeedMatrixJob(
+        id="20260702000100_00000001_seed_matrix",
+        owner_user_id=user.id,
+        source_aiwiki_job_id=job_id,
+        status="completed",
+        message=None,
+        workdir=(tmp_path / "data" / "seed_matrix").as_posix(),
+        params_json="{}",
+        result_csv_path="result.csv",
+        summary_json="{}",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    test_db_session.add(matrix)
+    test_db_session.commit()
+
+    delete_resp = test_client.delete(
+        f"/api/aiwiki/jobs/{job_id}?delete_descendants=false",
+        headers=headers,
+    )
+    assert delete_resp.status_code == HTTPStatus.NO_CONTENT, delete_resp.text
+    assert (tmp_path / "data" / job_id).exists()
+    assert test_db_session.get(SeedMatrixJob, matrix.id) is not None
+
+    detail_resp = test_client.get(f"/api/aiwiki/jobs/{job_id}", headers=headers)
+    assert detail_resp.status_code == HTTPStatus.NOT_FOUND
+    list_resp = test_client.get("/api/aiwiki/jobs", headers=headers)
+    assert list_resp.status_code == HTTPStatus.OK, list_resp.text
+    assert all(item["id"] != job_id for item in list_resp.json()["items"])
 
 
 def test_result_requires_completed_job(test_client, test_db_session, fake_aiwiki_runtime):

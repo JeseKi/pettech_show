@@ -70,7 +70,7 @@ def get_job(db: Session, job_id: str, current_user: User) -> JobOut:
         manifest.setdefault("owner_user_id", default_admin_user_id(db))
         upsert_job_from_manifest(db, workdir, manifest)
         job = dao.get(job_id)
-    if job is None or not can_access_job(current_user, job.owner_user_id):
+    if job is None or job.deleted_at is not None or not can_access_job(current_user, job.owner_user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     manifest["owner_user_id"] = job.owner_user_id
     manifest["title"] = job.title or manifest.get("title")
@@ -81,7 +81,7 @@ def get_job(db: Session, job_id: str, current_user: User) -> JobOut:
 def get_result(db: Session, job_id: str, current_user: User) -> AiwikiResultOut:
     workdir = existing_job_workdir(job_id, db)
     job = AiwikiJobDAO(db).get(job_id)
-    if job is None or not can_access_job(current_user, job.owner_user_id):
+    if job is None or job.deleted_at is not None or not can_access_job(current_user, job.owner_user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     manifest = read_manifest(workdir)
     if manifest.get("status") != "completed":
@@ -101,7 +101,7 @@ def get_result(db: Session, job_id: str, current_user: User) -> AiwikiResultOut:
 def get_file(db: Session, job_id: str, file_index: int, current_user: User) -> FileResponse:
     workdir = existing_job_workdir(job_id, db)
     job = AiwikiJobDAO(db).get(job_id)
-    if job is None or not can_access_job(current_user, job.owner_user_id):
+    if job is None or job.deleted_at is not None or not can_access_job(current_user, job.owner_user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     files = parse_manifest_files(workdir)
     if file_index < 0 or file_index >= len(files) or not isinstance(files[file_index], dict):

@@ -254,6 +254,8 @@ export async function listAiwikiAuditLogs(params: {
   return data
 }
 
-export async function deleteAiwikiJob(jobId: string): Promise<void> {
-  await api.delete(`/aiwiki/jobs/${jobId}`)
+export async function deleteAiwikiJob(jobId: string, options: { deleteDescendants?: boolean } = {}): Promise<void> {
+  await api.delete(`/aiwiki/jobs/${jobId}`, {
+    params: { delete_descendants: options.deleteDescendants ?? true },
+  })
 }

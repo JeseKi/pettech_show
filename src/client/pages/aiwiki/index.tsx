@@ -544,10 +544,13 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
     if (previewFile?.id === file.id) setPreviewFile(null)
   }
 
-  const handleDeleteJob = async (targetJob: AiwikiJobSummary | AiwikiJob) => {
+  const handleDeleteJob = async (
+    targetJob: AiwikiJobSummary | AiwikiJob,
+    deleteDescendants: boolean,
+  ) => {
     try {
-      await deleteAiwikiJob(targetJob.id)
-      message.success('内容资产任务已删除')
+      await deleteAiwikiJob(targetJob.id, { deleteDescendants })
+      message.success(deleteDescendants ? '内容资产任务和下游任务已删除' : '内容资产任务已删除，下游任务已保留')
       if (activeTaskId === targetJob.id) {
         setActiveTaskId(null)
         setJob(null)
@@ -560,14 +563,32 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
   }
 
   const confirmDeleteJob = (targetJob: AiwikiJobSummary | AiwikiJob) => {
-    modal.confirm({
+    const instance = modal.confirm({
       title: `删除任务「${targetJob.title}」？`,
-      content: '此操作无法撤回。任务记录和生成文件会从服务端删除，审计日志会保留。',
-      okText: '确认删除',
+      content: (
+        <Flex vertical gap={12}>
+          <Typography.Paragraph style={{ margin: 0 }}>
+            仅删除知识库任务会把它从知识库列表移除，但保留已生成的选题、稿件、图文和视频。
+          </Typography.Paragraph>
+          <Typography.Paragraph style={{ margin: 0 }}>
+            如果同时删除下游任务，关联的选题、稿件、图文、视频和生成文件都会被删除，无法撤回。
+          </Typography.Paragraph>
+          <Button
+            danger
+            onClick={() => {
+              instance.destroy()
+              void handleDeleteJob(targetJob, true)
+            }}
+          >
+            同时删除下游任务
+          </Button>
+        </Flex>
+      ),
+      okText: '仅删除知识库任务',
       okButtonProps: { danger: true },
       cancelText: '取消',
       async onOk() {
-        await handleDeleteJob(targetJob)
+        await handleDeleteJob(targetJob, false)
       },
     })
   }

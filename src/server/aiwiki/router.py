@@ -148,8 +148,11 @@ async def list_aiwiki_audit_logs(
 )
 async def delete_aiwiki_job(
     job_id: str,
+    delete_descendants: Annotated[bool, Query()] = True,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    service.delete_job(db, job_id, current_user)
+    service.delete_job(
+        db, job_id, current_user, delete_descendants=delete_descendants
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

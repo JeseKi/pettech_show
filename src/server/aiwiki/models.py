@@ -37,6 +37,9 @@ class AiwikiJob(Base):
     finished_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None, index=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

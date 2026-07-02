@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,7 @@ def update_job(
     workdir = existing_job_workdir(job_id, db)
     dao = AiwikiJobDAO(db)
     job = dao.get(job_id)
-    if job is None or not can_access_job(current_user, job.owner_user_id):
+    if job is None or job.deleted_at is not None or not can_access_job(current_user, job.owner_user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     normalized = _normalized_update_fields(payload)
     manifest = read_manifest(workdir)
@@ -55,14 +56,32 @@ def update_job(
     return job_out_from_manifest(workdir, manifest, dao.owner_username(updated.owner_user_id))
 
 
-def delete_job(db: Session, job_id: str, current_user: User) -> None:
+def delete_job(
+    db: Session, job_id: str, current_user: User, *, delete_descendants: bool = True
+) -> None:
     workdir = existing_job_workdir(job_id, db)
     dao = AiwikiJobDAO(db)
     job = dao.get(job_id)
-    if job is None or not can_access_job(current_user, job.owner_user_id):
+    if job is None or job.deleted_at is not None or not can_access_job(current_user, job.owner_user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     get_queue().cancel(job.id)
     kill_tmux_sessions_for_workdir(workdir)
+    if not delete_descendants:
+        deleted_at = datetime.now(timezone.utc)
+        manifest = read_manifest(workdir)
+        manifest["deleted_at"] = deleted_at.isoformat()
+        write_manifest(workdir, manifest)
+        dao.append_audit_log(
+            actor_user_id=current_user.id,
+            actor_username=current_user.username,
+            action="delete",
+            job_id=job.id,
+            target_filename=_target_filenames(workdir, fallback=job.id),
+            message=f"{current_user.username} 删除了知识库任务 {job.id}，保留了下游任务",
+            metadata={"job_id": job.id, "delete_descendants": False},
+        )
+        dao.mark_deleted(job, deleted_at=deleted_at)
+        return
     dao.append_audit_log(
         actor_user_id=current_user.id,
         actor_username=current_user.username,
@@ -70,7 +89,7 @@ def delete_job(db: Session, job_id: str, current_user: User) -> None:
         job_id=job.id,
         target_filename=_target_filenames(workdir, fallback=job.id),
         message=f"{current_user.username} 删除了知识库任务 {job.id}",
-        metadata={"job_id": job.id},
+        metadata={"job_id": job.id, "delete_descendants": True},
     )
     _delete_child_seed_matrices(db, job_id)
     dao.delete(job)
