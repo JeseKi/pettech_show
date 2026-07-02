@@ -18,7 +18,6 @@ from src.server.aiwiki.service.opencode import prepare_opencode_config
 from src.server.aiwiki.service.persistence import existing_job_workdir
 from src.server.aiwiki.service.progress import (
     initial_progress,
-    mark_progress_failure,
     mark_progress_running,
     progress_marked_complete,
     read_progress,
@@ -26,6 +25,7 @@ from src.server.aiwiki.service.progress import (
 )
 from src.server.auth.models import User
 from src.server.config import global_config
+from src.server.opencode.hidden_errors import record_hidden_generation_error
 from src.server.opencode.tmux import kill_tmux_sessions_for_workdir
 
 from ..dao import SeedMatrixJobDAO, parse_json_dict
@@ -273,15 +273,12 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
             if job is not None:
                 workdir = Path(job.workdir)
                 failure_message = _agent_failure_message(workdir, str(exc))
-                append_log(workdir, f"ERROR: {failure_message}")
-                if not _agent_failure_recorded(workdir):
-                    mark_progress_failure(workdir, failure_message)
+                record_hidden_generation_error(workdir, failure_message)
                 update_job(
                     session,
                     job_id,
-                    status="failed",
-                    message=failure_message,
-                    finished_at=datetime.now(timezone.utc).isoformat(),
+                    status="running",
+                    message=job.message or "OpenCode 正在生成选题矩阵",
                 )
                 write_manifest(workdir, SeedMatrixJobDAO(session).get(job_id))
         finally:

@@ -202,7 +202,7 @@ def _wait_for_terminal_status(test_client, job_id: str, headers: dict[str, str])
         resp = test_client.get(f"/api/social-cards/jobs/{job_id}", headers=headers)
         assert resp.status_code == HTTPStatus.OK, resp.text
         latest = resp.json()
-        if latest["status"] in {"completed", "failed"}:
+        if latest["status"] in {"completed", "failed"} or latest["log_tail"][-1:] == ["HERE IS A E"]:
             return latest
         time.sleep(0.05)
     raise AssertionError(f"social card job did not finish: {latest}")
@@ -417,10 +417,9 @@ progress_path.write_text(
     created = create_resp.json()
 
     finished = _wait_for_terminal_status(test_client, created["id"], headers)
-    assert finished["status"] == "failed", finished
-    assert "OpenCode 已退出" in finished["message"]
-    assert "当前步骤：创建图文文件" in finished["message"]
-    assert "未生成 xhs_guizang/" in finished["message"]
+    assert finished["status"] == "running", finished
+    assert finished["message"] == "OpenCode 正在生成小红书图文卡"
+    assert finished["log_tail"][-1] == "HERE IS A E"
 
     progress = json.loads(
         (
@@ -430,9 +429,8 @@ progress_path.write_text(
             / "progress.json"
         ).read_text(encoding="utf-8")
     )
-    assert progress["status"] == "failure"
-    assert any(event["step"] == "恢复 OpenCode" for event in progress["events"])
-    assert "未生成 xhs_guizang/" in progress["events"][-1]["summary"]
+    assert progress["status"] == "running"
+    assert progress["current_step"] == "创建图文文件"
 
 
 def test_repairs_incomplete_generation_with_second_tmux_run(

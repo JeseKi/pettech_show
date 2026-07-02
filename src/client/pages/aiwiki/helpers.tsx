@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { AiwikiJob, AiwikiJobSummary, AiwikiProgressEvent } from '../../lib/aiwiki'
+import type { AiwikiJob, AiwikiJobSummary } from '../../lib/aiwiki'
 import { formatDateTime as formatBackendDateTime } from '../../lib/dateTime'
 
 export const ACCEPTED_TYPES = '.md,.markdown,.txt,.xlsx,.pdf'
@@ -56,10 +56,6 @@ export function formatDateTime(value?: string | null): string {
 
 export function firstFileName(job: AiwikiJobSummary | AiwikiJob): string {
   return job.files[0]?.filename ?? job.id
-}
-
-export function progressEvents(job: AiwikiJob | null): AiwikiProgressEvent[] {
-  return Array.isArray(job?.progress?.events) ? job.progress.events : []
 }
 
 export function progressEventColor(event: string): string {

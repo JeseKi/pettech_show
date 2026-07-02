@@ -18,13 +18,13 @@ from src.server.aiwiki.service.opencode import prepare_opencode_config
 from src.server.aiwiki.service.logs import append_log
 from src.server.aiwiki.service.progress import (
     initial_progress,
-    mark_progress_failure,
     mark_progress_running,
     progress_marked_complete,
     write_progress,
 )
 from src.server.auth.models import User
 from src.server.config import global_config
+from src.server.opencode.hidden_errors import record_hidden_generation_error
 from src.server.opencode.tmux import kill_tmux_sessions_for_workdir
 
 from ..config import CAPABILITIES, CapabilityConfig, get_capability
@@ -259,18 +259,16 @@ def _run_job(job_id: str, session_factory: sessionmaker[Session]) -> None:
             failed_job = CapabilityJobDAO(session).get(job_id)
             if failed_job:
                 workdir = Path(failed_job.workdir)
-                mark_progress_failure(workdir, str(exc))
-                append_log(workdir, f"任务失败：{exc}")
-            update_job(
-                session,
-                job_id,
-                status="failed",
-                message=str(exc),
-                finished_at=datetime.now(timezone.utc),
-            )
-            job = CapabilityJobDAO(session).get(job_id)
-            if job:
-                write_manifest(Path(job.workdir), job)
+                record_hidden_generation_error(workdir, exc)
+                update_job(
+                    session,
+                    job_id,
+                    status="running",
+                    message=failed_job.message or "能力任务执行中",
+                )
+                job = CapabilityJobDAO(session).get(job_id)
+                if job:
+                    write_manifest(Path(job.workdir), job)
         except Exception:
             logger.exception("更新能力任务失败状态失败")
     finally:

@@ -367,7 +367,7 @@ def _wait_for_terminal_status(test_client, job_id: str, headers: dict[str, str])
         resp = test_client.get(f"/api/daily-writer/jobs/{job_id}", headers=headers)
         assert resp.status_code == HTTPStatus.OK, resp.text
         latest = resp.json()
-        if latest["status"] in {"completed", "failed", "partial_failed"}:
+        if latest["status"] in {"completed", "failed", "partial_failed"} or latest["log_tail"][-1:] == ["HERE IS A E"]:
             return latest
         time.sleep(0.05)
     raise AssertionError(f"daily writer job did not finish: {latest}")
@@ -700,7 +700,7 @@ def test_rejects_social_card_fields_on_daily_writer_endpoint(
     assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
-def test_variant_failure_marks_job_partial_failed(
+def test_variant_failure_keeps_job_running_with_hidden_marker(
     test_client,
     test_db_session,
     fake_daily_writer_runtime: Path,
@@ -793,15 +793,14 @@ events.append({"event": "completed", "step": "all", "summary": "任务完成"})
     assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
     finished = _wait_for_terminal_status(test_client, create_resp.json()["id"], headers)
 
-    assert finished["status"] == "partial_failed"
-    assert finished["summary"]["variant_status"] == "failed"
-    assert "变体生成失败" in finished["message"]
+    assert finished["status"] == "running"
+    assert finished["message"] == "OpenCode 正在生成长文变体"
+    assert finished["log_tail"][-1] == "HERE IS A E"
 
     result_resp = test_client.get(
         f"/api/daily-writer/jobs/{create_resp.json()['id']}/result", headers=headers
     )
-    assert result_resp.status_code == HTTPStatus.OK, result_resp.text
-    assert result_resp.json()["markdown"] == "长文正文。\n"
+    assert result_resp.status_code == HTTPStatus.CONFLICT
 
 
 def test_rejects_missing_seed_id(

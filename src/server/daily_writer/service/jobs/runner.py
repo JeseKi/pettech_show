@@ -11,10 +11,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.server.aiwiki.service.logs import append_log
 from src.server.aiwiki.service.opencode import prepare_opencode_config
-from src.server.aiwiki.service.progress import (
-    mark_progress_failure,
-    progress_marked_complete,
-)
+from src.server.aiwiki.service.progress import progress_marked_complete
+from src.server.opencode.hidden_errors import record_hidden_generation_error
 
 from ...dao import DailyWriterJobDAO, parse_json_dict, parse_json_str_dict
 from ...parser import parse_daily_writer_result
@@ -25,7 +23,6 @@ from ..persistence import update_job, write_manifest
 from .status_updates import (
     mark_artwork_running,
     mark_completed,
-    mark_partial_failed,
     mark_variant_running,
 )
 from .validation import (
@@ -143,18 +140,8 @@ def _run_variants_if_requested(
         return result
     except Exception as variant_exc:
         logger.exception("Daily writer variant generation failed: {}", job.id)
-        append_log(workdir, f"VARIANT ERROR: {variant_exc}")
-        mark_progress_failure(workdir, f"长文变体生成失败：{variant_exc}")
-        result.summary.update(
-            {
-                "variant_requested_count": variant_count,
-                "variant_success_count": len(result.variants),
-                "variant_failed_count": max(variant_count - len(result.variants), 1),
-                "variant_status": "failed",
-                "variant_error": str(variant_exc),
-            }
-        )
-        mark_partial_failed(session, job.id, workdir, result, f"长文已生成，变体生成失败：{variant_exc}")
+        record_hidden_generation_error(workdir, f"长文变体生成失败：{variant_exc}")
+        _keep_running(session, job.id, workdir, "OpenCode 正在生成长文变体")
         return None
 
 
@@ -201,17 +188,8 @@ def _run_artwork_if_requested(
         return result
     except Exception as artwork_exc:
         logger.exception("Daily writer artwork generation failed: {}", job.id)
-        append_log(workdir, f"ARTWORK ERROR: {artwork_exc}")
-        mark_progress_failure(workdir, f"封面插图生成失败：{artwork_exc}")
-        result.summary.update(
-            {
-                "artwork_status": "failed",
-                "artwork_error": str(artwork_exc),
-                "artwork_cover_count": len(result.artwork.cover_images),
-                "artwork_inline_count": len(result.artwork.inline_images),
-            }
-        )
-        mark_partial_failed(session, job.id, workdir, result, f"长文已生成，封面插图生成失败：{artwork_exc}")
+        record_hidden_generation_error(workdir, f"封面插图生成失败：{artwork_exc}")
+        _keep_running(session, job.id, workdir, "OpenCode 正在生成封面和插图")
         return None
 
 
@@ -234,13 +212,10 @@ def _mark_failed(session: Session, *, job_id: str, exc: Exception) -> None:
     if job is None:
         return
     workdir = Path(job.workdir)
-    append_log(workdir, f"ERROR: {exc}")
-    mark_progress_failure(workdir, str(exc))
-    update_job(
-        session,
-        job_id,
-        status="failed",
-        message=str(exc),
-        finished_at=datetime.now(timezone.utc).isoformat(),
-    )
+    record_hidden_generation_error(workdir, exc)
+    _keep_running(session, job_id, workdir, job.message or "OpenCode 正在生成长文")
+
+
+def _keep_running(session: Session, job_id: str, workdir: Path, message: str) -> None:
+    update_job(session, job_id, status="running", message=message)
     write_manifest(workdir, DailyWriterJobDAO(session).get(job_id))

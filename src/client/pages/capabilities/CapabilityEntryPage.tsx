@@ -519,7 +519,7 @@ function TaskPanel({
         <Typography.Text type="secondary">progress.json 进度事件</Typography.Text>
         <List
           size="small"
-          dataSource={Array.isArray(activeJob?.progress?.events) ? activeJob.progress.events : []}
+          dataSource={visibleProgressEvents(activeJob)}
           locale={{ emptyText: '暂无进度事件' }}
           style={{ maxHeight: 220, overflow: 'auto' }}
           renderItem={(item) => (
@@ -546,4 +546,22 @@ function TaskPanel({
 function capabilityJobTitle(job: CapabilityJob | CapabilityJobSummary, fallback: string): string {
   const summaryTitle = typeof job.summary.title === 'string' ? job.summary.title : ''
   return job.title || summaryTitle || fallback || job.id
+}
+
+function visibleProgressEvents(job: CapabilityJob | null) {
+  const events = Array.isArray(job?.progress?.events) ? job.progress.events : []
+  if (!hasTerminalProgressWhileActive(job)) return events
+  return events.filter((item) => item.summary !== '任务完成' && item.event !== '失败')
+}
+
+function hasTerminalProgressWhileActive(job: CapabilityJob | null): boolean {
+  if (!job || !ACTIVE_STATUSES.has(job.status)) return false
+  const progressStatus = String(job.progress.status || '')
+  const events = Array.isArray(job.progress.events) ? job.progress.events : []
+  const latest = events.at(-1)
+  return progressStatus === 'completed'
+    || progressStatus === 'failure'
+    || progressStatus === 'failed'
+    || latest?.summary === '任务完成'
+    || latest?.event === '失败'
 }

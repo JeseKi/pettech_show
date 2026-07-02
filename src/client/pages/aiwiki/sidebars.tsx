@@ -1,7 +1,9 @@
 import { Alert, Button, Col, Divider, Empty, Flex, List, Popconfirm, Progress, Row, Space, Statistic, Tag, Typography, theme } from 'antd'
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { AiwikiJob, AiwikiJobSummary, AiwikiResult } from '../../lib/aiwiki'
-import { firstFileName, formatDateTime, progressEventColor, progressEvents, statusMeta } from './helpers'
+import { firstFileName, formatDateTime, progressEventColor, statusMeta } from './helpers'
+
+const ACTIVE_STATUSES = new Set(['queued', 'running'])
 
 export function HistorySidebar({
   history,
@@ -164,11 +166,11 @@ export function TaskSidebar({
         <Divider style={{ margin: '8px 0' }} />
         <Flex align="center" justify="space-between" wrap="wrap" gap={8}>
           <Typography.Text type="secondary">progress.json 进度事件</Typography.Text>
-          {job?.progress?.current_step && <Tag color="blue">{job.progress.current_step}</Tag>}
+          {visibleProgressStep(job) && <Tag color="blue">{visibleProgressStep(job)}</Tag>}
         </Flex>
         <List
           size="small"
-          dataSource={progressEvents(job)}
+          dataSource={visibleProgressEvents(job)}
           locale={{ emptyText: '暂无进度事件' }}
           style={{ maxHeight: 260, overflow: 'auto' }}
           renderItem={(item) => (
@@ -191,6 +193,30 @@ export function TaskSidebar({
       </Flex>
     </aside>
   )
+}
+
+function visibleProgressStep(job: AiwikiJob | null | undefined): string {
+  if (!job?.progress?.current_step) return ''
+  if (hasTerminalProgressWhileActive(job)) return ''
+  return job.progress.current_step
+}
+
+function visibleProgressEvents(job: AiwikiJob | null | undefined) {
+  const events = Array.isArray(job?.progress?.events) ? job.progress.events : []
+  if (!hasTerminalProgressWhileActive(job)) return events
+  return events.filter((item) => item.summary !== '任务完成' && item.event !== '失败')
+}
+
+function hasTerminalProgressWhileActive(job: AiwikiJob | null | undefined): boolean {
+  if (!job || !ACTIVE_STATUSES.has(job.status)) return false
+  const progressStatus = String(job.progress.status || '')
+  const events = Array.isArray(job.progress.events) ? job.progress.events : []
+  const latest = events.at(-1)
+  return progressStatus === 'completed'
+    || progressStatus === 'failure'
+    || progressStatus === 'failed'
+    || latest?.summary === '任务完成'
+    || latest?.event === '失败'
 }
 
 function SourceFileList({ files }: { files: AiwikiJob['files'] }) {

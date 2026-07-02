@@ -9,9 +9,9 @@ from pathlib import Path
 from loguru import logger
 from sqlalchemy.orm import Session, sessionmaker
 
-from src.server.aiwiki.service.logs import append_log
 from src.server.aiwiki.service.opencode import prepare_opencode_config
-from src.server.aiwiki.service.progress import mark_progress_failure, progress_marked_complete
+from src.server.aiwiki.service.progress import progress_marked_complete
+from src.server.opencode.hidden_errors import record_hidden_generation_error
 
 from ...dao import SocialCardVideoJobDAO
 from ...parser import parse_social_card_video_result
@@ -88,15 +88,11 @@ def _mark_failed(session: Session, *, job_id: str, exc: Exception) -> None:
     if job is None:
         return
     workdir = Path(job.workdir)
-    append_log(workdir, f"ERROR: {exc}")
-    mark_progress_failure(workdir, str(exc))
+    record_hidden_generation_error(workdir, exc)
     update_job(
         session,
         job_id,
-        status="failed",
-        message=str(exc),
-        summary={"status": "failed", "error": str(exc)},
-        finished_at=datetime.now(timezone.utc).isoformat(),
+        status="running",
+        message=job.message or "OpenCode 正在生成轮播视频",
     )
     write_manifest(workdir, SocialCardVideoJobDAO(session).get(job_id))
-

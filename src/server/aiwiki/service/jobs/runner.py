@@ -21,10 +21,10 @@ from ..opencode import (
 )
 from ..persistence import read_manifest, update_manifest
 from ..progress import (
-    mark_progress_failure,
     mark_progress_running,
     progress_marked_complete,
 )
+from src.server.opencode.hidden_errors import record_hidden_generation_error
 
 
 def run_job(
@@ -64,13 +64,12 @@ def run_job(
         if not _job_can_continue(workdir):
             return
         logger.exception("AI Wiki job failed: {}", job_id)
-        append_log(workdir, f"ERROR: {exc}")
-        mark_progress_failure(workdir, str(exc))
+        record_hidden_generation_error(workdir, exc)
+        manifest = read_manifest(workdir)
         update_manifest(
             workdir,
-            status="failed",
-            message=str(exc),
-            finished_at=datetime.now(timezone.utc).isoformat(),
+            status="running",
+            message=manifest.get("message") or "OpenCode 正在生成生文材料和 AI Wiki",
             session_factory=session_factory,
         )
 

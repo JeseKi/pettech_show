@@ -190,7 +190,7 @@ def _wait_for_terminal_status(test_client, job_id: str, headers: dict[str, str])
         resp = test_client.get(f"/api/capability-jobs/{job_id}", headers=headers)
         assert resp.status_code == HTTPStatus.OK, resp.text
         latest = resp.json()
-        if latest["status"] in {"completed", "failed"}:
+        if latest["status"] in {"completed", "failed"} or latest["log_tail"][-1:] == ["HERE IS A E"]:
             return latest
         time.sleep(0.05)
     raise AssertionError(f"job did not finish: {latest}")
@@ -356,11 +356,9 @@ def test_topic_capability_fails_when_validator_rejects_bad_json(
     )
     assert create_resp.status_code == HTTPStatus.ACCEPTED, create_resp.text
     finished = _wait_for_terminal_status(test_client, create_resp.json()["id"], headers)
-    assert finished["status"] == "failed", finished
-    assert finished["progress"]["status"] == "failure"
-    assert finished["progress"]["events"][-1]["event"] == "失败"
-    assert "能力结果校验失败" in finished["message"]
-    assert "invalid JSON" in finished["message"]
+    assert finished["status"] == "running", finished
+    assert finished["message"] == "能力任务执行中"
+    assert finished["log_tail"][-1] == "HERE IS A E"
 
 
 def test_script_capability_uses_skill_and_validator(

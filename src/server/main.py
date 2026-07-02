@@ -21,6 +21,7 @@ from starlette.types import Scope
 from src.server.config import global_config
 from src.server.database import get_database_info, init_database
 from src.server.logging_config import setup_logging
+from src.server.opencode.reconciler import opencode_reconciler_service
 from src.server.providers.service import sync_external_providers
 from src.server.tmux_cleanup import tmux_cleanup_service
 
@@ -76,41 +77,22 @@ async def lifespan(_: FastAPI):
     db = SessionLocal()
     try:
         sync_external_providers(db)
-        from src.server.aiwiki.service import sync_job_records
-
-        sync_job_records(db)
-        from src.server.seed_matrix.service import sync_job_records as sync_seed_matrix_records
-
-        sync_seed_matrix_records(db)
-        from src.server.daily_writer.service import sync_job_records as sync_daily_writer_records
-
-        sync_daily_writer_records(db)
-        from src.server.social_cards.service import sync_job_records as sync_social_card_records
-
-        sync_social_card_records(db)
-        from src.server.social_card_videos.service import sync_job_records as sync_social_card_video_records
-
-        sync_social_card_video_records(db)
-        from src.server.capability_jobs.service import sync_job_records as sync_capability_records
-
-        sync_capability_records(db)
         from src.server.agent_skills.service import ensure_skill_market_root
 
         ensure_skill_market_root()
         from src.server.agent_market.service import ensure_agent_market_defaults
 
         ensure_agent_market_defaults(db)
-        from src.server.personal_aiwiki.service import sync_job_records as sync_personal_aiwiki_records
-
-        sync_personal_aiwiki_records(db)
     finally:
         db.close()
 
     tmux_cleanup_service.start()
+    opencode_reconciler_service.start()
     logger.success("应用启动完成。")
     try:
         yield
     finally:
+        opencode_reconciler_service.stop()
         tmux_cleanup_service.stop()
         logger.info("应用已关闭。")
 

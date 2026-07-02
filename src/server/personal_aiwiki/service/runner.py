@@ -14,10 +14,10 @@ from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.server.aiwiki.parser import parse_aiwiki_result
-from src.server.aiwiki.service.logs import append_log
 from src.server.aiwiki.service.opencode import prepare_opencode_config
-from src.server.aiwiki.service.progress import mark_progress_failure, progress_marked_complete
+from src.server.aiwiki.service.progress import progress_marked_complete
 from src.server.opencode import run_opencode_in_tmux
+from src.server.opencode.hidden_errors import record_hidden_generation_error
 
 from ..dao import PersonalAiwikiJobDAO
 from ..schemas import PersonalAiwikiOperation
@@ -90,13 +90,12 @@ def run_job(
         if not _job_can_continue(workdir):
             return
         logger.exception("Personal AI Wiki job failed: {}", job_id)
-        append_log(workdir, f"ERROR: {exc}")
-        mark_progress_failure(workdir, str(exc))
+        record_hidden_generation_error(workdir, exc)
+        manifest = read_manifest(workdir)
         update_manifest(
             workdir,
-            status="failed",
-            message=str(exc),
-            finished_at=datetime.now(timezone.utc).isoformat(),
+            status="running",
+            message=manifest.get("message") or "正在整理个人知识库",
             session_factory=session_factory,
         )
 

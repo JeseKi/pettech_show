@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import csv
 import json
 import shutil
 import sys
@@ -15,6 +16,8 @@ from src.server.aiwiki.models import AiwikiJob
 from src.server.auth import service as auth_service
 from src.server.auth.models import User
 from src.server.config import global_config
+from src.server.opencode.reconciler import reconcile_active_opencode_jobs
+from src.server.seed_matrix.models import SeedMatrixJob
 from src.server.seed_matrix.queue_state import reset_queue_for_tests
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -209,7 +212,7 @@ def _wait_for_terminal_status(test_client, job_id: str, headers: dict[str, str])
         resp = test_client.get(f"/api/seed-matrices/{job_id}", headers=headers)
         assert resp.status_code == HTTPStatus.OK, resp.text
         latest = resp.json()
-        if latest["status"] in {"completed", "failed"}:
+        if latest["status"] in {"completed", "failed"} or latest["log_tail"][-1:] == ["HERE IS A E"]:
             return latest
         time.sleep(0.05)
     raise AssertionError(f"seed matrix job did not finish: {latest}")
@@ -370,11 +373,9 @@ events = [
     created = create_resp.json()
 
     finished = _wait_for_terminal_status(test_client, created["id"], headers)
-    assert finished["status"] == "failed", finished
-    assert "检查当前目录资产" in finished["message"]
-    assert "material 目录缺少 260620 JSON 文件" in finished["message"]
-    assert "未写入任务完成标记" not in finished["message"]
-    assert "Agent 未写入失败报告" not in finished["message"]
+    assert finished["status"] == "running", finished
+    assert finished["message"] == "OpenCode 正在生成选题矩阵"
+    assert finished["log_tail"][-1] == "HERE IS A E"
 
     progress_path = fake_seed_matrix_runtime / "data" / created["id"] / "progress.json"
     progress = json.loads(progress_path.read_text(encoding="utf-8"))
@@ -388,6 +389,137 @@ events = [
     report_text = report_path.read_text(encoding="utf-8")
     assert "选题矩阵生成失败报告" in report_text
     assert "material 目录缺少 260620 JSON 文件" in report_text
+
+
+def test_reconciler_completes_running_seed_matrix_from_progress_and_result(
+    test_db_session,
+    fake_seed_matrix_runtime: Path,
+):
+    user = _create_user(test_db_session, "seed_matrix_reconciler_done")
+    source = _create_source_aiwiki_job(test_db_session, fake_seed_matrix_runtime, user)
+    job_id = "20260702010101_aaaaaaaa_seed_matrix"
+    workdir = _create_reconciler_seed_workdir(fake_seed_matrix_runtime, job_id)
+    _write_seed_matrix_csv(workdir / "seed_matrix" / "seed_matrix.csv")
+    test_db_session.add(
+        SeedMatrixJob(
+            id=job_id,
+            owner_user_id=user.id,
+            source_aiwiki_job_id=source.id,
+            status="running",
+            message="OpenCode 正在生成选题矩阵",
+            workdir=workdir.as_posix(),
+            params_json="{}",
+            summary_json="{}",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    test_db_session.commit()
+
+    assert reconcile_active_opencode_jobs(test_db_session) == 1
+    job = test_db_session.get(SeedMatrixJob, job_id)
+    assert job is not None
+    assert job.status == "completed"
+    assert job.result_csv_path == "seed_matrix/seed_matrix.csv"
+
+
+def test_reconciler_keeps_running_when_completed_progress_has_no_seed_result(
+    test_db_session,
+    fake_seed_matrix_runtime: Path,
+):
+    user = _create_user(test_db_session, "seed_matrix_reconciler_missing")
+    source = _create_source_aiwiki_job(test_db_session, fake_seed_matrix_runtime, user)
+    job_id = "20260702010102_bbbbbbbb_seed_matrix"
+    workdir = _create_reconciler_seed_workdir(fake_seed_matrix_runtime, job_id)
+    test_db_session.add(
+        SeedMatrixJob(
+            id=job_id,
+            owner_user_id=user.id,
+            source_aiwiki_job_id=source.id,
+            status="running",
+            message="OpenCode 正在生成选题矩阵",
+            workdir=workdir.as_posix(),
+            params_json="{}",
+            summary_json="{}",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    test_db_session.commit()
+
+    assert reconcile_active_opencode_jobs(test_db_session) == 0
+    job = test_db_session.get(SeedMatrixJob, job_id)
+    assert job is not None
+    assert job.status == "running"
+    assert (workdir / "logs" / "opencode.log").read_text(encoding="utf-8").splitlines()[-1] == "HERE IS A E"
+
+
+def _create_reconciler_seed_workdir(root: Path, job_id: str) -> Path:
+    workdir = root / "data" / job_id
+    (workdir / "logs").mkdir(parents=True, exist_ok=True)
+    (workdir / "progress.json").write_text(
+        json.dumps(
+            {
+                "status": "completed",
+                "current_step": "任务完成",
+                "events": [
+                    {"event": "完成", "step": "全部", "summary": "任务完成"},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return workdir
+
+
+def _write_seed_matrix_csv(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8-sig", newline="") as file:
+        writer = csv.DictWriter(
+            file,
+            fieldnames=[
+                "day",
+                "slot",
+                "seed_id",
+                "content_pool",
+                "topic",
+                "pain_point",
+                "solution",
+                "hook",
+                "mother_topic_prompt",
+                "variant_ids_to_generate",
+                "expected_article_count",
+                "primary_account_type",
+                "backup_account_types",
+                "hook_package",
+                "primary_hook_ids",
+                "cta_strategy",
+                "publishing_note",
+            ],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "day": "D01",
+                "slot": "1",
+                "seed_id": "S001",
+                "content_pool": "AI Wiki",
+                "topic": "如何沉淀选题资产",
+                "pain_point": "选题不稳定",
+                "solution": "复用 wiki 资产",
+                "hook": "查看策略",
+                "mother_topic_prompt": "写成方法论",
+                "variant_ids_to_generate": "",
+                "expected_article_count": "1",
+                "primary_account_type": "公众号",
+                "backup_account_types": "",
+                "hook_package": "",
+                "primary_hook_ids": "",
+                "cta_strategy": "",
+                "publishing_note": "",
+            }
+        )
 
 
 def test_rejects_unfinished_aiwiki_source(

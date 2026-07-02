@@ -871,7 +871,7 @@ function AuthenticatedSocialCardImage({
 }
 
 function RunDetails({ job }: { job: WorkflowRunJob }) {
-  const events = Array.isArray(job.progress?.events) ? job.progress.events : []
+  const events = visibleProgressEvents(job)
   return (
     <details className="growth-run-details">
       <summary>查看运行详情</summary>
@@ -950,8 +950,27 @@ function legacySocialCardPost(result: SocialCardResult): SocialCardPost {
 }
 
 function latestProgressSummary(job: WorkflowRunJob): string {
+  if (hasTerminalProgressWhileActive(job)) return ''
   const events = Array.isArray(job.progress?.events) ? job.progress.events : []
   return events.at(-1)?.summary || job.progress?.current_step || ''
+}
+
+function visibleProgressEvents(job: WorkflowRunJob) {
+  const events = Array.isArray(job.progress?.events) ? job.progress.events : []
+  if (!hasTerminalProgressWhileActive(job)) return events
+  return events.filter((item) => item.summary !== '任务完成' && item.event !== '失败')
+}
+
+function hasTerminalProgressWhileActive(job: Pick<WorkflowRunJob, 'status' | 'progress'>): boolean {
+  if (!ACTIVE_STATUSES.has(job.status)) return false
+  const progressStatus = String(job.progress?.status || '')
+  const events = Array.isArray(job.progress?.events) ? job.progress.events : []
+  const latest = events.at(-1)
+  return progressStatus === 'completed'
+    || progressStatus === 'failure'
+    || progressStatus === 'failed'
+    || latest?.summary === '任务完成'
+    || latest?.event === '失败'
 }
 
 function articleCountFromParams(params: Record<string, unknown>): number {
