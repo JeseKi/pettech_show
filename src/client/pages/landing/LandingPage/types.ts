@@ -19,7 +19,17 @@ export type Course = {
   acceptance: string[]
 }
 
-export const PROGRESSIVE_BLOCK_IDS = ['course-intro', 'production', 'deliverables', 'contact', 'footer'] as const
+export const COURSE_SHOWCASE_TAB_KEYS = ['teaching-assets', 'agents', 'director-stage'] as const
+export type CourseShowcaseTabKey = (typeof COURSE_SHOWCASE_TAB_KEYS)[number]
+
+export const PROGRESSIVE_BLOCK_IDS = [
+  'course-capabilities',
+  'course-intro',
+  'production',
+  'deliverables',
+  'contact',
+  'footer',
+] as const
 export const INTRO_UNLOCK_DELAY_MS = 1900
 
 export type ProgressiveBlockId = (typeof PROGRESSIVE_BLOCK_IDS)[number]

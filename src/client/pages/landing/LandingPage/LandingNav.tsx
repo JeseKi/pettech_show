@@ -4,18 +4,25 @@ import { Link } from 'react-router-dom'
 import BrandLogo from '../../../components/brand/BrandLogo'
 import { BRAND_NAME } from '../../../lib/brand'
 import { useRuntimeConfig } from '../../../hooks/useRuntimeConfig'
-import { landingNavGroups } from './pageData'
+import { courseShowcaseTabs, landingNavGroups } from './pageData'
+import type { CourseShowcaseTabKey } from './types'
 
 type LandingNavProps = {
   isAuthenticated: boolean
   onAuthAction: () => void
   onCoursesOpen: () => void
+  onCourseShowcaseOpen: (tabKey: CourseShowcaseTabKey) => void
 }
 
 const NAV_MENU_OPEN_DELAY_MS = 120
 const NAV_MENU_CLOSE_DELAY_MS = 500
 
-export function LandingNav({ isAuthenticated, onAuthAction, onCoursesOpen }: LandingNavProps) {
+export function LandingNav({
+  isAuthenticated,
+  onAuthAction,
+  onCoursesOpen,
+  onCourseShowcaseOpen,
+}: LandingNavProps) {
   const { infoDistribution } = useRuntimeConfig()
   const [activeNavLabel, setActiveNavLabel] = useState<string | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -73,6 +80,11 @@ export function LandingNav({ isAuthenticated, onAuthAction, onCoursesOpen }: Lan
     onCoursesOpen()
   }, [closeAllMenus, onCoursesOpen])
 
+  const openCourseShowcase = useCallback((tabKey: CourseShowcaseTabKey) => {
+    closeAllMenus()
+    onCourseShowcaseOpen(tabKey)
+  }, [closeAllMenus, onCourseShowcaseOpen])
+
   const resolveItemPath = useCallback((item: { path: string; externalConfigKey?: string }) => {
     if (item.externalConfigKey === 'infoDistributionBaseUrl') {
       return infoDistribution.baseUrl
@@ -116,11 +128,49 @@ export function LandingNav({ isAuthenticated, onAuthAction, onCoursesOpen }: Lan
         <span>{BRAND_NAME}</span>
       </a>
       <nav className="landing-nav__links" aria-label="主导航">
-        <div className="landing-nav__item">
-          <button className="landing-nav__trigger landing-nav__course-trigger" type="button" onClick={openCourses}>
+        <div
+          className={activeNavLabel === '课程' ? 'landing-nav__item is-open' : 'landing-nav__item'}
+          onPointerEnter={() => openNavMenu('课程')}
+          onPointerLeave={scheduleNavMenuClose}
+          onFocusCapture={() => openNavMenu('课程', true)}
+          onBlurCapture={(event) => {
+            if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return
+            scheduleNavMenuClose()
+          }}
+        >
+          <button
+            className="landing-nav__trigger landing-nav__course-trigger"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded={activeNavLabel === '课程'}
+            onClick={() => openNavMenu('课程', true)}
+          >
             <BookOpenText size={16} />
             <span>课程</span>
+            <ChevronDown className="landing-nav__chevron" size={14} />
           </button>
+          <div className={activeNavLabel === '课程' ? 'landing-nav__menu is-open' : 'landing-nav__menu'} aria-label="课程子菜单">
+            {courseShowcaseTabs.map((tab) => {
+              const ItemIcon = tab.icon
+
+              return (
+                <button
+                  className="landing-nav__menu-link"
+                  type="button"
+                  key={tab.key}
+                  onClick={() => openCourseShowcase(tab.key)}
+                >
+                  <span className="landing-nav__menu-icon">
+                    <ItemIcon size={17} />
+                  </span>
+                  <span className="landing-nav__menu-copy">
+                    <strong>{tab.label}</strong>
+                    <span>{tab.summary}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
         {landingNavGroups.map((group) => {
           const GroupIcon = group.icon
@@ -236,6 +286,42 @@ export function LandingNav({ isAuthenticated, onAuthAction, onCoursesOpen }: Lan
             <span>Day 0 到毕业项目的完整课程详情。</span>
           </span>
         </button>
+        <section className="landing-mobile-menu__group">
+          <button
+            className={activeMobileGroupLabel === '课程' ? 'landing-mobile-menu__group-trigger is-open' : 'landing-mobile-menu__group-trigger'}
+            type="button"
+            aria-expanded={activeMobileGroupLabel === '课程'}
+            onClick={() => setActiveMobileGroupLabel((current) => (current === '课程' ? '' : '课程'))}
+          >
+            <span className="landing-mobile-menu__group-icon">
+              <BookOpenText size={17} />
+            </span>
+            <span>课程子菜单</span>
+            <ChevronDown size={15} />
+          </button>
+          <div className={activeMobileGroupLabel === '课程' ? 'landing-mobile-menu__items is-open' : 'landing-mobile-menu__items'}>
+            {courseShowcaseTabs.map((tab) => {
+              const ItemIcon = tab.icon
+
+              return (
+                <button
+                  className="landing-mobile-menu__item"
+                  type="button"
+                  key={tab.key}
+                  onClick={() => openCourseShowcase(tab.key)}
+                >
+                  <span className="landing-mobile-menu__item-icon">
+                    <ItemIcon size={16} />
+                  </span>
+                  <span className="landing-mobile-menu__item-copy">
+                    <strong>{tab.label}</strong>
+                    <span>{tab.summary}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </section>
         {landingNavGroups.map((group) => {
           const GroupIcon = group.icon
           const groupOpen = activeMobileGroupLabel === group.label

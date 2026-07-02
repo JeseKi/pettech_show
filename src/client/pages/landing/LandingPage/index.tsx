@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { ChevronDown } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../hooks/useAuth'
+import { CourseCapabilityShowcase } from './CourseCapabilityShowcase'
 import { CourseModal } from './CourseModal'
 import { CourseStack } from './CourseStack'
 import { LandingNav } from './LandingNav'
@@ -13,8 +14,14 @@ import {
   LandingFooter,
   ProductionSection,
 } from './Sections'
-import { INTRO_UNLOCK_DELAY_MS, PROGRESSIVE_BLOCK_IDS, type Course, type ProgressiveBlockId } from './types'
-import { isProgressiveBlockId } from './utils'
+import {
+  INTRO_UNLOCK_DELAY_MS,
+  PROGRESSIVE_BLOCK_IDS,
+  type Course,
+  type CourseShowcaseTabKey,
+  type ProgressiveBlockId,
+} from './types'
+import { getCourseShowcaseTabKeyFromHash, isProgressiveBlockId } from './utils'
 import './styles.css'
 
 const SCROLL_HINT_IDLE_MS = 10000
@@ -28,6 +35,9 @@ export default function LandingPage() {
   const { isAuthenticated } = useAuth()
   const [activeCourse, setActiveCourse] = useState<Course | null>(null)
   const [courseModalMode, setCourseModalMode] = useState<CourseModalMode>('single')
+  const [activeCourseShowcaseTab, setActiveCourseShowcaseTab] = useState<CourseShowcaseTabKey>(() => (
+    getCourseShowcaseTabKeyFromHash(window.location.hash) ?? 'teaching-assets'
+  ))
   const [revealedBlockIds, setRevealedBlockIds] = useState<Set<ProgressiveBlockId>>(() => new Set())
   const [showScrollHint, setShowScrollHint] = useState(false)
   const progressiveBlockRefs = useRef(new Map<ProgressiveBlockId, HTMLElement>())
@@ -50,6 +60,14 @@ export default function LandingPage() {
 
   const closeCourseModal = useCallback(() => {
     setActiveCourse(null)
+  }, [])
+
+  const openCourseShowcaseTab = useCallback((tabKey: CourseShowcaseTabKey) => {
+    setActiveCourseShowcaseTab(tabKey)
+    window.history.replaceState(null, '', `#course-${tabKey}`)
+    window.requestAnimationFrame(() => {
+      document.getElementById('course-capabilities')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
   }, [])
 
   const scrollToNextViewport = useCallback(() => {
@@ -134,6 +152,18 @@ export default function LandingPage() {
       document.documentElement.classList.remove(landingScrollbarClassName)
       document.body.classList.remove(landingScrollbarClassName)
     }
+  }, [])
+
+  useEffect(() => {
+    if (!getCourseShowcaseTabKeyFromHash(window.location.hash)) return undefined
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const delay = prefersReducedMotion ? 0 : INTRO_UNLOCK_DELAY_MS + 160
+    const timer = window.setTimeout(() => {
+      document.getElementById('course-capabilities')?.scrollIntoView({ behavior: 'auto', block: 'start' })
+    }, delay)
+
+    return () => window.clearTimeout(timer)
   }, [])
 
   useEffect(() => {
@@ -230,8 +260,16 @@ export default function LandingPage() {
         isAuthenticated={isAuthenticated}
         onAuthAction={goToWorkspace}
         onCoursesOpen={openCourseBrowser}
+        onCourseShowcaseOpen={openCourseShowcaseTab}
       />
       <CourseStack autoPlayEnabled={activeCourse === null} onCourseOpen={openSingleCourse} />
+      <CourseCapabilityShowcase
+        activeTabKey={activeCourseShowcaseTab}
+        onTabChange={openCourseShowcaseTab}
+        onCoursesOpen={openCourseBrowser}
+        progressiveClassName={progressiveClassName}
+        registerProgressiveBlock={registerProgressiveBlock}
+      />
       <CourseIntroSection
         progressiveClassName={progressiveClassName}
         registerProgressiveBlock={registerProgressiveBlock}

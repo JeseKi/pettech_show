@@ -222,6 +222,8 @@
     min-height: 74px;
     gap: 10px;
     padding: 10px;
+    text-align: left;
+    cursor: pointer;
   }
 
   .landing-mobile-menu__item-copy {
@@ -253,9 +255,29 @@
   }
 
   .landing-section__heading,
+  .course-capability-showcase__heading,
+  .course-capability-panel__copy,
+  .course-flow-board,
   .tool-flow__body,
   .demo-section {
     grid-template-columns: 1fr;
+  }
+
+  .course-capability-panel__copy > span,
+  .course-capability-panel__copy h3,
+  .course-capability-panel__copy p,
+  .course-capability-panel__rail,
+  .course-capability-panel__copy .landing-button {
+    grid-column: auto;
+  }
+
+  .course-flow-board {
+    min-height: auto;
+  }
+
+  .course-flow-detail {
+    border-top: 1px solid rgba(255, 255, 255, 0.09);
+    border-left: 0;
   }
 
   .capability-grid,
@@ -286,6 +308,7 @@
   }
 
   .landing-section__heading h2,
+  .course-capability-showcase__heading h2,
   .demo-section__copy h2,
   .final-cta h2 {
     font-size: 42px;
@@ -612,6 +635,42 @@
   .landing-section {
     width: calc(100% - 28px);
     padding: 76px 0;
+  }
+
+  .course-capability-showcase {
+    width: calc(100% - 28px);
+    padding: 76px 0;
+  }
+
+  .course-capability-tabs {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .course-capability-panel__copy h3 {
+    font-size: 25px;
+  }
+
+  .course-flow-map {
+    min-height: 680px;
+  }
+
+  .course-flow-node {
+    width: clamp(136px, 39vw, 176px);
+    min-height: 70px;
+    padding: 9px;
+  }
+
+  .course-flow-node strong {
+    font-size: 14px;
+  }
+
+  .course-flow-node > span:last-child {
+    font-size: 11px;
+  }
+
+  .course-flow-detail h3 {
+    font-size: 25px;
   }
 
   .capability-grid,
