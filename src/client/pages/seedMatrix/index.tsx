@@ -6,7 +6,6 @@ import {
   Drawer,
   Empty,
   Flex,
-  Form,
   Input,
   List,
   Pagination,
@@ -19,7 +18,6 @@ import {
   Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import type { FormInstance } from 'antd'
 import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import { listAiwikiJobs, type AiwikiJobSummary } from '../../lib/aiwiki'
 import {
@@ -30,7 +28,6 @@ import {
   getSeedMatrixResult,
   listSeedMatrixJobs,
   updateSeedMatrixJob,
-  type SeedMatrixCreatePayload,
   type SeedMatrixJob,
   type SeedMatrixJobSummary,
   type SeedMatrixResult,
@@ -38,14 +35,12 @@ import {
 import { resolveErrorMessage } from '../../lib/errorMessage'
 import { formatDateTime, progressEventColor, statusMeta } from '../aiwiki/helpers'
 import { SEED_MATRIX_MODES, seedMatrixModeLabel, type SeedMatrixModeId } from '../../lib/workflowModes'
-import { StepWizard } from '../../components/workflow/StepWizard'
 import './GrowthWorkflow.css'
 
 type MatrixRow = Record<string, string>
 
 const ACTIVE_STATUSES = new Set(['queued', 'running'])
 const TASK_PAGE_SIZE = 5
-const STRATEGY_MODE_IDS = Object.keys(SEED_MATRIX_MODES) as SeedMatrixModeId[]
 
 export default function SeedMatrixPage({
   mode = 'standard',
@@ -58,7 +53,6 @@ export default function SeedMatrixPage({
   onOpenProductionStage?: () => void
 }) {
   const { message, modal } = App.useApp()
-  const [form] = Form.useForm<Omit<SeedMatrixCreatePayload, 'source_aiwiki_job_id'>>()
   const [draftMode, setDraftMode] = useState<SeedMatrixModeId>(mode)
   const draftModeConfig = SEED_MATRIX_MODES[draftMode]
   const [aiwikiJobs, setAiwikiJobs] = useState<AiwikiJobSummary[]>([])
@@ -143,10 +137,6 @@ export default function SeedMatrixPage({
   }, [mode])
 
   useEffect(() => {
-    form.setFieldsValue(draftModeConfig.defaults)
-  }, [draftModeConfig.defaults, form])
-
-  useEffect(() => {
     if (sourceAiwikiJobId) {
       setSelectedAiwikiJobId(sourceAiwikiJobId)
     }
@@ -208,7 +198,6 @@ export default function SeedMatrixPage({
     setResult(null)
     setActiveRow(null)
     setError(null)
-    form.setFieldsValue(SEED_MATRIX_MODES[draftMode].defaults)
   }
 
   const submit = async () => {
@@ -220,12 +209,9 @@ export default function SeedMatrixPage({
     setError(null)
     setResult(null)
     try {
-      const values = draftModeConfig.showHooks ? await form.validateFields() : draftModeConfig.defaults
       const created = await createSeedMatrixJob({
         ...draftModeConfig.defaults,
-        hooks: draftModeConfig.showHooks
-          ? (values.hooks ?? []).map((item) => item.trim()).filter(Boolean)
-          : draftModeConfig.defaults.hooks,
+        hooks: draftModeConfig.defaults.hooks,
         source_aiwiki_job_id: selectedAiwikiJobId,
       })
       setCreating(false)
@@ -336,7 +322,6 @@ export default function SeedMatrixPage({
       <main className="growth-main-stage">
         {creating ? (
           <CreateMatrixTask
-            form={form}
             aiwikiJobs={aiwikiJobs}
             aiwikiJobsPage={aiwikiJobsPage}
             aiwikiJobsPageSize={TASK_PAGE_SIZE}
@@ -346,7 +331,6 @@ export default function SeedMatrixPage({
             selectedAiwikiJobId={selectedAiwikiJobId}
             submitting={submitting}
             error={error}
-            onModeChange={(nextMode) => setDraftMode(nextMode)}
             onRefreshInputs={() => void loadAiwikiJobs()}
             onAiwikiJobsPageChange={(page) => {
               setAiwikiJobsPage(page)
@@ -514,7 +498,6 @@ function TaskRail({
 }
 
 function CreateMatrixTask({
-  form,
   aiwikiJobs,
   aiwikiJobsPage,
   aiwikiJobsPageSize,
@@ -524,13 +507,11 @@ function CreateMatrixTask({
   selectedAiwikiJobId,
   submitting,
   error,
-  onModeChange,
   onAiwikiJobsPageChange,
   onRefreshInputs,
   onSelectAiwikiJob,
   onSubmit,
 }: {
-  form: FormInstance<Omit<SeedMatrixCreatePayload, 'source_aiwiki_job_id'>>
   aiwikiJobs: AiwikiJobSummary[]
   aiwikiJobsPage: number
   aiwikiJobsPageSize: number
@@ -540,7 +521,6 @@ function CreateMatrixTask({
   selectedAiwikiJobId: string | null
   submitting: boolean
   error: string | null
-  onModeChange: (mode: SeedMatrixModeId) => void
   onAiwikiJobsPageChange: (page: number) => void
   onRefreshInputs: () => void
   onSelectAiwikiJob: (jobId: string) => void
@@ -553,102 +533,46 @@ function CreateMatrixTask({
         <Typography.Text className="growth-eyebrow">新建任务</Typography.Text>
         <Typography.Title level={3}>生成选题策略</Typography.Title>
         <Typography.Paragraph>
-          先选择一个已完成的知识库作为输入，再选择生成方式。任务提交后配置会锁定，结果会沉淀为左侧的选题任务。
+          选择一个已完成的知识库作为输入，系统会使用默认配置生成选题策略。
         </Typography.Paragraph>
       </div>
 
       {error && <Alert type="error" showIcon message={error} />}
-      <StepWizard
-        steps={[
-          {
-            key: 'source',
-            title: '选择输入知识库',
-            nextDisabled: !selectedAiwikiJobId,
-            extra: <Button size="small" icon={<ReloadOutlined />} loading={loadingInputs} onClick={onRefreshInputs} />,
-            content: (
-              <>
-                <List
-                  className="growth-input-source-list"
-                  loading={loadingInputs}
-                  dataSource={aiwikiJobs}
-                  locale={{ emptyText: '暂无已完成知识库' }}
-                  renderItem={(job) => (
-                    <List.Item>
-                      <button
-                        type="button"
-                        className={job.id === selectedAiwikiJobId ? 'growth-input-source is-active' : 'growth-input-source'}
-                        onClick={() => onSelectAiwikiJob(job.id)}
-                      >
-                        <span>{job.title || job.files[0]?.filename || shortId(job.id)}</span>
-                      </button>
-                    </List.Item>
-                  )}
-                />
-                {aiwikiJobsTotal > aiwikiJobsPageSize && (
-                  <Pagination
-                    size="small"
-                    simple
-                    current={aiwikiJobsPage}
-                    pageSize={aiwikiJobsPageSize}
-                    total={aiwikiJobsTotal}
-                    onChange={onAiwikiJobsPageChange}
-                  />
-                )}
-              </>
-            ),
-          },
-          {
-            key: 'config',
-            title: '生成配置',
-            content: (
-              <>
-                <Segmented
-                  block
-                  value={mode}
-                  onChange={(value) => onModeChange(value as SeedMatrixModeId)}
-                  options={STRATEGY_MODE_IDS.map((modeId) => ({
-                    label: SEED_MATRIX_MODES[modeId].navLabel,
-                    value: modeId,
-                  }))}
-                />
-                <div className="growth-config-summary">
-                  <ConfigItem label="种子数量" value={String(modeConfig.defaults.expected_seed_count)} />
-                  <ConfigItem label="每日 Slot" value={String(modeConfig.defaults.slots_per_day)} />
-                  <ConfigItem label="模式" value={modeConfig.navLabel} />
-                </div>
-                {modeConfig.showHooks && (
-                  <Form form={form} layout="vertical" initialValues={modeConfig.defaults}>
-                    <Form.List name="hooks">
-                      {(fields, { add, remove }) => (
-                        <Flex vertical gap={8}>
-                          <Flex align="center" justify="space-between" gap={8}>
-                            <Typography.Text>引流钩子</Typography.Text>
-                            <Button size="small" icon={<PlusOutlined />} onClick={() => add('')}>新增</Button>
-                          </Flex>
-                          {fields.map((field, index) => (
-                            <Flex key={field.key} align="flex-start" gap={8}>
-                              <Form.Item {...field} style={{ flex: 1, marginBottom: 0 }}>
-                                <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} placeholder={`引流钩子 ${index + 1}，可多行输入`} />
-                              </Form.Item>
-                              <Button
-                                danger
-                                type="text"
-                                icon={<DeleteOutlined />}
-                                disabled={fields.length <= 1}
-                                onClick={() => remove(field.name)}
-                              />
-                            </Flex>
-                          ))}
-                        </Flex>
-                      )}
-                    </Form.List>
-                  </Form>
-                )}
-              </>
-            ),
-          },
-        ]}
-        submitButton={(
+      <div className="growth-config-section">
+        <Flex align="center" justify="space-between" gap={12} className="growth-step-heading">
+          <div className="growth-step-title">
+            <Typography.Title level={5}>选择输入知识库</Typography.Title>
+          </div>
+          <Button size="small" icon={<ReloadOutlined />} loading={loadingInputs} onClick={onRefreshInputs} />
+        </Flex>
+        <List
+          className="growth-input-source-list"
+          loading={loadingInputs}
+          dataSource={aiwikiJobs}
+          locale={{ emptyText: '暂无已完成知识库' }}
+          renderItem={(job) => (
+            <List.Item>
+              <button
+                type="button"
+                className={job.id === selectedAiwikiJobId ? 'growth-input-source is-active' : 'growth-input-source'}
+                onClick={() => onSelectAiwikiJob(job.id)}
+              >
+                <span>{job.title || job.files[0]?.filename || shortId(job.id)}</span>
+              </button>
+            </List.Item>
+          )}
+        />
+        {aiwikiJobsTotal > aiwikiJobsPageSize && (
+          <Pagination
+            size="small"
+            simple
+            current={aiwikiJobsPage}
+            pageSize={aiwikiJobsPageSize}
+            total={aiwikiJobsTotal}
+            onChange={onAiwikiJobsPageChange}
+          />
+        )}
+        <div className="growth-step-actions">
           <Button
             type="primary"
             size="large"
@@ -659,8 +583,8 @@ function CreateMatrixTask({
           >
             {modeConfig.buttonText}
           </Button>
-        )}
-      />
+        </div>
+      </div>
     </section>
   )
 }
