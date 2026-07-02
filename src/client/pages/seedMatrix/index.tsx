@@ -162,11 +162,6 @@ export default function SeedMatrixPage({
     return () => window.clearInterval(timer)
   }, [activeJob?.id, activeJob?.status, refreshJob])
 
-  const selectedAiwikiJob = useMemo(
-    () => aiwikiJobs.find((item) => item.id === selectedAiwikiJobId) ?? null,
-    [aiwikiJobs, selectedAiwikiJobId],
-  )
-
   const filteredRows = useMemo(() => {
     const rows = result?.rows ?? []
     const text = query.trim().toLowerCase()
@@ -348,7 +343,6 @@ export default function SeedMatrixPage({
             aiwikiJobsTotal={aiwikiJobsTotal}
             loadingInputs={loadingInputs}
             mode={draftMode}
-            selectedAiwikiJob={selectedAiwikiJob}
             selectedAiwikiJobId={selectedAiwikiJobId}
             submitting={submitting}
             error={error}
@@ -527,7 +521,6 @@ function CreateMatrixTask({
   aiwikiJobsTotal,
   loadingInputs,
   mode,
-  selectedAiwikiJob,
   selectedAiwikiJobId,
   submitting,
   error,
@@ -544,7 +537,6 @@ function CreateMatrixTask({
   aiwikiJobsTotal: number
   loadingInputs: boolean
   mode: SeedMatrixModeId
-  selectedAiwikiJob: AiwikiJobSummary | null
   selectedAiwikiJobId: string | null
   submitting: boolean
   error: string | null
@@ -588,7 +580,6 @@ function CreateMatrixTask({
                         onClick={() => onSelectAiwikiJob(job.id)}
                       >
                         <span>{job.title || job.files[0]?.filename || shortId(job.id)}</span>
-                        <small>{job.files.length} 文件 · 素材 {Number(job.summary.material_count ?? 0)}</small>
                       </button>
                     </List.Item>
                   )}
@@ -602,13 +593,6 @@ function CreateMatrixTask({
                     total={aiwikiJobsTotal}
                     onChange={onAiwikiJobsPageChange}
                   />
-                )}
-                {selectedAiwikiJob && (
-                  <div className="growth-config-summary">
-                    <ConfigItem label="知识库" value={selectedAiwikiJob.title || selectedAiwikiJob.files[0]?.filename || selectedAiwikiJob.id} />
-                    <ConfigItem label="文件" value={`${selectedAiwikiJob.files.length} 个`} />
-                    <ConfigItem label="素材" value={String(Number(selectedAiwikiJob.summary.material_count ?? 0))} />
-                  </div>
                 )}
               </>
             ),
