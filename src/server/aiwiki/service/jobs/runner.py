@@ -30,21 +30,25 @@ from ..progress import (
 def run_job(
     job_id: str, workdir: Path, session_factory: sessionmaker[Session]
 ) -> None:
-    started_at = datetime.now(timezone.utc)
-    update_manifest(
-        workdir,
-        status="running",
-        message="OpenCode 正在生成生文材料和 AI Wiki",
-        started_at=started_at.isoformat(),
-        session_factory=session_factory,
-    )
+    if not _job_can_continue(workdir):
+        return
     try:
+        started_at = datetime.now(timezone.utc)
+        update_manifest(
+            workdir,
+            status="running",
+            message="OpenCode 正在生成生文材料和 AI Wiki",
+            started_at=started_at.isoformat(),
+            session_factory=session_factory,
+        )
         prepare_skills(workdir)
         prepare_opencode_config(workdir)
         _run_opencode_with_json_check(
             workdir,
             generate_search_assets=_generate_search_assets(read_manifest(workdir)),
         )
+        if not _job_can_continue(workdir):
+            return
         result = parse_aiwiki_result(job_id, workdir)
         if not result.materials and not result.wiki_entries:
             raise RuntimeError("OpenCode 未生成 material 或 wiki 结果")
@@ -57,6 +61,8 @@ def run_job(
             session_factory=session_factory,
         )
     except Exception as exc:
+        if not _job_can_continue(workdir):
+            return
         logger.exception("AI Wiki job failed: {}", job_id)
         append_log(workdir, f"ERROR: {exc}")
         mark_progress_failure(workdir, str(exc))
@@ -67,6 +73,10 @@ def run_job(
             finished_at=datetime.now(timezone.utc).isoformat(),
             session_factory=session_factory,
         )
+
+
+def _job_can_continue(workdir: Path) -> bool:
+    return (workdir / "manifest.json").exists()
 
 
 def _run_opencode_with_json_check(workdir: Path, *, generate_search_assets: bool) -> None:

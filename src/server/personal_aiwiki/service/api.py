@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from src.server.aiwiki.parser import parse_aiwiki_result
 from src.server.aiwiki.parser.wiki import split_frontmatter
 from src.server.auth.models import User
+from src.server.opencode.tmux import kill_tmux_sessions_for_workdir
 
 from ..dao import PersonalAiwikiJobDAO
 from ..schemas import (
@@ -177,8 +178,8 @@ def delete_job(db: Session, job_id: str, current_user: User) -> None:
     import shutil
 
     job = get_accessible_job(db, job_id, current_user)
-    if job.status in {"queued", "running"}:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="任务正在执行，完成或失败后才能删除")
+    get_queue().cancel(job.id)
+    kill_tmux_sessions_for_workdir(Path(job.workdir))
     PersonalAiwikiJobDAO(db).delete(job)
     shutil.rmtree(job.workdir, ignore_errors=True)
 

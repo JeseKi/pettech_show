@@ -103,3 +103,34 @@ def kill_tmux_session(name: str) -> None:
         text=True,
         timeout=TMUX_COMMAND_TIMEOUT_SECONDS,
     )
+
+
+def kill_tmux_sessions_for_workdir(workdir: Path) -> int:
+    prefix = _session_prefix(workdir)
+    try:
+        result = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name}"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=TMUX_COMMAND_TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError:
+        return 0
+    if result.returncode != 0:
+        return 0
+
+    killed_count = 0
+    for name in result.stdout.splitlines():
+        session = name.strip()
+        if not session.startswith(prefix):
+            continue
+        kill_tmux_session(session)
+        killed_count += 1
+    return killed_count
+
+
+def _session_prefix(workdir: Path) -> str:
+    raw = f"aiwiki-{workdir.name}-"
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", raw).strip("-")
+    return f"{slug}-" if not slug.endswith("-") else slug

@@ -26,6 +26,7 @@ from src.server.aiwiki.service.progress import (
 )
 from src.server.auth.models import User
 from src.server.config import global_config
+from src.server.opencode.tmux import kill_tmux_sessions_for_workdir
 
 from ..dao import SeedMatrixJobDAO, parse_json_dict
 from ..models import SeedMatrixJob
@@ -166,15 +167,12 @@ def get_result(
 
 def delete_job(db: Session, job_id: str, current_user: User) -> None:
     job = get_accessible_job(db, job_id, current_user)
-    if job.status in {"queued", "running"}:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="任务正在执行，完成或失败后才能删除",
-        )
+    workdir = Path(job.workdir)
+    get_queue().cancel(job.id)
+    kill_tmux_sessions_for_workdir(workdir)
     from src.server.daily_writer.service import delete_child_jobs_for_seed_matrix
 
     delete_child_jobs_for_seed_matrix(db, job.id)
-    workdir = Path(job.workdir)
     SeedMatrixJobDAO(db).delete(job)
     shutil.rmtree(workdir, ignore_errors=True)
 

@@ -53,23 +53,27 @@ def run_job(
     workdir: Path,
     session_factory: sessionmaker[Session],
 ) -> None:
-    manifest = read_manifest(workdir)
-    owner_user_id = int(manifest["owner_user_id"])
-    started_at = datetime.now(timezone.utc)
-    update_manifest(
-        workdir,
-        status="running",
-        message="正在整理个人知识库",
-        started_at=started_at.isoformat(),
-        session_factory=session_factory,
-    )
+    if not _job_can_continue(workdir):
+        return
     try:
+        manifest = read_manifest(workdir)
+        owner_user_id = int(manifest["owner_user_id"])
+        started_at = datetime.now(timezone.utc)
+        update_manifest(
+            workdir,
+            status="running",
+            message="正在整理个人知识库",
+            started_at=started_at.isoformat(),
+            session_factory=session_factory,
+        )
         with workspace_lock(owner_user_id):
             prepare_skill(workdir)
             prepare_opencode_config(workdir)
             run_personal_aiwiki_opencode(workdir)
             if not progress_marked_complete(workdir):
                 raise RuntimeError("progress.json 未写入任务完成标记")
+            if not _job_can_continue(workdir):
+                return
             updated = read_manifest(workdir)
             result = parse_aiwiki_result(job_id, Path(updated["workspace_dir"]))
             answer = read_answer(workdir)
@@ -83,6 +87,8 @@ def run_job(
                 session_factory=session_factory,
             )
     except Exception as exc:
+        if not _job_can_continue(workdir):
+            return
         logger.exception("Personal AI Wiki job failed: {}", job_id)
         append_log(workdir, f"ERROR: {exc}")
         mark_progress_failure(workdir, str(exc))
@@ -93,6 +99,10 @@ def run_job(
             finished_at=datetime.now(timezone.utc).isoformat(),
             session_factory=session_factory,
         )
+
+
+def _job_can_continue(workdir: Path) -> bool:
+    return (workdir / "manifest.json").exists()
 
 
 def run_personal_aiwiki_opencode(workdir: Path) -> None:

@@ -72,7 +72,6 @@ export function HistorySidebar({
                         type="text"
                         danger
                         icon={<DeleteOutlined />}
-                        disabled={item.status === 'queued' || item.status === 'running'}
                         onClick={(event) => event.stopPropagation()}
                       />
                     </Popconfirm>

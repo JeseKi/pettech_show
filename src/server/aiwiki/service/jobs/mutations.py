@@ -11,6 +11,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from src.server.auth.models import User
+from src.server.opencode.tmux import kill_tmux_sessions_for_workdir
 
 from ...dao import AiwikiJobDAO
 from ...schemas import JobOut, JobUpdate
@@ -20,6 +21,7 @@ from ..persistence import (
     read_manifest,
     write_manifest,
 )
+from ..queue_state import get_queue
 from ..serializers import job_out_from_manifest
 from .access import can_access_job, normalize_optional_text
 from .queries import parse_manifest_files
@@ -59,11 +61,8 @@ def delete_job(db: Session, job_id: str, current_user: User) -> None:
     job = dao.get(job_id)
     if job is None or not can_access_job(current_user, job.owner_user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
-    if job.status in {"queued", "running"}:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="任务正在执行，完成或失败后才能删除",
-        )
+    get_queue().cancel(job.id)
+    kill_tmux_sessions_for_workdir(workdir)
     dao.append_audit_log(
         actor_user_id=current_user.id,
         actor_username=current_user.username,
@@ -87,17 +86,14 @@ def _delete_child_seed_matrices(db: Session, source_aiwiki_job_id: str) -> None:
         offset=0,
         source_aiwiki_job_id=source_aiwiki_job_id,
     )
-    active = [job for job in children if job.status in {"queued", "running"}]
-    if active:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="该 AI Wiki 仍有关联的选题矩阵任务正在执行",
-        )
     for child in children:
         from src.server.daily_writer.service import delete_child_jobs_for_seed_matrix
+        from src.server.seed_matrix.queue_state import get_queue
 
         delete_child_jobs_for_seed_matrix(db, child.id)
         child_workdir = Path(child.workdir)
+        get_queue().cancel(child.id)
+        kill_tmux_sessions_for_workdir(child_workdir)
         dao.delete(child)
         shutil.rmtree(child_workdir, ignore_errors=True)
 

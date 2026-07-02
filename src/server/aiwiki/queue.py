@@ -17,14 +17,25 @@ class AiwikiJobQueue:
         self._lock = Lock()
         self._pending: list[str] = []
         self._active: set[str] = set()
+        self._cancelled: set[str] = set()
 
     def enqueue(self, job_id: str, runner: Callable[[], None]) -> None:
         with self._lock:
+            self._cancelled.discard(job_id)
             self._pending.append(job_id)
         self._executor.submit(self._run, job_id, runner)
 
+    def cancel(self, job_id: str) -> None:
+        with self._lock:
+            self._cancelled.add(job_id)
+            while job_id in self._pending:
+                self._pending.remove(job_id)
+            self._active.discard(job_id)
+
     def queue_position(self, job_id: str) -> int | None:
         with self._lock:
+            if job_id in self._cancelled:
+                return None
             if job_id in self._active:
                 return 0
             try:
@@ -37,6 +48,11 @@ class AiwikiJobQueue:
 
     def _run(self, job_id: str, runner: Callable[[], None]) -> None:
         with self._lock:
+            if job_id in self._cancelled:
+                self._cancelled.discard(job_id)
+                if job_id in self._pending:
+                    self._pending.remove(job_id)
+                return
             if job_id in self._pending:
                 self._pending.remove(job_id)
             self._active.add(job_id)
@@ -45,3 +61,4 @@ class AiwikiJobQueue:
         finally:
             with self._lock:
                 self._active.discard(job_id)
+                self._cancelled.discard(job_id)

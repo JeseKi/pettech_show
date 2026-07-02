@@ -25,6 +25,7 @@ from src.server.aiwiki.service.progress import (
 )
 from src.server.auth.models import User
 from src.server.config import global_config
+from src.server.opencode.tmux import kill_tmux_sessions_for_workdir
 
 from ..config import CAPABILITIES, CapabilityConfig, get_capability
 from ..dao import CapabilityJobDAO, parse_json_dict
@@ -159,9 +160,9 @@ def get_result(db: Session, job_id: str, current_user: User) -> CapabilityResult
 
 def delete_job(db: Session, job_id: str, current_user: User) -> None:
     job = get_accessible_job(db, job_id, current_user)
-    if job.status in {"queued", "running"}:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="任务正在执行，完成或失败后才能删除")
     workdir = Path(job.workdir)
+    get_queue().cancel(job.id)
+    kill_tmux_sessions_for_workdir(workdir)
     CapabilityJobDAO(db).delete(job)
     shutil.rmtree(workdir, ignore_errors=True)
 

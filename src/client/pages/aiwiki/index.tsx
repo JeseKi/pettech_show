@@ -681,7 +681,6 @@ export default function AiwikiPage({ mode = 'full' }: { mode?: AiwikiModeId }) {
                             <button
                               aria-label={`删除任务 ${task.summary.title}`}
                               className="aiwiki-task-action-button is-danger"
-                              disabled={task.summary.status === 'queued' || task.summary.status === 'running'}
                               onClick={(event) => {
                                 event.stopPropagation()
                                 confirmDeleteJob(task.summary!)
@@ -1143,7 +1142,6 @@ function AssetStageContent({
                         <button
                           aria-label={`删除任务 ${task.summary.title}`}
                           className="aiwiki-task-action-button is-danger"
-                          disabled={task.summary.status === 'queued' || task.summary.status === 'running'}
                           onClick={(event) => {
                             event.stopPropagation()
                             onDeleteJob(task.summary!)

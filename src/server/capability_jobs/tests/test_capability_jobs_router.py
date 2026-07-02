@@ -5,6 +5,7 @@ import json
 import sys
 import time
 import zipfile
+from datetime import datetime, timezone
 from http import HTTPStatus
 from io import BytesIO
 from pathlib import Path
@@ -13,6 +14,7 @@ import pytest
 
 from src.server.auth import service as auth_service
 from src.server.auth.models import User
+from src.server.capability_jobs.models import CapabilityJob
 from src.server.capability_jobs.queue_state import reset_queue_for_tests
 from src.server.config import global_config
 
@@ -269,6 +271,40 @@ def test_create_capability_job_and_get_result(
     assert zip_resp.status_code == HTTPStatus.OK, zip_resp.text
     with zipfile.ZipFile(BytesIO(zip_resp.content)) as archive:
         assert set(archive.namelist()) == {"output/result.md", "output/result.json"}
+
+
+def test_delete_running_capability_job(
+    test_client, test_db_session, fake_capability_runtime: Path
+):
+    user = _create_user(test_db_session, "capability_delete_running")
+    headers = _auth_headers(user)
+    job_id = "20260623121212_0000000a_capability"
+    workdir = fake_capability_runtime / "data" / job_id
+    workdir.mkdir(parents=True)
+    (workdir / "manifest.json").write_text("{}", encoding="utf-8")
+    now = datetime.now(timezone.utc)
+    test_db_session.add(
+        CapabilityJob(
+            id=job_id,
+            owner_user_id=user.id,
+            capability_key="pain-point-topics",
+            status="running",
+            message="能力任务执行中",
+            workdir=workdir.as_posix(),
+            input_json=json.dumps({"topic": "AI Wiki"}, ensure_ascii=False),
+            created_at=now,
+            started_at=now,
+            updated_at=now,
+        )
+    )
+    test_db_session.commit()
+
+    delete_resp = test_client.delete(f"/api/capability-jobs/{job_id}", headers=headers)
+    assert delete_resp.status_code == HTTPStatus.NO_CONTENT, delete_resp.text
+    assert not workdir.exists()
+
+    detail_resp = test_client.get(f"/api/capability-jobs/{job_id}", headers=headers)
+    assert detail_resp.status_code == HTTPStatus.NOT_FOUND
 
 
 def test_topic_capability_uses_skill_and_validator(
