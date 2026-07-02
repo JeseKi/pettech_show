@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Response, Security, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Response, Security, UploadFile, status
 from sqlalchemy.orm import Session
 
 from src.server.auth.dependencies import get_current_user
@@ -26,6 +26,7 @@ from .schemas import (
     InteractiveMovieReleaseOut,
     InteractiveMovieSetPublishedReleaseIn,
     InteractiveMovieSyncStateOut,
+    ImagePromptReverseRecordOut,
     PromptTemplateOut,
     UploadedAssetOut,
     UploadedVideoOut,
@@ -33,15 +34,19 @@ from .schemas import (
 from .service import (
     close_publication,
     create_project,
+    create_prompt_reverse_record,
     delete_project,
+    delete_prompt_reverse_record,
     get_public_project,
     get_project,
     get_sync_state,
+    list_prompt_reverse_history,
     list_releases,
     list_projects,
     local_asset_response,
     patch_project,
     publish_project,
+    read_prompt_reverse_image_upload,
     prompt_template,
     read_image_upload,
     read_video_upload,
@@ -239,6 +244,54 @@ async def upload_movie_video_asset(
 @router.get("/assets/local/{object_key:path}", summary="读取本地互动影游资产")
 async def read_local_movie_asset(object_key: str):
     return await run_in_thread(lambda: local_asset_response(object_key))
+
+
+@router.post(
+    "/tools/image-prompt-reverse",
+    response_model=ImagePromptReverseRecordOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="图片 Prompt 反推",
+)
+async def reverse_image_prompt_tool(
+    file: Annotated[UploadFile, File(description="用于 Prompt 反推的图片文件")],
+    project_id: Annotated[str | None, Form(description="可选关联的互动影游项目 ID")] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Security(get_current_user, scopes=[SCOPE_PROFILE_READ]),
+):
+    content = await read_prompt_reverse_image_upload(file)
+    return await create_prompt_reverse_record(
+        db,
+        current_user,
+        file=file,
+        content=content,
+        project_id=project_id.strip() if isinstance(project_id, str) and project_id.strip() else None,
+    )
+
+
+@router.get(
+    "/tools/image-prompt-reverse/history",
+    response_model=list[ImagePromptReverseRecordOut],
+    summary="列出图片 Prompt 反推历史",
+)
+async def list_image_prompt_reverse_history(
+    db: Session = Depends(get_db),
+    current_user: User = Security(get_current_user, scopes=[SCOPE_PROFILE_READ]),
+):
+    return await run_in_thread(lambda: list_prompt_reverse_history(db, current_user))
+
+
+@router.delete(
+    "/tools/image-prompt-reverse/history/{record_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="删除图片 Prompt 反推历史",
+)
+async def delete_image_prompt_reverse_history(
+    record_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Security(get_current_user, scopes=[SCOPE_PROFILE_READ]),
+):
+    await run_in_thread(lambda: delete_prompt_reverse_record(db, current_user, record_id))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(

@@ -238,6 +238,46 @@ class GlobalConfig(BaseSettings):
         title="互动电影图片上传大小限制 MB",
     )
 
+    interactive_movie_prompt_api_key: str = Field(
+        default="",
+        title="互动影游 Prompt 反推 API Key",
+    )
+
+    interactive_movie_prompt_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        title="互动影游 Prompt 反推 API Base URL",
+    )
+
+    interactive_movie_prompt_model: str = Field(
+        default="gpt-4o-mini",
+        title="互动影游 Prompt 反推模型",
+    )
+
+    interactive_movie_prompt_timeout_seconds: float = Field(
+        default=60,
+        ge=1,
+        title="互动影游 Prompt 反推 API 超时时间",
+    )
+
+    interactive_movie_prompt_max_image_mb: int = Field(
+        default=20,
+        ge=1,
+        title="互动影游 Prompt 反推图片大小限制 MB",
+    )
+
+    interactive_movie_prompt_temperature: float = Field(
+        default=0.2,
+        ge=0,
+        le=2,
+        title="互动影游 Prompt 反推 temperature",
+    )
+
+    interactive_movie_prompt_max_tokens: int = Field(
+        default=2400,
+        ge=1,
+        title="互动影游 Prompt 反推最大输出 token",
+    )
+
     chat_api_base_url: str = Field(
         default="https://api.openai.com/v1",
         title="Chat API Base URL",

@@ -143,3 +143,18 @@ class InteractiveMovieRelease(Base):
     document_json: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(80), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class InteractiveMoviePromptReverseRecord(Base):
+    __tablename__ = "interactive_movie_prompt_reverse_records"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    owner_user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    project_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    filename: Mapped[str] = mapped_column(String(200), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    object_key: Mapped[str] = mapped_column(Text, nullable=False)
+    storage_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    result_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now, index=True)

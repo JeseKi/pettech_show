@@ -14,6 +14,46 @@ export type InteractiveMovieVideoUpload = {
   size: number
 }
 
+export type ImagePromptVisualBreakdown = {
+  subject: string
+  scene: string
+  composition: string
+  lighting: string
+  color: string
+  style_medium: string
+  texture: string
+  ai_generation_trace: string
+}
+
+export type ImagePromptReverseResult = {
+  visual_breakdown: ImagePromptVisualBreakdown
+  prompt_choices: {
+    generic_english_prompt: string
+    gpt_image_prompt: string
+    sd_prompt: {
+      positive_prompt: string
+      negative_prompt: string
+    }
+  }
+  advanced: {
+    parameter_suggestions: string
+    reusable_style_template: string
+  }
+}
+
+export type ImagePromptReverseRecord = {
+  id: string
+  project_id?: string | null
+  filename: string
+  content_type: string
+  size: number
+  object_key: string
+  storage_uri: string
+  image_url?: string | null
+  result: ImagePromptReverseResult
+  created_at: string
+}
+
 export type InteractiveMovieProjectSummary = {
   id: string
   title: string
@@ -205,4 +245,26 @@ export async function uploadInteractiveMovieImage(file: File): Promise<Interacti
     headers: { 'Content-Type': 'multipart/form-data' },
   })
   return response.data
+}
+
+export async function reverseInteractiveMovieImagePrompt(
+  file: File,
+  projectId?: string,
+): Promise<ImagePromptReverseRecord> {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (projectId) formData.append('project_id', projectId)
+  const response = await api.post<ImagePromptReverseRecord>('/interactive-movie/tools/image-prompt-reverse', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return response.data
+}
+
+export async function listInteractiveMovieImagePromptHistory(): Promise<ImagePromptReverseRecord[]> {
+  const response = await api.get<ImagePromptReverseRecord[]>('/interactive-movie/tools/image-prompt-reverse/history')
+  return response.data
+}
+
+export async function deleteInteractiveMovieImagePromptHistory(recordId: string): Promise<void> {
+  await api.delete(`/interactive-movie/tools/image-prompt-reverse/history/${recordId}`)
 }

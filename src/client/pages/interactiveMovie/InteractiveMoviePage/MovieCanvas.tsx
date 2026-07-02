@@ -1,16 +1,19 @@
 import type { CSSProperties } from 'react'
 import { useEffect, useState } from 'react'
-import { BorderOuterOutlined, BranchesOutlined, DownOutlined, DragOutlined, EditOutlined, FileTextOutlined, FullscreenOutlined, MessageOutlined, PictureOutlined, PlusOutlined, UpOutlined, VideoCameraOutlined, ZoomInOutlined, ZoomOutOutlined } from '@ant-design/icons'
+import { BorderOuterOutlined, BranchesOutlined, BulbOutlined, DownOutlined, DragOutlined, EditOutlined, FileTextOutlined, FullscreenOutlined, MessageOutlined, PictureOutlined, PlusOutlined, UpOutlined, VideoCameraOutlined, ZoomInOutlined, ZoomOutOutlined } from '@ant-design/icons'
 import { Button, Tooltip, Typography } from 'antd'
 import { useInteractiveMoviePageContext } from './useInteractiveMoviePageContext'
 import { CanvasStage } from './CanvasStage'
 import { CanvasAgentChat } from './CanvasAgentChat'
+import { ImagePromptReverseTool } from './ImagePromptReverseTool'
 import { EditorFloatingPanel } from './EditorFloatingPanel'
 import { confirmAgentOperationLeave } from '../../../hooks/useAgentOperationLeaveGuard'
 
 export function MovieCanvas() {
   const [agentChatOpen, setAgentChatOpen] = useState(false)
   const [agentChatBusy, setAgentChatBusy] = useState(false)
+  const [promptToolOpen, setPromptToolOpen] = useState(false)
+  const [promptToolBusy, setPromptToolBusy] = useState(false)
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
   const {
     addAssetNode,
@@ -58,6 +61,11 @@ export function MovieCanvas() {
   const toggleAgentChat = () => {
     if (agentChatOpen && agentChatBusy && !confirmAgentOperationLeave()) return
     setAgentChatOpen((value) => !value)
+  }
+
+  const togglePromptTool = () => {
+    if (promptToolOpen && promptToolBusy && !confirmAgentOperationLeave()) return
+    setPromptToolOpen((value) => !value)
   }
 
   return (
@@ -130,6 +138,7 @@ export function MovieCanvas() {
 
       <EditorFloatingPanel />
       <CanvasAgentChat open={agentChatOpen} onClose={() => setAgentChatOpen(false)} onBusyChange={setAgentChatBusy} />
+      <ImagePromptReverseTool open={promptToolOpen} onClose={() => setPromptToolOpen(false)} onBusyChange={setPromptToolBusy} />
 
       <div
         className={bottomToolbarCollapsed ? 'movie-bottom-dock is-collapsed' : 'movie-bottom-dock'}
@@ -194,6 +203,14 @@ export function MovieCanvas() {
               type={agentChatOpen ? 'primary' : 'default'}
               icon={<MessageOutlined />}
               onClick={toggleAgentChat}
+            />
+          </Tooltip>
+          <Tooltip title={promptToolOpen ? '关闭提示词反推' : '打开提示词反推'}>
+            <Button
+              shape="circle"
+              type={promptToolOpen ? 'primary' : 'default'}
+              icon={<BulbOutlined />}
+              onClick={togglePromptTool}
             />
           </Tooltip>
           <span className="movie-bottom-divider" />

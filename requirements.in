@@ -22,3 +22,4 @@ python-multipart
 pillow
 boto3
 pymupdf
+structured-llm

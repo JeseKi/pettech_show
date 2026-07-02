@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import json
 from http import HTTPStatus
 from typing import Any
 
@@ -11,6 +12,7 @@ from src.server.auth.models import User
 from src.server.config import global_config
 from src.server.interactive_movie import service as movie_service
 from src.server.interactive_movie.models import InteractiveMovieRelease
+from src.server.interactive_movie.service import image_prompt_reverse as prompt_reverse_service
 
 
 def _create_user(test_db_session, username: str) -> User:
@@ -123,6 +125,142 @@ def test_upload_scene_video_rejects_non_video(
 
     assert resp.status_code == HTTPStatus.BAD_REQUEST
     assert resp.json()["detail"] == "只支持上传视频文件"
+
+
+def test_prompt_reverse_uploads_image_calls_multimodal_and_persists_history(
+    test_client,
+    test_db_session,
+    fake_s3_config,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    fake_client = _FakeS3Client()
+    captured_payloads: list[dict[str, Any]] = []
+
+    async def fake_completion(payload: dict[str, Any], *, config: dict[str, Any]) -> str:
+        captured_payloads.append(payload)
+        assert config["api_key"] == "prompt-key"
+        return json.dumps(_prompt_reverse_result())
+
+    monkeypatch.setattr(movie_service, "_s3_client", lambda _config: fake_client)
+    monkeypatch.setattr(prompt_reverse_service, "_post_prompt_reverse_completion", fake_completion)
+    monkeypatch.setattr(global_config, "interactive_movie_prompt_api_key", "prompt-key")
+    monkeypatch.setattr(global_config, "interactive_movie_prompt_model", "vision-model")
+    monkeypatch.setattr(global_config, "interactive_movie_prompt_max_image_mb", 10)
+    user = _create_user(test_db_session, "interactive_movie_prompt_reverse_owner")
+    headers = _auth_headers(user)
+    document = _project_document("movie-prompt-history")
+    create_resp = test_client.post(
+        "/api/interactive-movie/projects",
+        headers=headers,
+        json={"title": document["title"], "document": document},
+    )
+    assert create_resp.status_code == HTTPStatus.CREATED, create_resp.text
+
+    resp = test_client.post(
+        "/api/interactive-movie/tools/image-prompt-reverse",
+        headers=headers,
+        data={"project_id": "movie-prompt-history"},
+        files={"file": ("reference.png", b"png-bytes", "image/png")},
+    )
+
+    assert resp.status_code == HTTPStatus.CREATED, resp.text
+    payload = resp.json()
+    assert payload["project_id"] == "movie-prompt-history"
+    assert payload["filename"] == "reference.png"
+    assert payload["object_key"].startswith("prompt-reverse/images/")
+    assert payload["storage_uri"].startswith("s3://movie-bucket/movie-assets/prompt-reverse/images/")
+    assert payload["image_url"].startswith("https://cdn.example.com/movie-bucket/movie-assets/prompt-reverse/images/")
+    assert payload["result"]["prompt_choices"]["sd_prompt"]["positive_prompt"] == "cinematic portrait"
+    assert fake_client.put_calls[0]["Body"] == b"png-bytes"
+    assert fake_client.put_calls[0]["ContentType"] == "image/png"
+    image_part = captured_payloads[0]["messages"][0]["content"][1]
+    assert image_part["image_url"]["url"].startswith("data:image/png;base64,")
+
+    history_resp = test_client.get("/api/interactive-movie/tools/image-prompt-reverse/history", headers=headers)
+    assert history_resp.status_code == HTTPStatus.OK, history_resp.text
+    assert [item["id"] for item in history_resp.json()] == [payload["id"]]
+
+    other_user = _create_user(test_db_session, "interactive_movie_prompt_reverse_other")
+    other_history_resp = test_client.get(
+        "/api/interactive-movie/tools/image-prompt-reverse/history",
+        headers=_auth_headers(other_user),
+    )
+    assert other_history_resp.status_code == HTTPStatus.OK, other_history_resp.text
+    assert other_history_resp.json() == []
+
+    delete_resp = test_client.delete(
+        f"/api/interactive-movie/tools/image-prompt-reverse/history/{payload['id']}",
+        headers=headers,
+    )
+    assert delete_resp.status_code == HTTPStatus.NO_CONTENT, delete_resp.text
+    assert fake_client.delete_calls[0]["Bucket"] == "movie-bucket"
+    assert fake_client.delete_calls[0]["Key"].startswith("movie-assets/prompt-reverse/images/")
+    assert test_client.get("/api/interactive-movie/tools/image-prompt-reverse/history", headers=headers).json() == []
+
+
+def test_prompt_reverse_requires_dedicated_api_key(
+    test_client,
+    test_db_session,
+    fake_s3_config,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(global_config, "interactive_movie_prompt_api_key", "")
+    user = _create_user(test_db_session, "interactive_movie_prompt_reverse_no_key")
+
+    resp = test_client.post(
+        "/api/interactive-movie/tools/image-prompt-reverse",
+        headers=_auth_headers(user),
+        files={"file": ("reference.png", b"png-bytes", "image/png")},
+    )
+
+    assert resp.status_code == HTTPStatus.SERVICE_UNAVAILABLE
+    assert "INTERACTIVE_MOVIE_PROMPT_API_KEY" in resp.json()["detail"]
+
+
+def test_prompt_reverse_uses_local_storage_when_configured(
+    test_client,
+    test_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    async def fake_completion(payload: dict[str, Any], *, config: dict[str, Any]) -> str:
+        image_part = payload["messages"][0]["content"][1]
+        assert image_part["image_url"]["url"].startswith("data:image/png;base64,")
+        return json.dumps(_prompt_reverse_result())
+
+    monkeypatch.setattr(prompt_reverse_service, "_post_prompt_reverse_completion", fake_completion)
+    monkeypatch.setattr(global_config, "interactive_movie_storage_backend", "local")
+    monkeypatch.setattr(global_config, "interactive_movie_local_asset_dir", tmp_path / "movie-assets")
+    monkeypatch.setattr(global_config, "interactive_movie_local_asset_base_url", "/api/interactive-movie/assets/local")
+    monkeypatch.setattr(global_config, "interactive_movie_prompt_api_key", "prompt-key")
+    monkeypatch.setattr(global_config, "interactive_movie_prompt_model", "vision-model")
+    monkeypatch.setattr(global_config, "interactive_movie_prompt_max_image_mb", 10)
+    user = _create_user(test_db_session, "interactive_movie_prompt_reverse_local")
+    headers = _auth_headers(user)
+
+    resp = test_client.post(
+        "/api/interactive-movie/tools/image-prompt-reverse",
+        headers=headers,
+        files={"file": ("local-reference.png", b"local-png", "image/png")},
+    )
+
+    assert resp.status_code == HTTPStatus.CREATED, resp.text
+    payload = resp.json()
+    assert payload["storage_uri"].startswith("local://prompt-reverse/images/")
+    assert payload["image_url"].startswith("/api/interactive-movie/assets/local/prompt-reverse/images/")
+    stored_path = tmp_path / "movie-assets" / payload["object_key"]
+    assert stored_path.read_bytes() == b"local-png"
+
+    asset_resp = test_client.get(payload["image_url"])
+    assert asset_resp.status_code == HTTPStatus.OK
+    assert asset_resp.content == b"local-png"
+
+    delete_resp = test_client.delete(
+        f"/api/interactive-movie/tools/image-prompt-reverse/history/{payload['id']}",
+        headers=headers,
+    )
+    assert delete_resp.status_code == HTTPStatus.NO_CONTENT, delete_resp.text
+    assert not stored_path.exists()
 
 
 def test_project_create_sync_and_patch(test_client, test_db_session):
@@ -488,12 +626,43 @@ def test_publish_rejects_stale_project_version(test_client, test_db_session):
 class _FakeS3Client:
     def __init__(self) -> None:
         self.put_calls: list[dict[str, Any]] = []
+        self.delete_calls: list[dict[str, Any]] = []
 
     def put_object(self, **kwargs: Any) -> None:
         self.put_calls.append(kwargs)
 
+    def delete_object(self, **kwargs: Any) -> None:
+        self.delete_calls.append(kwargs)
+
     def generate_presigned_url(self, *_args: Any, **_kwargs: Any) -> str:
         return "https://signed.example.com/video.mp4?signature=test"
+
+
+def _prompt_reverse_result() -> dict[str, Any]:
+    return {
+        "visual_breakdown": {
+            "subject": "young woman in a red coat",
+            "scene": "rainy neon street",
+            "composition": "vertical close-up",
+            "lighting": "soft key light with neon rim",
+            "color": "red and cyan contrast",
+            "style_medium": "cinematic editorial photography",
+            "texture": "wet fabric, natural skin texture",
+            "ai_generation_trace": "clean synthetic bokeh but no obvious artifacts",
+        },
+        "prompt_choices": {
+            "generic_english_prompt": "cinematic portrait of a young woman in a red coat on a rainy neon street",
+            "gpt_image_prompt": "Create a cinematic editorial portrait and preserve the red coat, rain and neon rim light.",
+            "sd_prompt": {
+                "positive_prompt": "cinematic portrait",
+                "negative_prompt": "low quality, blurry",
+            },
+        },
+        "advanced": {
+            "parameter_suggestions": "Use 4:5, medium style strength, img2img denoise 0.35-0.55.",
+            "reusable_style_template": "[主体], [场景], [光线], [镜头/构图], [色彩], [风格]",
+        },
+    }
 
 
 def _project_document(project_id: str) -> dict[str, Any]:

@@ -4,6 +4,12 @@
 from __future__ import annotations
 
 from .documents import compute_content_hash
+from .image_prompt_reverse import (
+    create_prompt_reverse_record,
+    delete_prompt_reverse_record,
+    list_prompt_reverse_history,
+    read_prompt_reverse_image_upload,
+)
 from .projects import (
     create_project,
     delete_project,
@@ -35,16 +41,20 @@ __all__ = [
     "close_publication",
     "compute_content_hash",
     "create_project",
+    "create_prompt_reverse_record",
     "delete_project",
+    "delete_prompt_reverse_record",
     "get_project",
     "get_public_project",
     "get_sync_state",
+    "list_prompt_reverse_history",
     "list_projects",
     "list_releases",
     "local_asset_response",
     "patch_project",
     "prompt_template",
     "publish_project",
+    "read_prompt_reverse_image_upload",
     "read_image_upload",
     "read_video_upload",
     "rename_project",
