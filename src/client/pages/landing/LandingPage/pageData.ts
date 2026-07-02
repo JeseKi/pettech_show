@@ -194,12 +194,12 @@ export const landingNavGroups: LandingNavGroup[] = [
 ]
 
 export const audience = [
-  '宠物医院 / 诊所',
-  '宠物门店 / 美容洗护 / 寄养',
-  '宠物训练师',
-  '宠物食品 / 用品品牌',
-  '宠物博主 / 达人',
-  '宠物供应链企业的老板、运营、市场负责人',
+  'B2B / SaaS 企业',
+  '消费品牌 / 新零售团队',
+  '教育培训 / 知识服务机构',
+  '本地生活 / 连锁服务企业',
+  '制造业 / 供应链企业',
+  '企业老板、市场、运营和销售负责人',
 ]
 
 export const productionSteps = [
@@ -246,7 +246,7 @@ export const productionSteps = [
   {
     icon: Target,
     title: '转化路径设计',
-    text: '让内容导向咨询、到店、预约、下单、私域沉淀和下一轮复盘。',
+    text: '让内容导向咨询、留资、预约、试用、下单、私域沉淀和下一轮复盘。',
   },
   {
     icon: Archive,

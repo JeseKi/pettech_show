@@ -200,10 +200,10 @@ export function CourseStack({ autoPlayEnabled = true, onCourseOpen }: CourseStac
           <div className="course-stack-mobile__summary" aria-label="课程路径概览">
             <span>{BRAND_NAME}</span>
             <h1>
-              <span>宠物行业 AI 内容增长</span>
+              <span>企业AI内容增长</span>
               <span>工作台</span>
             </h1>
-            <p>把竞品素材、用户问题和业务目标整理成内容资产，再生成选题策略、稿件和多平台内容包。</p>
+            <p>把企业素材、客户问题和业务目标整理成内容资产，再生成选题策略、稿件和多平台内容包。</p>
             <div className="course-stack-mobile__stats">
               <strong>内容资产库</strong>
               <strong>选题策略</strong>

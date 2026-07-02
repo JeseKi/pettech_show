@@ -1,33 +1,33 @@
-.pettech-landing-scrollbar {
+.landing-page-scrollbar {
   overflow-x: hidden;
   scrollbar-gutter: stable;
   scrollbar-color: rgba(184, 255, 103, 0.64) rgba(5, 7, 6, 0.92);
   scrollbar-width: thin;
 }
 
-html.pettech-landing-scrollbar::-webkit-scrollbar,
-body.pettech-landing-scrollbar::-webkit-scrollbar {
+html.landing-page-scrollbar::-webkit-scrollbar,
+body.landing-page-scrollbar::-webkit-scrollbar {
   width: 11px;
   height: 0;
 }
 
-html.pettech-landing-scrollbar::-webkit-scrollbar-track,
-body.pettech-landing-scrollbar::-webkit-scrollbar-track {
+html.landing-page-scrollbar::-webkit-scrollbar-track,
+body.landing-page-scrollbar::-webkit-scrollbar-track {
   background:
     linear-gradient(180deg, rgba(184, 255, 103, 0.08), rgba(56, 189, 248, 0.06)),
     var(--app-bg);
 }
 
-html.pettech-landing-scrollbar::-webkit-scrollbar-thumb,
-body.pettech-landing-scrollbar::-webkit-scrollbar-thumb {
+html.landing-page-scrollbar::-webkit-scrollbar-thumb,
+body.landing-page-scrollbar::-webkit-scrollbar-thumb {
   background:
     linear-gradient(180deg, rgba(184, 255, 103, 0.9), rgba(45, 212, 191, 0.72));
   border: 3px solid var(--app-bg);
   border-radius: 999px;
 }
 
-html.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover,
-body.pettech-landing-scrollbar::-webkit-scrollbar-thumb:hover {
+html.landing-page-scrollbar::-webkit-scrollbar-thumb:hover,
+body.landing-page-scrollbar::-webkit-scrollbar-thumb:hover {
   background:
     linear-gradient(180deg, var(--app-accent), var(--app-accent-cyan));
 }

@@ -92,7 +92,7 @@ export default function LandingPage() {
   useLayoutEffect(() => {
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const unlockDelay = prefersReducedMotion ? 0 : INTRO_UNLOCK_DELAY_MS
-    const landingScrollbarClassName = 'pettech-landing-scrollbar'
+    const landingScrollbarClassName = 'landing-page-scrollbar'
     const scrollKeys = new Set([' ', 'ArrowDown', 'ArrowUp', 'End', 'Home', 'PageDown', 'PageUp'])
     let scrollLocked = true
     const preventScroll = (event: Event) => {

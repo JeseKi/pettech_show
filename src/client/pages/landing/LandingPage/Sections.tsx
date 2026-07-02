@@ -20,7 +20,7 @@ export function CourseIntroSection({ progressiveClassName, registerProgressiveBl
       data-reveal-id="course-intro"
     >
       <div className="landing-section__heading">
-        <p className="landing-eyebrow">COURSE POSITIONING</p>
+        <p className="landing-eyebrow">WORKBENCH POSITIONING</p>
         <h2>不是临时写几段文案，而是跑完一轮内容获客闭环</h2>
       </div>
       <div className="result-strip">
@@ -130,7 +130,7 @@ export function DeliverablesSection({
             <span>{String(index + 1).padStart(2, '0')}</span>
             <PackageCheck size={24} />
             <h3>{item}</h3>
-            <p>围绕宠物行业真实运营场景交付，能直接进入下一轮内容生产和复盘。</p>
+            <p>围绕企业真实运营和获客场景交付，能直接进入下一轮内容生产和复盘。</p>
           </article>
         ))}
       </div>
@@ -151,7 +151,7 @@ export function ContactSection({
       ref={registerProgressiveBlock('contact')}
       data-reveal-id="contact"
     >
-      <h2>把宠物行业内容生产放进工作台</h2>
+      <h2>把企业内容增长放进同一个工作台</h2>
       <p>登录后查看内容生产系统、课程训练路径和可复用的业务资产。</p>
       <div>
         <button type="button" onClick={goToWorkspace}>
@@ -171,7 +171,7 @@ export function LandingFooter({ registerProgressiveBlock }: LandingSectionProps)
       data-reveal-id="footer"
     >
       <span>{BRAND_NAME}</span>
-      <span>宠物行业 AI 内容增长与内容生产系统</span>
+      <span>企业AI内容增长与内容生产工作台</span>
     </footer>
   )
 }
