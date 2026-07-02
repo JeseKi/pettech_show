@@ -175,8 +175,8 @@ export default function SeedMatrixPage({
 
   const columns: ColumnsType<MatrixRow> = [
     { title: '天', dataIndex: 'day', width: 72, fixed: 'left' },
-    { title: 'Slot', dataIndex: 'slot', width: 72 },
-    { title: '种子', dataIndex: 'seed_id', width: 96 },
+    { title: '每日文章数', dataIndex: 'slot', width: 112 },
+    { title: '选题', dataIndex: 'seed_id', width: 96 },
     { title: '内容池', dataIndex: 'content_pool', width: 180, ellipsis: true },
     { title: '选题', dataIndex: 'topic', width: 280, ellipsis: true },
     { title: '痛点', dataIndex: 'pain_point', width: 260, ellipsis: true },
@@ -374,7 +374,7 @@ export default function SeedMatrixPage({
       </main>
 
       <Drawer
-        title={activeRow?.topic ?? '种子详情'}
+        title={activeRow?.topic ?? '选题详情'}
         open={Boolean(activeRow)}
         onClose={() => setActiveRow(null)}
         width={620}
@@ -440,8 +440,8 @@ function TaskRail({
               </span>
               <span className="growth-task-card-tags">
                 <Tag color={statusColor(job.status)}>{statusMeta(job.status).label}</Tag>
-                <Tag>种子 {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)}</Tag>
-                <Tag>Slot {Number(job.params.slots_per_day ?? 0)}</Tag>
+                <Tag>选题 {Number(job.summary.seed_count ?? job.params.expected_seed_count ?? 0)}</Tag>
+                <Tag>每日文章数 {Number(job.params.slots_per_day ?? 0)}</Tag>
               </span>
               <Popconfirm
                 title="删除任务"
@@ -643,8 +643,8 @@ function MatrixTaskDetail({
       <div className="growth-readonly-summary">
         <ConfigItem label="输入知识库" value={shortId(job.source_aiwiki_job_id)} />
         <ConfigItem label="生成模式" value={seedMatrixModeLabel(job.params)} />
-        <ConfigItem label="种子数量" value={String(Number(job.params.expected_seed_count ?? result?.summary.seed_count ?? 0))} />
-        <ConfigItem label="每日 Slot" value={String(Number(job.params.slots_per_day ?? 0))} />
+        <ConfigItem label="选题数量" value={String(Number(job.params.expected_seed_count ?? result?.summary.seed_count ?? 0))} />
+        <ConfigItem label="每日文章数" value={String(Number(job.params.slots_per_day ?? 0))} />
         <ConfigItem label="状态" value={statusMeta(job.status).label} />
         <ConfigItem label="创建时间" value={formatDateTime(job.created_at)} />
       </div>
@@ -658,7 +658,7 @@ function MatrixTaskDetail({
             <Typography.Title level={4}>策略表结果</Typography.Title>
             <Space wrap>
               <Input.Search
-                placeholder="搜索种子、选题、痛点、方案"
+                placeholder="搜索选题、痛点、方案"
                 allowClear
                 value={query}
                 onSearch={onQueryChange}
@@ -670,7 +670,7 @@ function MatrixTaskDetail({
             </Space>
           </Flex>
           <div className="growth-readonly-summary is-compact">
-            <ConfigItem label="种子" value={String(Number(result.summary.seed_count ?? 0))} />
+            <ConfigItem label="选题" value={String(Number(result.summary.seed_count ?? 0))} />
             <ConfigItem label="覆盖天数" value={String(Number(result.summary.day_count ?? 0))} />
             <ConfigItem label="预计文章" value={String(Number(result.summary.expected_article_total ?? 0))} />
             <ConfigItem label="账号类型" value={String(Number(result.summary.account_type_count ?? 0))} />
@@ -773,22 +773,22 @@ function ConfigItem({ label, value }: { label: string; value: string }) {
 
 function SeedDetail({ row }: { row: MatrixRow }) {
   const fields = [
-    ['seed_id', '种子'],
+    ['seed_id', '选题'],
     ['day', '天'],
-    ['slot', 'Slot'],
+    ['slot', '每日文章数'],
     ['content_pool', '内容池'],
     ['topic', '选题'],
     ['pain_point', '痛点'],
     ['solution', '解决方案'],
-    ['hook', '引流钩子'],
-    ['mother_topic_prompt', '母题提示词'],
-    ['variant_ids_to_generate', '变体 ID'],
+    ['hook', '行动引导'],
+    ['mother_topic_prompt', '写作要求'],
+    ['variant_ids_to_generate', '多版本稿件 ID'],
     ['expected_article_count', '预计篇数'],
     ['primary_account_type', '主账号类型'],
     ['backup_account_types', '备选账号类型'],
-    ['hook_package', '引流钩子包'],
-    ['primary_hook_ids', '引流钩子 ID'],
-    ['cta_strategy', 'CTA 策略'],
+    ['hook_package', '行动引导包'],
+    ['primary_hook_ids', '行动引导 ID'],
+    ['cta_strategy', '转化策略'],
     ['publishing_note', '发布备注'],
   ]
   return (
